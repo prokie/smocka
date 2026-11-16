@@ -1,15 +1,13 @@
 mod protocol;
 
-use std::time::Duration;
-
+use crate::config::network::TICK_RATE;
 use bevy::prelude::*;
 use lightyear::prelude::{
     client::{ClientPlugins, InputDelayConfig},
     server::ServerPlugins,
     *,
 };
-
-use crate::config::network::TICK_RATE;
+use std::time::Duration;
 
 /// The network plugin.
 pub struct NetworkPlugin;
