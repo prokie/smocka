@@ -1,11 +1,11 @@
-pub mod camera;
+mod camera;
+mod config;
+mod network;
 
-use crate::camera::CameraPlugin;
 use bevy::prelude::*;
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
-        .add_plugins(CameraPlugin)
+        .add_plugins((DefaultPlugins, camera::CameraPlugin, network::NetworkPlugin))
         .run();
 }
