@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy = { version = "0.20.1" }
+bevy = { version = "0.20.1", features = ["file_watcher"] }
 # rand = "0.10.3"
 lightyear = { version = "0.31.0", features = [
     "client",
@@ -29,3 +29,8 @@ opt-level = 3
 lto = "fat"
 codegen-units = 1
 strip = true
+
+
+[[bin]]
+name = "smocka"
+test = false
