@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use super::pong_input::PongInput;
 use crate::config::minigames::two_player_pong::{PADDLE_MAX_Y, PADDLE_SPEED, PADDLE_X_OFFSET};
 use crate::lobby::Player;
+use crate::network::is_host;
+use crate::session::SessionPhase;
 
 /// Which player controls this paddle. Set once at spawn.
 #[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
@@ -45,8 +47,14 @@ impl Plugin for PaddlePlugin {
             .predict()
             .add_linear_interpolation();
 
-        app.add_systems(Update, spawn_paddles);
-        app.add_systems(FixedUpdate, move_paddles);
+        app.add_systems(
+            OnEnter(SessionPhase::TwoPlayerPong),
+            spawn_paddles.run_if(is_host),
+        );
+        app.add_systems(
+            FixedUpdate,
+            move_paddles.run_if(in_state(SessionPhase::TwoPlayerPong)),
+        );
     }
 }
 
@@ -60,15 +68,8 @@ impl Side {
     }
 }
 
-/// Host only: once two players are in the session, give each a paddle.
-fn spawn_paddles(
-    mut commands: Commands,
-    players: Query<(&Player, &ControlledBy)>,
-    paddles: Query<(), With<Paddle>>,
-) {
-    if !paddles.is_empty() || players.iter().len() < 2 {
-        return;
-    }
+/// Host only: when Pong starts, give the two players with the lowest ids a paddle each.
+fn spawn_paddles(mut commands: Commands, players: Query<(&Player, &ControlledBy)>) {
     let mut players: Vec<_> = players.iter().collect();
     players.sort_by_key(|(player, _)| player.id);
     let [(left, left_link), (right, right_link), ..] = players[..] else {
@@ -81,6 +82,7 @@ fn spawn_paddles(
 fn spawn_paddle(commands: &mut Commands, owner: PeerId, link: Entity, side: Side) {
     commands.spawn((
         Paddle { owner, side },
+        DespawnOnExit(SessionPhase::TwoPlayerPong),
         PaddlePosition(Vec2::new(side.x_pos(), 0.0)),
         Replicate::to_clients(NetworkTarget::All),
         PredictionTarget::to_clients(NetworkTarget::Single(owner)),

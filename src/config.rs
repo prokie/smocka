@@ -27,15 +27,30 @@ pub mod display {
 
 pub mod minigames {
     pub mod two_player_pong {
+        use crate::config::display::{VIEW_HEIGHT, VIEW_WIDTH};
+
+        /// Thickness of the wall drawn along the top and bottom of `arena.png`, in world units.
+        pub const WALL_THICKNESS: f32 = 4.0;
+
         /// Horizontal distance from the arena centre to each paddle, in world units.
         pub const PADDLE_X_OFFSET: f32 = 296.0;
+        /// Paddle width in world units. Keep `paddle.png` the same width.
+        pub const PADDLE_WIDTH: f32 = 8.0;
         /// Paddle height in world units. Keep `paddle.png` the same height.
         pub const PADDLE_HEIGHT: f32 = 48.0;
         /// Paddle speed in world units per second.
         pub const PADDLE_SPEED: f32 = 300.0;
         /// Highest `y` a paddle centre may reach (the lowest is the negative of this).
-        /// Keeps the paddle inside the 4-unit wall at the top and bottom of the arena.
-        pub const PADDLE_MAX_Y: f32 =
-            crate::config::display::VIEW_HEIGHT / 2.0 - 4.0 - PADDLE_HEIGHT / 2.0;
+        /// Keeps the paddle inside the walls at the top and bottom of the arena.
+        pub const PADDLE_MAX_Y: f32 = VIEW_HEIGHT / 2.0 - WALL_THICKNESS - PADDLE_HEIGHT / 2.0;
+
+        /// Ball width and height in world units. Keep `ball.png` the same size.
+        pub const BALL_SIZE: f32 = 8.0;
+        /// Ball speed along each axis when it is served, in world units per second.
+        pub const BALL_SERVE_VELOCITY: bevy::math::Vec2 = bevy::math::Vec2::new(150.0, 100.0);
+        /// Highest `y` the ball centre may reach before it bounces (the lowest is the negative).
+        pub const BALL_MAX_Y: f32 = VIEW_HEIGHT / 2.0 - WALL_THICKNESS - BALL_SIZE / 2.0;
+        /// Highest `x` the ball centre may reach before it hits the side edge (the lowest is the negative).
+        pub const BALL_MAX_X: f32 = VIEW_WIDTH / 2.0 - BALL_SIZE / 2.0;
     }
 }

@@ -6,6 +6,7 @@ use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::minigames::two_player_pong::paddles::Paddle;
+use crate::session::SessionPhase;
 
 /// The input a player sends each tick to control their paddle.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Default, Reflect)]
@@ -26,7 +27,9 @@ impl Plugin for PongInputPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             FixedPreUpdate,
-            buffer_pong_input.in_set(InputSystems::WriteClientInputs),
+            buffer_pong_input
+                .in_set(InputSystems::WriteClientInputs)
+                .run_if(in_state(SessionPhase::TwoPlayerPong)),
         );
         app.add_plugins(input::native::InputPlugin::<PongInput>::default());
 

@@ -1,7 +1,8 @@
-//! Two-player Pong: holding a key moves your paddle on every peer.
+//! Two-player Pong: paddles move on every peer, and the ball moves on every peer.
 
 use bevy::prelude::*;
 use lightyear::prelude::PeerId;
+use smocka::minigames::two_player_pong::ball::{Ball, BallPosition};
 use smocka::minigames::two_player_pong::paddles::{Paddle, PaddlePosition};
 
 use crate::common::{TestApp, connected_pair, update_until};
@@ -23,6 +24,16 @@ fn hosts(owner: PeerId) -> bool {
 
 fn joiners(owner: PeerId) -> bool {
     matches!(owner, PeerId::Netcode(_))
+}
+
+/// Where this app's ball is, if it has one yet.
+fn ball_position(app: &mut TestApp) -> Option<Vec2> {
+    app.0
+        .world_mut()
+        .query_filtered::<&BallPosition, With<Ball>>()
+        .iter(app.0.world())
+        .next()
+        .map(|position| position.0)
 }
 
 fn hold(app: &mut TestApp, key: KeyCode) {
@@ -66,4 +77,25 @@ fn host_moves_their_paddle_on_every_peer() {
             .all(|app| paddle_y(app, hosts).is_some_and(|y| y < -10.0))
     });
     assert_eq!(paddle_y(&mut host, joiners), Some(0.0));
+}
+
+#[test]
+fn the_ball_moves_on_every_peer() {
+    let (mut host, mut client) = pong_pair();
+
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut()
+            .all(|app| ball_position(app).is_some_and(|position| position != Vec2::ZERO))
+    });
+
+    // Only the host spawns the ball; the client just receives it.
+    for app in [&mut host, &mut client] {
+        let balls = app
+            .0
+            .world_mut()
+            .query_filtered::<(), With<Ball>>()
+            .iter(app.0.world())
+            .count();
+        assert_eq!(balls, 1);
+    }
 }

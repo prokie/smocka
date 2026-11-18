@@ -3,7 +3,8 @@
 A multiplayer party game in the style of *Pummel Party*, built with [Bevy](https://bevyengine.org/) and [Lightyear](https://github.com/cBournhonesque/lightyear). Players gather in a shared session and play a series of short, self-contained minigames against each other.
 
 > **Status:** early development. Networking and the lobby work. In the first minigame
-> (two-player Pong), both players can move their paddles; there is no ball yet.
+> (two-player Pong), both players can move their paddles and the ball bounces off the walls and paddles
+> (there is no scoring yet: the side edges bounce too).
 
 ## Requirements
 
@@ -44,6 +45,7 @@ src/
 │   ├── server/      Server-side handling of new client links
 │   └── transport.rs HostSession / JoinSession
 ├── lobby/           Player: one replicated entity per connected client
+├── session/         SessionPhase state: the host decides it, every peer follows
 └── minigames/       One module per minigame
     ├── two_player_pong/
     └── four_player_pong/
@@ -59,9 +61,26 @@ assets/
    send interval.
 2. `LobbyPlugin` - the host spawns a replicated `Player` for each client that connects and
    despawns it when the client disconnects.
-3. `MinigamesPlugin` - registers each minigame's replicated components and inputs.
+3. `SessionPlugin` - the `SessionPhase` state (lobby or a minigame). See below.
+4. `MinigamesPlugin` - registers each minigame's replicated components and inputs.
 
 Replicated components must be registered in the **same order on every peer**, so keep this plugin order intact. `CameraPlugin` and `MinigameVisualsPlugin` (sprites) are added separately by the binary so tests can run headless.
+
+### Session phase
+
+`SessionPhase` is a normal Bevy state (`Lobby` or `TwoPlayerPong`). Bevy states can't be
+replicated, so the host keeps its decision in a replicated `CurrentPhase` component, and every
+peer (host included) copies that into its local `SessionPhase`. If a client loses its connection,
+it goes back to `Lobby`.
+
+For now the host plays Pong whenever two or more players are connected, and goes back to the
+lobby when fewer are. Minigame code only uses ordinary state tools, the same way on every peer:
+
+- `OnEnter(SessionPhase::TwoPlayerPong)` to spawn things (add `.run_if(is_host)` for replicated
+  game entities, which only the host spawns).
+- `.run_if(in_state(SessionPhase::TwoPlayerPong))` on systems that should only run during the game.
+- `DespawnOnExit(SessionPhase::TwoPlayerPong)` on everything spawned, so it's removed when the
+  game ends. On clients, replicated entities disappear when the host despawns them.
 
 ### Graphics
 
@@ -77,11 +96,12 @@ overwrite the PNG with the same name; no code changes are needed. Draw player-co
 |---|---|---|
 | `arena.png` | 640×360 | Background |
 | `paddle.png` | 8×48 | Paddles, tinted per side |
-| `ball.png` | 8×8 | Not yet (no ball in the game) |
+| `ball.png` | 8×8 | Ball |
 
 ### Adding a minigame
 
-1. Create a module under `src/minigames/` with its own plugin.
+1. Add a variant for it to `SessionPhase`, and create a module under `src/minigames/` with its
+   own plugin. Spawn, gate and despawn its entities with that state (see *Session phase*).
 2. Register its replicated components (`app.component::<T>().replicate()`, plus `.predict()` /
    `.add_linear_interpolation()` where needed) and its input type.
 3. Add the plugin to `MinigamesPlugin`.
