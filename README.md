@@ -2,7 +2,8 @@
 
 A multiplayer party game in the style of *Pummel Party*, built with [Bevy](https://bevyengine.org/) and [Lightyear](https://github.com/cBournhonesque/lightyear). Players gather in a shared session and play a series of short, self-contained minigames against each other.
 
-> **Status:** early development. Networking and the lobby work. In the first minigame
+> **Status:** early development. A main menu hosts or joins a session, and networking and the
+> lobby work. In the first minigame
 > (two-player Pong), both players move their paddles, the ball bounces off the top and bottom walls
 > and the paddles, and a ball that gets past a paddle is a goal for the other player. There is no
 > win condition yet: the game keeps scoring until a player leaves.
@@ -16,22 +17,34 @@ A multiplayer party game in the style of *Pummel Party*, built with [Bevy](https
 
 ## Running
 
-One player hosts, the others join. Both currently use `127.0.0.1:5000` (`SERVER_ADDR` in `src/config.rs`).
+```sh
+cargo run
+```
+
+This opens the main menu. One player picks **Host game**. The others type the host's address
+(for example `192.168.1.10`, or `192.168.1.10:5000`) and press **Join** or `Enter`. The field
+starts as `127.0.0.1:5000`, a host on the same machine. The host listens on port 5000 on every
+network interface (`HOST_ADDR` in `src/config.rs`), so players on the same network can join if
+the firewall allows UDP on that port. Press `Esc` in a session to leave. If the host leaves,
+everyone goes back to the menu.
+
+To skip the menu while developing:
 
 ```sh
-# Host a session (runs a server and a local client in the same process)
-cargo run
-
-# Join the session from another terminal
-cargo run -- join
+cargo run -- host                # host straight away
+cargo run -- join                # join a host on this machine
+cargo run -- join 192.168.1.10   # join another machine (port 5000 unless given)
 ```
 
 ## Architecture
 
-Every process runs both the Lightyear client and server plugins. Whether it acts as host or client is decided at startup by queuing one of two commands:
+Every process runs both the Lightyear client and server plugins. Whether it acts as host or
+client is decided by queuing one of these commands (the menu does it for you):
 
 - `HostSession` starts a UDP server and a local client linked directly to it.
 - `JoinSession` connects to a host over UDP using netcode authentication.
+- `LeaveSession` goes back to the menu. Entering the menu disconnects the client and, on the
+  host, stops the server, which disconnects everyone else.
 
 The host is authoritative: it spawns and replicates game state to all clients.
 
@@ -39,13 +52,15 @@ The host is authoritative: it spawns and replicates game state to all clients.
 src/
 ├── main.rs          Binary: picks host or join from CLI args
 ├── lib.rs           SmockaPlugin, which wires up the plugins below
+├── app_state.rs     AppState: main menu, connecting or in a session (local to each app)
 ├── config.rs        Network, display (640×360 view) and minigame constants
 ├── camera/          Main 2D camera
 ├── network/         Lightyear setup and the HostSession / JoinSession commands
 │   ├── client/      Client-side config (input delay)
 │   ├── server/      Server-side handling of new client links
-│   └── transport.rs HostSession / JoinSession
+│   └── transport.rs HostSession / JoinSession / LeaveSession
 ├── lobby/           Player: one replicated entity per connected client
+├── menu/            Main menu, connecting screen and in-session hints (UI)
 ├── session/         SessionPhase state: the host decides it, every peer follows
 └── minigames/       One module per minigame
     ├── two_player_pong/
@@ -60,19 +75,28 @@ assets/
 
 1. `NetworkPlugin` - Lightyear client and server plugins, tick rate (128 Hz) and replication
    send interval.
-2. `LobbyPlugin` - the host spawns a replicated `Player` for each client that connects and
+2. `AppStatePlugin` - the local `AppState` (see below).
+3. `LobbyPlugin` - the host spawns a replicated `Player` for each client that connects and
    despawns it when the client disconnects.
-3. `SessionPlugin` - the `SessionPhase` state (lobby or a minigame). See below.
-4. `MinigamesPlugin` - registers each minigame's replicated components and inputs.
+4. `SessionPlugin` - the `SessionPhase` state (lobby or a minigame). See below.
+5. `MinigamesPlugin` - registers each minigame's replicated components and inputs.
 
-Replicated components must be registered in the **same order on every peer**, so keep this plugin order intact. `CameraPlugin` and `MinigameVisualsPlugin` (sprites) are added separately by the binary so tests can run headless.
+Replicated components must be registered in the **same order on every peer**, so keep this plugin order intact. `CameraPlugin`, `MinigameVisualsPlugin` (sprites) and `MenuPlugin` (UI) are added separately by the binary so tests can run headless.
+
+### App state
+
+`AppState` is local to each app and never replicated: `MainMenu`, `Connecting` or `InSession`.
+The network drives it. `HostSession` and `JoinSession` go to `Connecting`, and the app's client
+connecting goes to `InSession`. The client disconnecting, or `LeaveSession`, goes back to
+`MainMenu`. If that wasn't the player's choice (the host left, the connection was lost, or nobody
+answered), `SessionEndReason` says why and the menu shows it.
 
 ### Session phase
 
-`SessionPhase` is a normal Bevy state (`Lobby` or `TwoPlayerPong`). Bevy states can't be
-replicated, so the host keeps its decision in a replicated `CurrentPhase` component, and every
-peer (host included) copies that into its local `SessionPhase`. If a client loses its connection,
-it goes back to `Lobby`.
+`SessionPhase` (`Lobby` or `TwoPlayerPong`) is a Bevy sub-state of `AppState::InSession`: it
+only exists while in a session, and leaving the session exits it like any other state change.
+Bevy states can't be replicated, so the host keeps its decision in a replicated `CurrentPhase`
+component, and every peer (host included) copies that into its local `SessionPhase`.
 
 For now the host plays Pong whenever two or more players are connected, and goes back to the
 lobby when fewer are. Minigame code only uses ordinary state tools, the same way on every peer:

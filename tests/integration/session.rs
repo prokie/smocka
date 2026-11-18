@@ -8,10 +8,6 @@ use smocka::session::SessionPhase;
 
 use crate::common::{TestApp, connected_pair, free_addr, update_until};
 
-fn phase(app: &TestApp) -> SessionPhase {
-    *app.0.world().resource::<State<SessionPhase>>().get()
-}
-
 /// Number of paddles and balls this app can see.
 fn pong_entities(app: &mut TestApp) -> usize {
     let world = app.0.world_mut();
@@ -31,7 +27,7 @@ fn a_lone_host_waits_in_the_lobby() {
     for _ in 0..10 {
         host.0.update();
     }
-    assert_eq!(phase(&host), SessionPhase::Lobby);
+    assert_eq!(host.phase(), Some(SessionPhase::Lobby));
     assert_eq!(pong_entities(&mut host), 0);
 }
 
@@ -41,7 +37,7 @@ fn both_peers_enter_pong_when_a_second_player_joins() {
 
     update_until(&mut [&mut host, &mut client], |apps| {
         apps.iter()
-            .all(|app| phase(app) == SessionPhase::TwoPlayerPong)
+            .all(|app| app.phase() == Some(SessionPhase::TwoPlayerPong))
     });
 }
 
@@ -54,8 +50,10 @@ fn leaving_ends_pong_and_removes_its_entities_on_both_peers() {
 
     client.disconnect();
 
+    // The host goes back to the lobby; the joiner leaves the session altogether.
     update_until(&mut [&mut host, &mut client], |apps| {
-        apps.iter_mut()
-            .all(|app| phase(app) == SessionPhase::Lobby && pong_entities(app) == 0)
+        apps[0].phase() == Some(SessionPhase::Lobby)
+            && apps[1].phase().is_none()
+            && apps.iter_mut().all(|app| pong_entities(app) == 0)
     });
 }

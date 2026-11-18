@@ -8,6 +8,9 @@ use smocka::minigames::two_player_pong::score::PongScore;
 
 use std::time::Duration;
 
+use bevy::prelude::Command;
+use smocka::network::JoinSession;
+
 use crate::common::{TestApp, connected_pair, update_until, update_until_within};
 
 /// `y` of the paddle whose owner matches `is_owner`, if this app has it yet.
@@ -56,19 +59,20 @@ fn hold(app: &mut TestApp, key: KeyCode) {
         .press(key);
 }
 
-/// Connect a host and a joiner and wait until both see both paddles.
-fn pong_pair() -> (TestApp, TestApp) {
-    let (mut host, mut client, _) = connected_pair();
+/// Connect a host and a joiner and wait until both see both paddles. Also returns the host's
+/// address.
+fn pong_pair() -> (TestApp, TestApp, std::net::SocketAddr) {
+    let (mut host, mut client, addr) = connected_pair();
     update_until(&mut [&mut host, &mut client], |apps| {
         apps.iter_mut()
             .all(|app| paddle_y(app, hosts).is_some() && paddle_y(app, joiners).is_some())
     });
-    (host, client)
+    (host, client, addr)
 }
 
 #[test]
 fn joiner_moves_their_paddle_on_every_peer() {
-    let (mut host, mut client) = pong_pair();
+    let (mut host, mut client, _) = pong_pair();
 
     hold(&mut client, KeyCode::KeyW);
 
@@ -81,7 +85,7 @@ fn joiner_moves_their_paddle_on_every_peer() {
 
 #[test]
 fn host_moves_their_paddle_on_every_peer() {
-    let (mut host, mut client) = pong_pair();
+    let (mut host, mut client, _) = pong_pair();
 
     hold(&mut host, KeyCode::KeyS);
 
@@ -94,7 +98,7 @@ fn host_moves_their_paddle_on_every_peer() {
 
 #[test]
 fn the_ball_moves_on_every_peer() {
-    let (mut host, mut client) = pong_pair();
+    let (mut host, mut client, _) = pong_pair();
 
     update_until(&mut [&mut host, &mut client], |apps| {
         apps.iter_mut()
@@ -115,7 +119,7 @@ fn the_ball_moves_on_every_peer() {
 
 #[test]
 fn a_missed_ball_scores_on_every_peer() {
-    let (mut host, mut client) = pong_pair();
+    let (mut host, mut client, _) = pong_pair();
 
     // Nobody moves, so the first serve (up and to the right) flies over the right paddle.
     update_until_within(
@@ -126,4 +130,23 @@ fn a_missed_ball_scores_on_every_peer() {
                 .all(|app| score(app) == Some(PongScore { left: 1, right: 0 }))
         },
     );
+}
+
+#[test]
+fn a_joiner_who_rejoins_can_still_move_their_paddle() {
+    let (mut host, mut client, addr) = pong_pair();
+
+    client.leave();
+    update_until(&mut [&mut host, &mut client], |apps| apps[0].players() == 1);
+    JoinSession { addr }.apply(client.0.world_mut()).unwrap();
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut()
+            .all(|app| paddle_y(app, hosts).is_some() && paddle_y(app, joiners).is_some())
+    });
+
+    hold(&mut client, KeyCode::KeyW);
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut()
+            .all(|app| paddle_y(app, joiners).is_some_and(|y| y > 10.0))
+    });
 }

@@ -6,8 +6,10 @@ use std::time::{Duration, Instant};
 use bevy::prelude::*;
 use lightyear::prelude::*;
 use smocka::SmockaPlugin;
+use smocka::app_state::{AppState, SessionEndReason};
 use smocka::lobby::Player;
-use smocka::network::{HostSession, JoinSession};
+use smocka::network::{HostSession, JoinSession, LeaveSession};
+use smocka::session::SessionPhase;
 
 /// A headless app with the network plugin, plus queries for its connection state.
 pub struct TestApp(pub App);
@@ -37,6 +39,29 @@ impl TestApp {
             .apply(app.0.world_mut())
             .expect("failed to join session");
         app
+    }
+
+    /// Leave the session the way the menu does, with [`LeaveSession`].
+    pub fn leave(&mut self) {
+        LeaveSession.apply(self.0.world_mut());
+    }
+
+    /// This app's [`AppState`].
+    pub fn app_state(&self) -> AppState {
+        *self.0.world().resource::<State<AppState>>().get()
+    }
+
+    /// This app's [`SessionPhase`], or `None` if it isn't in a session.
+    pub fn phase(&self) -> Option<SessionPhase> {
+        self.0
+            .world()
+            .get_resource::<State<SessionPhase>>()
+            .map(|state| *state.get())
+    }
+
+    /// Why this app's last session ended, if it wasn't this player's choice.
+    pub fn end_reason(&self) -> Option<String> {
+        self.0.world().resource::<SessionEndReason>().0.clone()
     }
 
     /// Gracefully disconnect this app's client.

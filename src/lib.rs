@@ -1,6 +1,8 @@
+pub mod app_state;
 pub mod camera;
 pub mod config;
 pub mod lobby;
+pub mod menu;
 pub mod minigames;
 pub mod network;
 pub mod session;
@@ -14,6 +16,7 @@ impl Plugin for SmockaPlugin {
         // Order matters: replicated types must be registered in the same order everywhere.
         app.add_plugins((
             network::NetworkPlugin,
+            app_state::AppStatePlugin,
             lobby::LobbyPlugin,
             session::SessionPlugin,
             minigames::MinigamesPlugin,

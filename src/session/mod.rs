@@ -1,6 +1,10 @@
 //! What the session is doing right now (waiting in the lobby, or playing a minigame), decided by
 //! the host and followed by every peer.
 //!
+//! [`SessionPhase`] is a sub-state of [`AppState::InSession`]: it only exists while this app is in
+//! a session, and is removed (running `OnExit` and [`DespawnOnExit`]) when the app goes back to
+//! the menu.
+//!
 //! Bevy [`States`] only exist inside one app, so they can't be replicated directly. Instead:
 //!
 //! 1. The host spawns one [`CurrentPhase`] entity and replicates it to every client.
@@ -15,11 +19,14 @@ use bevy::prelude::*;
 use lightyear::prelude::{server::Started, *};
 use serde::{Deserialize, Serialize};
 
+use crate::app_state::AppState;
 use crate::lobby::Player;
 use crate::network::is_host;
 
-/// What the session is doing. A local Bevy state that follows the host's [`CurrentPhase`].
-#[derive(States, Serialize, Deserialize, Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// What the session is doing. A local Bevy sub-state of [`AppState::InSession`] that follows the
+/// host's [`CurrentPhase`].
+#[derive(SubStates, Serialize, Deserialize, Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[source(AppState = AppState::InSession)]
 pub enum SessionPhase {
     /// Waiting for enough players.
     #[default]
@@ -36,30 +43,34 @@ pub struct CurrentPhase(pub SessionPhase);
 
 /// Registers the session state and its replicated component.
 ///
-/// Must be added after [`NetworkPlugin`](crate::network::NetworkPlugin) and before
-/// [`MinigamesPlugin`](crate::minigames::MinigamesPlugin): it registers a replicated component, and
-/// minigames use [`SessionPhase`].
+/// Must be added after [`NetworkPlugin`](crate::network::NetworkPlugin) and
+/// [`AppStatePlugin`](crate::app_state::AppStatePlugin), and before
+/// [`MinigamesPlugin`](crate::minigames::MinigamesPlugin): it registers a replicated component,
+/// its state is a sub-state of [`AppState`], and minigames use [`SessionPhase`].
 pub struct SessionPlugin;
 
 impl Plugin for SessionPlugin {
     fn build(&self, app: &mut App) {
-        app.init_state::<SessionPhase>();
+        app.add_sub_state::<SessionPhase>();
         app.component::<CurrentPhase>().replicate();
 
         app.add_observer(spawn_current_phase);
-        app.add_observer(return_to_lobby_when_disconnected);
         app.add_systems(
             PreUpdate,
-            (choose_phase.run_if(is_host), follow_phase).chain(),
+            (choose_phase.run_if(is_host), follow_phase)
+                .chain()
+                .run_if(in_state(AppState::InSession)),
         );
     }
 }
 
 /// Host only: when the server starts, spawn the [`CurrentPhase`] entity that clients will follow.
+/// It is removed when the host goes back to the menu.
 fn spawn_current_phase(_trigger: On<Add<Started>>, mut commands: Commands) {
     commands.spawn((
         Name::from("CurrentPhase"),
         CurrentPhase(SessionPhase::Lobby),
+        DespawnOnEnter(AppState::MainMenu),
         Replicate::to_clients(NetworkTarget::All),
     ));
 }
@@ -77,21 +88,19 @@ fn choose_phase(players: Query<(), With<Player>>, mut phase: Single<&mut Current
     phase.set_if_neq(CurrentPhase(wanted));
 }
 
-/// Every peer: when [`CurrentPhase`] arrives or changes, switch the local [`SessionPhase`] to match.
+/// Every peer: if the local [`SessionPhase`] differs from the host's [`CurrentPhase`], switch to it.
+///
+/// This compares instead of waiting for [`CurrentPhase`] to change: a joiner can receive it before
+/// its [`SessionPhase`] exists (while still [`AppState::Connecting`]), and must still pick it up.
 fn follow_phase(
-    phase: Option<Single<&CurrentPhase, Changed<CurrentPhase>>>,
+    phase: Option<Single<&CurrentPhase>>,
+    state: Option<Res<State<SessionPhase>>>,
     mut next: ResMut<NextState<SessionPhase>>,
 ) {
-    if let Some(phase) = phase {
+    let (Some(phase), Some(state)) = (phase, state) else {
+        return;
+    };
+    if *state.get() != phase.0 {
         next.set(phase.0);
     }
-}
-
-/// Every peer: if the [`CurrentPhase`] entity goes away (for example, a client loses its
-/// connection to the host), go back to the lobby.
-fn return_to_lobby_when_disconnected(
-    _trigger: On<Remove<CurrentPhase>>,
-    mut next: ResMut<NextState<SessionPhase>>,
-) {
-    next.set(SessionPhase::Lobby);
 }

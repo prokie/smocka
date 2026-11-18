@@ -2,14 +2,16 @@ mod client;
 mod server;
 mod transport;
 
-pub use transport::{HostSession, JoinSession};
+pub use transport::{HostSession, JoinSession, LeaveSession};
 
+use crate::app_state::AppState;
 use crate::config::network::{SEND_INTERVAL, TICK_RATE};
 use bevy::prelude::*;
 use lightyear::prelude::{client::ClientPlugins, server::ServerPlugins, server::Started, *};
 use std::time::Duration;
 
-/// The network plugin.
+/// Lightyear's client and server plugins, the tick rate and replication interval, and closing the
+/// connection when the app goes back to the menu.
 pub struct NetworkPlugin;
 
 impl Plugin for NetworkPlugin {
@@ -25,6 +27,8 @@ impl Plugin for NetworkPlugin {
 
         // Configure the replication interval for the network timeline.
         app.insert_resource(ReplicationMetadata::new(SEND_INTERVAL));
+
+        app.add_systems(OnEnter(AppState::MainMenu), transport::close_session);
     }
 }
 

@@ -5,7 +5,12 @@ pub mod network {
     pub const TICK_RATE: f64 = 128.0;
     pub const SEND_INTERVAL: Duration = Duration::from_millis(50);
 
+    /// UDP port the host listens on, and the port joiners use if they don't give one.
     pub const SERVER_PORT: u16 = 5000;
+    /// Where the host listens: every network interface, so players on the same network can join.
+    pub const HOST_ADDR: SocketAddr =
+        SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, SERVER_PORT));
+    /// The address the menu suggests joining: a host on this machine.
     pub const SERVER_ADDR: SocketAddr =
         SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, SERVER_PORT));
 

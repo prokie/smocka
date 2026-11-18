@@ -4,6 +4,8 @@ use bevy::prelude::*;
 use lightyear::prelude::{server::ClientOf, *};
 use serde::{Deserialize, Serialize};
 
+use crate::app_state::AppState;
+
 /// A person in the session. Spawned by the host for every connected client (including its own)
 /// and replicated to everyone.
 #[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
@@ -35,6 +37,8 @@ fn spawn_player(
     };
     commands.spawn((
         Player { id: remote_id.0 },
+        // Usually removed when its client disconnects; this also covers the host leaving.
+        DespawnOnEnter(AppState::MainMenu),
         Replicate::to_clients(NetworkTarget::All),
         ControlledBy {
             owner: trigger.entity,
