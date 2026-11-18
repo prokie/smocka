@@ -72,6 +72,12 @@ pub mod minigames {
         /// Keep it below `(PADDLE_WIDTH + BALL_SIZE) * TICK_RATE` (2048 for the current values).
         /// Above that, the ball can jump past a paddle in one tick without ever overlapping it.
         pub const BALL_MAX_SPEED: f32 = 600.0;
+        /// The steepest angle the ball can leave a paddle at, in radians away from straight across.
+        ///
+        /// Where the ball hits a paddle decides its angle: the centre sends it straight across,
+        /// and the very ends send it off at this angle, up or down. Keep it well below 90°, or the
+        /// ball can crawl almost vertically across the arena.
+        pub const BALL_MAX_BOUNCE_ANGLE: f32 = 37.0_f32.to_radians();
         /// Highest `y` the ball centre may reach before it bounces (the lowest is the negative).
         pub const BALL_MAX_Y: f32 = VIEW_HEIGHT / 2.0 - WALL_THICKNESS - BALL_SIZE / 2.0;
         /// How far left or right of the centre the ball centre must get to score a goal.

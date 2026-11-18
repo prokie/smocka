@@ -8,7 +8,7 @@ use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use super::PongSystems;
-use super::collisions::{bounce_off_walls, hits_paddle};
+use super::collisions::{bounce_off_paddle, bounce_off_walls, hits_paddle};
 use super::paddles::{Paddle, PaddlePosition, Side};
 use crate::config::minigames::two_player_pong::{
     BALL_HIT_SPEEDUP, BALL_MAX_SPEED, BALL_SERVE_VELOCITY,
@@ -100,8 +100,9 @@ pub fn serve_velocity(side: Side) -> Vec2 {
 /// The ball's next position and velocity after moving for `dt` seconds past `paddles`.
 ///
 /// The ball moves in a straight line, then bounces off the walls (see [`bounce_off_walls`]) and
-/// off the first paddle it hits (see [`hits_paddle`]). A paddle hit flips the ball's horizontal
-/// direction and makes it [`BALL_HIT_SPEEDUP`] times faster, up to [`BALL_MAX_SPEED`].
+/// off the first paddle it hits (see [`hits_paddle`]). A paddle hit sends the ball back at an
+/// angle set by where it hit the paddle (see [`bounce_off_paddle`]) and makes it
+/// [`BALL_HIT_SPEEDUP`] times faster, up to [`BALL_MAX_SPEED`].
 fn step_ball(
     position: Vec2,
     velocity: Vec2,
@@ -110,11 +111,11 @@ fn step_ball(
 ) -> (Vec2, Vec2) {
     let (position, mut velocity) = bounce_off_walls(position + velocity * dt, velocity);
 
-    if paddles
+    if let Some(paddle) = paddles
         .into_iter()
-        .any(|paddle| hits_paddle(position, velocity, paddle))
+        .find(|&paddle| hits_paddle(position, velocity, paddle))
     {
-        velocity.x = -velocity.x;
+        velocity = bounce_off_paddle(position, velocity, paddle);
         velocity = (velocity * BALL_HIT_SPEEDUP).clamp_length_max(BALL_MAX_SPEED);
     }
 
@@ -150,8 +151,20 @@ mod tests {
     fn bounces_off_a_paddle_it_reaches_and_speeds_up() {
         let paddle = Vec2::new(-PADDLE_X_OFFSET, 0.0);
         let start = paddle + Vec2::new(10.0, 0.0);
-        let (_, velocity) = step_ball(start, Vec2::new(-100.0, 20.0), [paddle], 0.1);
-        assert_eq!(velocity, Vec2::new(100.0, 20.0) * BALL_HIT_SPEEDUP);
+        let incoming = Vec2::new(-100.0, 20.0);
+        let (_, velocity) = step_ball(start, incoming, [paddle], 0.1);
+        assert!(velocity.x > 0.0);
+        assert!((velocity.length() - incoming.length() * BALL_HIT_SPEEDUP).abs() < 1e-3);
+    }
+
+    #[test]
+    fn a_hit_above_the_centre_goes_up() {
+        let paddle = Vec2::new(-PADDLE_X_OFFSET, 0.0);
+        // Moving straight left, it reaches the paddle 20 units above its centre.
+        let start = paddle + Vec2::new(10.0, 20.0);
+        let (_, velocity) = step_ball(start, Vec2::new(-100.0, 0.0), [paddle], 0.1);
+        assert!(velocity.x > 0.0);
+        assert!(velocity.y > 0.0);
     }
 
     #[test]

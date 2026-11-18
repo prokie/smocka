@@ -10,7 +10,7 @@ use bevy::math::Vec2;
 use bevy::shape::{Aabb2d, IntersectsVolume};
 
 use crate::config::minigames::two_player_pong::{
-    BALL_MAX_Y, BALL_SIZE, PADDLE_HEIGHT, PADDLE_WIDTH,
+    BALL_MAX_BOUNCE_ANGLE, BALL_MAX_Y, BALL_SIZE, PADDLE_HEIGHT, PADDLE_WIDTH,
 };
 
 /// Bounce the ball off the top and bottom walls.
@@ -38,11 +38,28 @@ pub fn hits_paddle(ball: Vec2, velocity: Vec2, paddle: Vec2) -> bool {
     moving_towards_its_edge && ball_box.intersects(&paddle_box)
 }
 
+/// The ball's velocity after bouncing off the paddle at `paddle`, at the same speed.
+///
+/// Where the ball hits the paddle decides where it goes, so players can aim: a hit on the centre
+/// sends it straight back across the arena, and a hit further towards an end sends it off at a
+/// steeper angle in that direction, up to [`BALL_MAX_BOUNCE_ANGLE`] at the very end. The ball
+/// always leaves towards the other side of the arena, whatever angle it came in at.
+pub fn bounce_off_paddle(ball: Vec2, velocity: Vec2, paddle: Vec2) -> Vec2 {
+    // -1 at the bottom end of the paddle, 0 at its centre, 1 at the top end. A ball overlapping
+    // just past an end counts as hitting that end.
+    let offset = ((ball.y - paddle.y) / (PADDLE_HEIGHT / 2.0)).clamp(-1.0, 1.0);
+    let angle = offset * BALL_MAX_BOUNCE_ANGLE;
+    // Away from the edge this paddle guards: the left paddle sends the ball right.
+    let away = -paddle.x.signum();
+    Vec2::new(away * angle.cos(), angle.sin()) * velocity.length()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{bounce_off_walls, hits_paddle};
+    use super::{bounce_off_paddle, bounce_off_walls, hits_paddle};
     use crate::config::minigames::two_player_pong::{
-        BALL_MAX_Y, BALL_SIZE, GOAL_X, PADDLE_HEIGHT, PADDLE_WIDTH, PADDLE_X_OFFSET,
+        BALL_MAX_BOUNCE_ANGLE, BALL_MAX_Y, BALL_SIZE, GOAL_X, PADDLE_HEIGHT, PADDLE_WIDTH,
+        PADDLE_X_OFFSET,
     };
     use bevy::math::Vec2;
 
@@ -93,6 +110,63 @@ mod tests {
     fn ball_above_the_paddle_misses() {
         let ball = LEFT_PADDLE + Vec2::new(0.0, PADDLE_HEIGHT / 2.0 + BALL_SIZE);
         assert!(!hits_paddle(ball, Vec2::new(-100.0, 0.0), LEFT_PADDLE));
+    }
+
+    /// Where the ball is when it touches the left paddle's face, `y` above the paddle's centre.
+    fn on_left_face(y: f32) -> Vec2 {
+        LEFT_PADDLE + Vec2::new((PADDLE_WIDTH + BALL_SIZE) / 2.0, y)
+    }
+
+    /// The angle of `velocity` away from straight across, in radians (positive is upwards).
+    fn angle_from_horizontal(velocity: Vec2) -> f32 {
+        (velocity.y / velocity.x.abs()).atan()
+    }
+
+    #[test]
+    fn a_centre_hit_goes_straight_back() {
+        let velocity = bounce_off_paddle(on_left_face(0.0), Vec2::new(-100.0, 60.0), LEFT_PADDLE);
+        assert!(velocity.x > 0.0);
+        assert!(velocity.y.abs() < 1e-4);
+    }
+
+    #[test]
+    fn an_end_hit_goes_off_at_the_max_angle() {
+        let top = bounce_off_paddle(
+            on_left_face(PADDLE_HEIGHT / 2.0),
+            Vec2::new(-100.0, -60.0),
+            LEFT_PADDLE,
+        );
+        assert!((angle_from_horizontal(top) - BALL_MAX_BOUNCE_ANGLE).abs() < 1e-4);
+
+        let bottom = bounce_off_paddle(
+            on_left_face(-PADDLE_HEIGHT / 2.0),
+            Vec2::new(-100.0, 60.0),
+            LEFT_PADDLE,
+        );
+        assert!((angle_from_horizontal(bottom) + BALL_MAX_BOUNCE_ANGLE).abs() < 1e-4);
+    }
+
+    #[test]
+    fn a_ball_past_the_end_counts_as_hitting_the_end() {
+        let past = on_left_face(PADDLE_HEIGHT / 2.0 + BALL_SIZE / 2.0);
+        let velocity = bounce_off_paddle(past, Vec2::new(-100.0, 0.0), LEFT_PADDLE);
+        assert!((angle_from_horizontal(velocity) - BALL_MAX_BOUNCE_ANGLE).abs() < 1e-4);
+    }
+
+    #[test]
+    fn a_bounce_keeps_the_speed() {
+        let incoming = Vec2::new(-120.0, 50.0);
+        let velocity = bounce_off_paddle(on_left_face(10.0), incoming, LEFT_PADDLE);
+        assert!((velocity.length() - incoming.length()).abs() < 1e-3);
+    }
+
+    #[test]
+    fn the_right_paddle_sends_the_ball_left() {
+        let right_paddle = -LEFT_PADDLE;
+        let ball = right_paddle + Vec2::new(-(PADDLE_WIDTH + BALL_SIZE) / 2.0, 12.0);
+        let velocity = bounce_off_paddle(ball, Vec2::new(100.0, 0.0), right_paddle);
+        assert!(velocity.x < 0.0);
+        assert!(velocity.y > 0.0);
     }
 
     #[test]

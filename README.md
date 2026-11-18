@@ -166,6 +166,10 @@ player who conceded. The first to `PongRules::goals_to_win` (5 by default, `GOAL
 If a paddle's player leaves, the game is abandoned. Each paddle hit makes the ball faster (`BALL_HIT_SPEEDUP`, up to
 `BALL_MAX_SPEED` in `src/config.rs`), and every serve starts at the serve speed again.
 
+Where the ball hits a paddle decides where it goes, so players can aim: the centre of the paddle
+sends it straight back across, and the ends send it off at up to `BALL_MAX_BOUNCE_ANGLE` (37°)
+up or down.
+
 ### Controls (Pong)
 
 `W` / `↑` moves your paddle up, `S` / `↓` moves it down.

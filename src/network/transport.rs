@@ -94,11 +94,7 @@ impl Command for JoinSession {
     fn apply(self, world: &mut World) -> Result {
         start_new_session(world);
         let addr = self.addr;
-        let client_id = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| u64::from(d.subsec_nanos()))
-            .unwrap_or(1)
-            .max(1);
+        let client_id = new_client_id();
 
         let auth = Authentication::Manual {
             server_addr: addr,
@@ -140,6 +136,16 @@ impl Command for JoinSession {
     }
 }
 
+/// A netcode client id for a joining client: random, and never 0.
+///
+/// The client picks its own id, and the host refuses a connection whose id is already connected
+/// (the joiner just times out with "Couldn't connect to the host"). A random 64-bit id makes two
+/// players picking the same one practically impossible. Don't derive it from the clock: clients
+/// started at about the same time can get the same value.
+fn new_client_id() -> u64 {
+    rand::random_range(1..=u64::MAX)
+}
+
 /// Command: leave the current session (or stop connecting to one) and go back to the main menu.
 ///
 /// This only switches to [`AppState::MainMenu`]. Entering the menu then disconnects this app's
@@ -175,5 +181,20 @@ pub(super) fn close_session(
     }
     for entity in &servers {
         commands.trigger(Stop { entity });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::new_client_id;
+
+    #[test]
+    fn client_ids_differ_between_joins() {
+        assert_ne!(new_client_id(), new_client_id());
+    }
+
+    #[test]
+    fn client_ids_are_never_zero() {
+        assert!((0..1000).all(|_| new_client_id() != 0));
     }
 }
