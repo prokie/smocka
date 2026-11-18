@@ -7,9 +7,12 @@ use bevy::prelude::*;
 use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use super::PongSystems;
 use super::collisions::{bounce_off_walls, hits_paddle};
-use super::paddles::{Paddle, PaddlePosition};
-use crate::config::minigames::two_player_pong::BALL_SERVE_VELOCITY;
+use super::paddles::{Paddle, PaddlePosition, Side};
+use crate::config::minigames::two_player_pong::{
+    BALL_HIT_SPEEDUP, BALL_MAX_SPEED, BALL_SERVE_VELOCITY,
+};
 use crate::network::is_host;
 use crate::session::SessionPhase;
 
@@ -54,19 +57,20 @@ impl Plugin for BallPlugin {
         app.add_systems(
             FixedUpdate,
             move_ball
+                .in_set(PongSystems::MoveBall)
                 .run_if(is_host)
                 .run_if(in_state(SessionPhase::TwoPlayerPong)),
         );
     }
 }
 
-/// Host only: when Pong starts, spawn the ball in the centre of the arena.
+/// Host only: when Pong starts, spawn the ball in the centre of the arena, served to the right.
 fn spawn_ball(mut commands: Commands) {
     commands.spawn((
         Ball,
         DespawnOnExit(SessionPhase::TwoPlayerPong),
         BallPosition(Vec2::ZERO),
-        BallVelocity(BALL_SERVE_VELOCITY),
+        BallVelocity(serve_velocity(Side::Right)),
         Replicate::to_clients(NetworkTarget::All),
         InterpolationTarget::to_clients(NetworkTarget::All),
     ));
@@ -85,10 +89,19 @@ fn move_ball(
     }
 }
 
+/// The velocity of a ball served from the centre towards `side`'s paddle.
+pub fn serve_velocity(side: Side) -> Vec2 {
+    Vec2::new(
+        BALL_SERVE_VELOCITY.x * side.x_pos().signum(),
+        BALL_SERVE_VELOCITY.y,
+    )
+}
+
 /// The ball's next position and velocity after moving for `dt` seconds past `paddles`.
 ///
 /// The ball moves in a straight line, then bounces off the walls (see [`bounce_off_walls`]) and
-/// off the first paddle it hits (see [`hits_paddle`]), which flips its horizontal direction.
+/// off the first paddle it hits (see [`hits_paddle`]). A paddle hit flips the ball's horizontal
+/// direction and makes it [`BALL_HIT_SPEEDUP`] times faster, up to [`BALL_MAX_SPEED`].
 fn step_ball(
     position: Vec2,
     velocity: Vec2,
@@ -102,6 +115,7 @@ fn step_ball(
         .any(|paddle| hits_paddle(position, velocity, paddle))
     {
         velocity.x = -velocity.x;
+        velocity = (velocity * BALL_HIT_SPEEDUP).clamp_length_max(BALL_MAX_SPEED);
     }
 
     (position, velocity)
@@ -109,8 +123,11 @@ fn step_ball(
 
 #[cfg(test)]
 mod tests {
-    use super::step_ball;
-    use crate::config::minigames::two_player_pong::{BALL_MAX_Y, PADDLE_X_OFFSET};
+    use super::{serve_velocity, step_ball};
+    use crate::config::minigames::two_player_pong::{
+        BALL_HIT_SPEEDUP, BALL_MAX_SPEED, BALL_MAX_Y, PADDLE_X_OFFSET,
+    };
+    use crate::minigames::two_player_pong::paddles::Side;
     use bevy::math::Vec2;
 
     const NO_PADDLES: [Vec2; 0] = [];
@@ -130,11 +147,20 @@ mod tests {
     }
 
     #[test]
-    fn bounces_off_a_paddle_it_reaches() {
+    fn bounces_off_a_paddle_it_reaches_and_speeds_up() {
         let paddle = Vec2::new(-PADDLE_X_OFFSET, 0.0);
         let start = paddle + Vec2::new(10.0, 0.0);
         let (_, velocity) = step_ball(start, Vec2::new(-100.0, 20.0), [paddle], 0.1);
-        assert_eq!(velocity, Vec2::new(100.0, 20.0));
+        assert_eq!(velocity, Vec2::new(100.0, 20.0) * BALL_HIT_SPEEDUP);
+    }
+
+    #[test]
+    fn a_paddle_hit_never_exceeds_the_max_speed() {
+        let paddle = Vec2::new(-PADDLE_X_OFFSET, 0.0);
+        let start = paddle + Vec2::new(10.0, 0.0);
+        let (_, velocity) = step_ball(start, Vec2::new(-BALL_MAX_SPEED, 0.0), [paddle], 0.01);
+        assert!((velocity.length() - BALL_MAX_SPEED).abs() < 1e-3);
+        assert!(velocity.x > 0.0);
     }
 
     #[test]
@@ -143,5 +169,11 @@ mod tests {
         let start = Vec2::new(-PADDLE_X_OFFSET + 10.0, 0.0);
         let (_, velocity) = step_ball(start, Vec2::new(-100.0, 20.0), [paddle], 0.1);
         assert_eq!(velocity, Vec2::new(-100.0, 20.0));
+    }
+
+    #[test]
+    fn serves_towards_the_given_side() {
+        assert!(serve_velocity(Side::Left).x < 0.0);
+        assert!(serve_velocity(Side::Right).x > 0.0);
     }
 }

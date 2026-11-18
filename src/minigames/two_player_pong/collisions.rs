@@ -1,5 +1,8 @@
 //! Collisions between the ball and the arena walls or the paddles.
 //!
+//! Only the top and bottom of the arena have walls. The left and right edges are open: a ball
+//! that leaves through one is a goal (see [`score`](super::score)).
+//!
 //! Plain functions on positions and velocities, with no ECS, so they are easy to unit-test. The
 //! ball systems in [`ball`](super::ball) call them every tick on the host.
 
@@ -7,21 +10,17 @@ use bevy::math::Vec2;
 use bevy::shape::{Aabb2d, IntersectsVolume};
 
 use crate::config::minigames::two_player_pong::{
-    BALL_MAX_X, BALL_MAX_Y, BALL_SIZE, PADDLE_HEIGHT, PADDLE_WIDTH,
+    BALL_MAX_Y, BALL_SIZE, PADDLE_HEIGHT, PADDLE_WIDTH,
 };
 
-/// Bounce the ball off the edges of the arena.
+/// Bounce the ball off the top and bottom walls.
 ///
-/// If the ball has passed an edge, it is put back on that edge and its velocity along that axis
-/// flips. The left and right edges bounce too for now; they will become goals once scoring exists.
+/// If the ball has passed a wall, it is put back on that wall and its vertical velocity flips.
+/// The left and right edges are left alone, so the ball can leave through them.
 pub fn bounce_off_walls(mut position: Vec2, mut velocity: Vec2) -> (Vec2, Vec2) {
     if position.y.abs() > BALL_MAX_Y {
         position.y = position.y.clamp(-BALL_MAX_Y, BALL_MAX_Y);
         velocity.y = -velocity.y;
-    }
-    if position.x.abs() > BALL_MAX_X {
-        position.x = position.x.clamp(-BALL_MAX_X, BALL_MAX_X);
-        velocity.x = -velocity.x;
     }
     (position, velocity)
 }
@@ -43,7 +42,7 @@ pub fn hits_paddle(ball: Vec2, velocity: Vec2, paddle: Vec2) -> bool {
 mod tests {
     use super::{bounce_off_walls, hits_paddle};
     use crate::config::minigames::two_player_pong::{
-        BALL_MAX_X, BALL_MAX_Y, BALL_SIZE, PADDLE_HEIGHT, PADDLE_WIDTH, PADDLE_X_OFFSET,
+        BALL_MAX_Y, BALL_SIZE, GOAL_X, PADDLE_HEIGHT, PADDLE_WIDTH, PADDLE_X_OFFSET,
     };
     use bevy::math::Vec2;
 
@@ -59,11 +58,10 @@ mod tests {
     }
 
     #[test]
-    fn bounces_off_the_left_edge() {
-        let (position, velocity) =
-            bounce_off_walls(Vec2::new(-BALL_MAX_X - 1.0, 0.0), Vec2::new(-100.0, 10.0));
-        assert_eq!(position.x, -BALL_MAX_X);
-        assert_eq!(velocity, Vec2::new(100.0, 10.0));
+    fn passes_through_the_left_edge() {
+        let position = Vec2::new(-GOAL_X - 1.0, 0.0);
+        let velocity = Vec2::new(-100.0, 10.0);
+        assert_eq!(bounce_off_walls(position, velocity), (position, velocity));
     }
 
     #[test]

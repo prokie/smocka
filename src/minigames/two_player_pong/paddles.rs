@@ -5,6 +5,7 @@ use lightyear::prelude::input::native::ActionState;
 use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use super::PongSystems;
 use super::pong_input::PongInput;
 use crate::config::minigames::two_player_pong::{PADDLE_MAX_Y, PADDLE_SPEED, PADDLE_X_OFFSET};
 use crate::lobby::Player;
@@ -53,7 +54,9 @@ impl Plugin for PaddlePlugin {
         );
         app.add_systems(
             FixedUpdate,
-            move_paddles.run_if(in_state(SessionPhase::TwoPlayerPong)),
+            move_paddles
+                .in_set(PongSystems::MovePaddles)
+                .run_if(in_state(SessionPhase::TwoPlayerPong)),
         );
     }
 }
@@ -64,6 +67,14 @@ impl Side {
         match self {
             Side::Left => -PADDLE_X_OFFSET,
             Side::Right => PADDLE_X_OFFSET,
+        }
+    }
+
+    /// The other side of the arena.
+    pub fn opponent(self) -> Side {
+        match self {
+            Side::Left => Side::Right,
+            Side::Right => Side::Left,
         }
     }
 }

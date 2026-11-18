@@ -1,11 +1,14 @@
-//! Two-player Pong: paddles move on every peer, and the ball moves on every peer.
+//! Two-player Pong: paddles and the ball move on every peer, and goals are scored on every peer.
 
 use bevy::prelude::*;
 use lightyear::prelude::PeerId;
 use smocka::minigames::two_player_pong::ball::{Ball, BallPosition};
 use smocka::minigames::two_player_pong::paddles::{Paddle, PaddlePosition};
+use smocka::minigames::two_player_pong::score::PongScore;
 
-use crate::common::{TestApp, connected_pair, update_until};
+use std::time::Duration;
+
+use crate::common::{TestApp, connected_pair, update_until, update_until_within};
 
 /// `y` of the paddle whose owner matches `is_owner`, if this app has it yet.
 fn paddle_y(app: &mut TestApp, is_owner: impl Fn(PeerId) -> bool) -> Option<f32> {
@@ -34,6 +37,16 @@ fn ball_position(app: &mut TestApp) -> Option<Vec2> {
         .iter(app.0.world())
         .next()
         .map(|position| position.0)
+}
+
+/// This app's score, if it has one yet.
+fn score(app: &mut TestApp) -> Option<PongScore> {
+    app.0
+        .world_mut()
+        .query::<&PongScore>()
+        .iter(app.0.world())
+        .next()
+        .copied()
 }
 
 fn hold(app: &mut TestApp, key: KeyCode) {
@@ -98,4 +111,19 @@ fn the_ball_moves_on_every_peer() {
             .count();
         assert_eq!(balls, 1);
     }
+}
+
+#[test]
+fn a_missed_ball_scores_on_every_peer() {
+    let (mut host, mut client) = pong_pair();
+
+    // Nobody moves, so the first serve (up and to the right) flies over the right paddle.
+    update_until_within(
+        &mut [&mut host, &mut client],
+        Duration::from_secs(10),
+        |apps| {
+            apps.iter_mut()
+                .all(|app| score(app) == Some(PongScore { left: 1, right: 0 }))
+        },
+    );
 }

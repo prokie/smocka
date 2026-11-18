@@ -3,8 +3,9 @@
 A multiplayer party game in the style of *Pummel Party*, built with [Bevy](https://bevyengine.org/) and [Lightyear](https://github.com/cBournhonesque/lightyear). Players gather in a shared session and play a series of short, self-contained minigames against each other.
 
 > **Status:** early development. Networking and the lobby work. In the first minigame
-> (two-player Pong), both players can move their paddles and the ball bounces off the walls and paddles
-> (there is no scoring yet: the side edges bounce too).
+> (two-player Pong), both players move their paddles, the ball bounces off the top and bottom walls
+> and the paddles, and a ball that gets past a paddle is a goal for the other player. There is no
+> win condition yet: the game keeps scoring until a player leaves.
 
 ## Requirements
 
@@ -113,6 +114,13 @@ input. Its `move_paddles` system shows the pattern for input-driven movement: it
 `FixedUpdate`, reads `ActionState<PongInput>`, and only changes `PaddlePosition`. That way the
 host runs it for every paddle, each client runs it for its own predicted paddle, and Lightyear
 can re-run it during rollback.
+
+Pong's game logic runs in a fixed order each tick, set by the `PongSystems` system set: paddles
+move first, then the ball (so it collides with this tick's paddles), then scoring. The host
+alone moves the ball and keeps the score: when the ball leaves through the left or right edge, it
+adds a goal to the replicated `PongScore` and serves the ball again from the centre, towards the
+player who conceded. Each paddle hit makes the ball faster (`BALL_HIT_SPEEDUP`, up to
+`BALL_MAX_SPEED` in `src/config.rs`), and every serve starts at the serve speed again.
 
 ### Controls (Pong)
 
