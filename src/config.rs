@@ -27,15 +27,42 @@ pub mod display {
 
 pub mod minigames {
     pub mod two_player_pong {
+        use crate::config::display::{VIEW_HEIGHT, VIEW_WIDTH};
+
+        /// Thickness of the wall drawn along the top and bottom of `arena.png`, in world units.
+        pub const WALL_THICKNESS: f32 = 4.0;
+
         /// Horizontal distance from the arena centre to each paddle, in world units.
         pub const PADDLE_X_OFFSET: f32 = 296.0;
+        /// Paddle width in world units. Keep `paddle.png` the same width.
+        pub const PADDLE_WIDTH: f32 = 8.0;
         /// Paddle height in world units. Keep `paddle.png` the same height.
         pub const PADDLE_HEIGHT: f32 = 48.0;
         /// Paddle speed in world units per second.
         pub const PADDLE_SPEED: f32 = 300.0;
         /// Highest `y` a paddle centre may reach (the lowest is the negative of this).
-        /// Keeps the paddle inside the 4-unit wall at the top and bottom of the arena.
-        pub const PADDLE_MAX_Y: f32 =
-            crate::config::display::VIEW_HEIGHT / 2.0 - 4.0 - PADDLE_HEIGHT / 2.0;
+        /// Keeps the paddle inside the walls at the top and bottom of the arena.
+        pub const PADDLE_MAX_Y: f32 = VIEW_HEIGHT / 2.0 - WALL_THICKNESS - PADDLE_HEIGHT / 2.0;
+
+        /// Ball width and height in world units. Keep `ball.png` the same size.
+        pub const BALL_SIZE: f32 = 8.0;
+        /// Ball speed along each axis when it is served, in world units per second.
+        /// Keep `x` positive: serves flip it to aim at the side being served to.
+        pub const BALL_SERVE_VELOCITY: bevy::math::Vec2 = bevy::math::Vec2::new(150.0, 100.0);
+        /// Each paddle hit multiplies the ball's speed by this, up to [`BALL_MAX_SPEED`].
+        /// Each serve starts again at [`BALL_SERVE_VELOCITY`].
+        pub const BALL_HIT_SPEEDUP: f32 = 1.1;
+        /// The ball never gets faster than this, in world units per second.
+        ///
+        /// Keep it below `(PADDLE_WIDTH + BALL_SIZE) * TICK_RATE` (2048 for the current values).
+        /// Above that, the ball can jump past a paddle in one tick without ever overlapping it.
+        pub const BALL_MAX_SPEED: f32 = 600.0;
+        /// Highest `y` the ball centre may reach before it bounces (the lowest is the negative).
+        pub const BALL_MAX_Y: f32 = VIEW_HEIGHT / 2.0 - WALL_THICKNESS - BALL_SIZE / 2.0;
+        /// How far left or right of the centre the ball centre must get to score a goal.
+        /// At this distance the ball is fully off screen.
+        pub const GOAL_X: f32 = VIEW_WIDTH / 2.0 + BALL_SIZE / 2.0;
+        /// Font size of the score at the top of the arena, in world units.
+        pub const SCORE_FONT_SIZE: f32 = 32.0;
     }
 }

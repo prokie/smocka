@@ -1,0 +1,132 @@
+//! Scoring: when the ball leaves the arena past a paddle, the other side gets a point.
+//!
+//! The host keeps the score in a single replicated [`PongScore`] entity. After each goal it puts
+//! the ball back in the centre and serves it towards the side that conceded.
+
+use bevy::prelude::*;
+use lightyear::prelude::*;
+use serde::{Deserialize, Serialize};
+
+use super::PongSystems;
+use super::ball::{BallPosition, BallVelocity, serve_velocity};
+use super::paddles::Side;
+use crate::config::minigames::two_player_pong::GOAL_X;
+use crate::network::is_host;
+use crate::session::SessionPhase;
+
+/// Goals scored by each side. One replicated entity per game, spawned by the host.
+#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PongScore {
+    /// Goals scored by the left paddle's player.
+    pub left: u32,
+    /// Goals scored by the right paddle's player.
+    pub right: u32,
+}
+
+impl PongScore {
+    /// `side`'s score.
+    pub fn of(&self, side: Side) -> u32 {
+        match side {
+            Side::Left => self.left,
+            Side::Right => self.right,
+        }
+    }
+
+    /// Give `side` one more goal.
+    pub fn add_goal(&mut self, side: Side) {
+        match side {
+            Side::Left => self.left += 1,
+            Side::Right => self.right += 1,
+        }
+    }
+}
+
+/// Registers the replicated [`PongScore`] and the host's goal detection.
+pub struct ScorePlugin;
+
+impl Plugin for ScorePlugin {
+    fn build(&self, app: &mut App) {
+        app.component::<PongScore>().replicate();
+
+        app.add_systems(
+            OnEnter(SessionPhase::TwoPlayerPong),
+            spawn_score.run_if(is_host),
+        );
+        app.add_systems(
+            FixedUpdate,
+            score_goals
+                .in_set(PongSystems::Score)
+                .run_if(is_host)
+                .run_if(in_state(SessionPhase::TwoPlayerPong)),
+        );
+    }
+}
+
+/// Host only: when Pong starts, spawn the score at 0–0.
+fn spawn_score(mut commands: Commands) {
+    commands.spawn((
+        PongScore::default(),
+        DespawnOnExit(SessionPhase::TwoPlayerPong),
+        Replicate::to_clients(NetworkTarget::All),
+    ));
+}
+
+/// Host only: if the ball has left the arena, count the goal and serve the ball again.
+fn score_goals(
+    mut balls: Query<(&mut BallPosition, &mut BallVelocity)>,
+    mut score: Single<&mut PongScore>,
+) {
+    for (mut position, mut velocity) in &mut balls {
+        let Some(scorer) = scorer(position.0) else {
+            continue;
+        };
+        score.add_goal(scorer);
+        position.0 = Vec2::ZERO;
+        velocity.0 = serve_velocity(scorer.opponent());
+    }
+}
+
+/// The side that scores with the ball at `position`, if the ball is fully past the left or right
+/// edge. A ball off the left edge is a goal for the right side, and the other way round.
+pub fn scorer(position: Vec2) -> Option<Side> {
+    if position.x < -GOAL_X {
+        Some(Side::Right)
+    } else if position.x > GOAL_X {
+        Some(Side::Left)
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PongScore, scorer};
+    use crate::config::minigames::two_player_pong::GOAL_X;
+    use crate::minigames::two_player_pong::paddles::Side;
+    use bevy::math::Vec2;
+
+    #[test]
+    fn off_the_left_edge_scores_for_the_right() {
+        assert_eq!(scorer(Vec2::new(-GOAL_X - 1.0, 0.0)), Some(Side::Right));
+    }
+
+    #[test]
+    fn off_the_right_edge_scores_for_the_left() {
+        assert_eq!(scorer(Vec2::new(GOAL_X + 1.0, 50.0)), Some(Side::Left));
+    }
+
+    #[test]
+    fn a_ball_still_partly_on_screen_does_not_score() {
+        assert_eq!(scorer(Vec2::new(GOAL_X - 1.0, 0.0)), None);
+        assert_eq!(scorer(Vec2::new(-GOAL_X + 1.0, 0.0)), None);
+    }
+
+    #[test]
+    fn adds_goals_to_the_right_side() {
+        let mut score = PongScore::default();
+        score.add_goal(Side::Left);
+        score.add_goal(Side::Left);
+        score.add_goal(Side::Right);
+        assert_eq!((score.of(Side::Left), score.of(Side::Right)), (2, 1));
+    }
+}

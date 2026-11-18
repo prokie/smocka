@@ -3,6 +3,7 @@ pub mod config;
 pub mod lobby;
 pub mod minigames;
 pub mod network;
+pub mod session;
 
 use bevy::prelude::*;
 
@@ -14,6 +15,7 @@ impl Plugin for SmockaPlugin {
         app.add_plugins((
             network::NetworkPlugin,
             lobby::LobbyPlugin,
+            session::SessionPlugin,
             minigames::MinigamesPlugin,
         ));
     }

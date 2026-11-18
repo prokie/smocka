@@ -6,7 +6,7 @@ pub use transport::{HostSession, JoinSession};
 
 use crate::config::network::{SEND_INTERVAL, TICK_RATE};
 use bevy::prelude::*;
-use lightyear::prelude::{client::ClientPlugins, server::ServerPlugins, *};
+use lightyear::prelude::{client::ClientPlugins, server::ServerPlugins, server::Started, *};
 use std::time::Duration;
 
 /// The network plugin.
@@ -26,6 +26,14 @@ impl Plugin for NetworkPlugin {
         // Configure the replication interval for the network timeline.
         app.insert_resource(ReplicationMetadata::new(SEND_INTERVAL));
     }
+}
+
+/// Run condition: `true` on the peer that is hosting the session (it has a started server).
+///
+/// Use it for systems that decide the game state, such as spawning or moving the ball, so that
+/// only the host runs them and clients just receive the result.
+pub fn is_host(servers: Query<(), (With<Server>, With<Started>)>) -> bool {
+    !servers.is_empty()
 }
 
 #[cfg(test)]
