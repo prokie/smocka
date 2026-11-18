@@ -19,6 +19,16 @@ pub mod network {
     pub const PRIVATE_KEY: [u8; 32] = [0; 32];
 }
 
+/// Rules for the session as a whole, outside any one minigame.
+pub mod session {
+    use std::time::Duration;
+
+    /// The fewest players the host can start a minigame with.
+    pub const MIN_PLAYERS: usize = 2;
+    /// How long the results of a minigame stay up before everyone goes back to the lobby.
+    pub const RESULTS_DURATION: Duration = Duration::from_secs(5);
+}
+
 /// Rendering constants shared by every minigame.
 pub mod display {
     /// Width of the virtual screen in world units (one unit = one art pixel).
@@ -67,6 +77,9 @@ pub mod minigames {
         /// How far left or right of the centre the ball centre must get to score a goal.
         /// At this distance the ball is fully off screen.
         pub const GOAL_X: f32 = VIEW_WIDTH / 2.0 + BALL_SIZE / 2.0;
+        /// Goals a player needs to win, unless [`PongRules`](crate::minigames::two_player_pong::score::PongRules)
+        /// says otherwise.
+        pub const GOALS_TO_WIN: u32 = 5;
         /// Font size of the score at the top of the arena, in world units.
         pub const SCORE_FONT_SIZE: f32 = 32.0;
     }

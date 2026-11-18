@@ -2,11 +2,11 @@
 
 A multiplayer party game in the style of *Pummel Party*, built with [Bevy](https://bevyengine.org/) and [Lightyear](https://github.com/cBournhonesque/lightyear). Players gather in a shared session and play a series of short, self-contained minigames against each other.
 
-> **Status:** early development. A main menu hosts or joins a session, and networking and the
-> lobby work. In the first minigame
-> (two-player Pong), both players move their paddles, the ball bounces off the top and bottom walls
-> and the paddles, and a ball that gets past a paddle is a goal for the other player. There is no
-> win condition yet: the game keeps scoring until a player leaves.
+> **Status:** early development. A main menu hosts or joins a session. In the lobby the host
+> starts a game once at least two players are there. The first minigame is two-player Pong: both
+> players move their paddles, the ball bounces off the top and bottom walls and the paddles, and
+> a ball that gets past a paddle is a goal for the other player. The first to 5 goals wins; the
+> results are shown, then everyone goes back to the lobby.
 
 ## Requirements
 
@@ -25,8 +25,11 @@ This opens the main menu. One player picks **Host game**. The others type the ho
 (for example `192.168.1.10`, or `192.168.1.10:5000`) and press **Join** or `Enter`. The field
 starts as `127.0.0.1:5000`, a host on the same machine. The host listens on port 5000 on every
 network interface (`HOST_ADDR` in `src/config.rs`), so players on the same network can join if
-the firewall allows UDP on that port. Press `Esc` in a session to leave. If the host leaves,
-everyone goes back to the menu.
+the firewall allows UDP on that port.
+
+Everyone who joins waits in the lobby, which lists the players. When at least two are there, the
+host presses **Start**. The two lowest-numbered players get the paddles, and anyone else watches.
+Press `Esc` in a session to leave. If the host leaves, everyone goes back to the menu.
 
 To skip the menu while developing:
 
@@ -76,9 +79,9 @@ assets/
 1. `NetworkPlugin` - Lightyear client and server plugins, tick rate (128 Hz) and replication
    send interval.
 2. `AppStatePlugin` - the local `AppState` (see below).
-3. `LobbyPlugin` - the host spawns a replicated `Player` for each client that connects and
-   despawns it when the client disconnects.
-4. `SessionPlugin` - the `SessionPhase` state (lobby or a minigame). See below.
+3. `LobbyPlugin` - the host spawns a replicated `Player` for each client that connects (numbered
+   in joining order, so the host is Player 1) and despawns it when the client disconnects.
+4. `SessionPlugin` - the `SessionPhase` state (lobby, a minigame, or results). See below.
 5. `MinigamesPlugin` - registers each minigame's replicated components and inputs.
 
 Replicated components must be registered in the **same order on every peer**, so keep this plugin order intact. `CameraPlugin`, `MinigameVisualsPlugin` (sprites) and `MenuPlugin` (UI) are added separately by the binary so tests can run headless.
@@ -93,13 +96,27 @@ answered), `SessionEndReason` says why and the menu shows it.
 
 ### Session phase
 
-`SessionPhase` (`Lobby` or `TwoPlayerPong`) is a Bevy sub-state of `AppState::InSession`: it
-only exists while in a session, and leaving the session exits it like any other state change.
-Bevy states can't be replicated, so the host keeps its decision in a replicated `CurrentPhase`
-component, and every peer (host included) copies that into its local `SessionPhase`.
+`SessionPhase` (`Lobby`, `TwoPlayerPong` or `Results`) is a Bevy sub-state of
+`AppState::InSession`: it only exists while in a session, and leaving the session exits it like
+any other state change. Bevy states can't be replicated, so the host keeps its decision in a
+replicated `CurrentPhase` component, and every peer (host included) copies that into its local
+`SessionPhase`.
 
-For now the host plays Pong whenever two or more players are connected, and goes back to the
-lobby when fewer are. Minigame code only uses ordinary state tools, the same way on every peer:
+Only the host changes the phase:
+
+```
+Lobby ──StartMinigame──▶ TwoPlayerPong ──MinigameEnded::Won──▶ Results ──5 s──▶ Lobby
+                               └──────────MinigameEnded::Abandoned──────────────▶ Lobby
+```
+
+- `StartMinigame` (the host's Start button) leaves the lobby once at least `MIN_PLAYERS` (2) are
+  connected.
+- A minigame ends itself by triggering `MinigameEnded` on the host: `Won(MinigameResult)` shows the
+  replicated result during `Results`, and `Abandoned` (for example, a player left) goes straight
+  back to the lobby.
+- `Results` returns to the lobby after `RESULTS_DURATION`.
+
+Minigame code only uses ordinary state tools, the same way on every peer:
 
 - `OnEnter(SessionPhase::TwoPlayerPong)` to spawn things (add `.run_if(is_host)` for replicated
   game entities, which only the host spawns).
@@ -129,8 +146,10 @@ overwrite the PNG with the same name; no code changes are needed. Draw player-co
    own plugin. Spawn, gate and despawn its entities with that state (see *Session phase*).
 2. Register its replicated components (`app.component::<T>().replicate()`, plus `.predict()` /
    `.add_linear_interpolation()` where needed) and its input type.
-3. Add the plugin to `MinigamesPlugin`.
-4. Put sprites in a separate visuals plugin, add it to `MinigameVisualsPlugin`, and put the art in
+3. On the host, trigger `MinigameEnded::Won` when someone wins and `MinigameEnded::Abandoned` if
+   the game can't continue (for example, a player it needs has left).
+4. Add the plugin to `MinigamesPlugin`.
+5. Put sprites in a separate visuals plugin, add it to `MinigameVisualsPlugin`, and put the art in
    `assets/minigames/<name>/`.
 
 See `two_player_pong` for an example with predicted, interpolated paddles and native Lightyear
@@ -143,7 +162,8 @@ Pong's game logic runs in a fixed order each tick, set by the `PongSystems` syst
 move first, then the ball (so it collides with this tick's paddles), then scoring. The host
 alone moves the ball and keeps the score: when the ball leaves through the left or right edge, it
 adds a goal to the replicated `PongScore` and serves the ball again from the centre, towards the
-player who conceded. Each paddle hit makes the ball faster (`BALL_HIT_SPEEDUP`, up to
+player who conceded. The first to `PongRules::goals_to_win` (5 by default, `GOALS_TO_WIN`) wins.
+If a paddle's player leaves, the game is abandoned. Each paddle hit makes the ball faster (`BALL_HIT_SPEEDUP`, up to
 `BALL_MAX_SPEED` in `src/config.rs`), and every serve starts at the serve speed again.
 
 ### Controls (Pong)

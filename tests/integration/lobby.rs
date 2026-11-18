@@ -37,3 +37,23 @@ fn leaving_removes_the_player() {
 
     update_until(&mut [&mut host, &mut client], |apps| apps[0].players() == 1);
 }
+
+#[test]
+fn players_are_numbered_in_joining_order_on_every_peer() {
+    let (mut host, mut first, addr) = connected_pair();
+    update_until(&mut [&mut host, &mut first], |apps| apps[0].players() == 2);
+    let mut second = TestApp::join(addr);
+
+    update_until(&mut [&mut host, &mut first, &mut second], |apps| {
+        apps.iter_mut().all(|app| app.player_numbers() == [1, 2, 3])
+    });
+}
+
+#[test]
+fn every_peer_finds_its_own_player() {
+    let (mut host, mut client, _) = connected_pair();
+
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps[0].own_player_number() == Some(1) && apps[1].own_player_number() == Some(2)
+    });
+}

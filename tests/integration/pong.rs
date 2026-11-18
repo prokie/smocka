@@ -11,7 +11,7 @@ use std::time::Duration;
 use bevy::prelude::Command;
 use smocka::network::JoinSession;
 
-use crate::common::{TestApp, connected_pair, update_until, update_until_within};
+use crate::common::{TestApp, pair_in_pong, update_until, update_until_within};
 
 /// `y` of the paddle whose owner matches `is_owner`, if this app has it yet.
 fn paddle_y(app: &mut TestApp, is_owner: impl Fn(PeerId) -> bool) -> Option<f32> {
@@ -59,15 +59,20 @@ fn hold(app: &mut TestApp, key: KeyCode) {
         .press(key);
 }
 
-/// Connect a host and a joiner and wait until both see both paddles. Also returns the host's
-/// address.
+/// Connect a host and a joiner, start Pong, and wait until both see both paddles. Also returns
+/// the host's address.
 fn pong_pair() -> (TestApp, TestApp, std::net::SocketAddr) {
-    let (mut host, mut client, addr) = connected_pair();
-    update_until(&mut [&mut host, &mut client], |apps| {
+    let (mut host, mut client, addr) = pair_in_pong();
+    wait_for_paddles(&mut host, &mut client);
+    (host, client, addr)
+}
+
+/// Wait until both apps see both paddles.
+fn wait_for_paddles(host: &mut TestApp, client: &mut TestApp) {
+    update_until(&mut [host, client], |apps| {
         apps.iter_mut()
             .all(|app| paddle_y(app, hosts).is_some() && paddle_y(app, joiners).is_some())
     });
-    (host, client, addr)
 }
 
 #[test]
@@ -140,9 +145,10 @@ fn a_joiner_who_rejoins_can_still_move_their_paddle() {
     update_until(&mut [&mut host, &mut client], |apps| apps[0].players() == 1);
     JoinSession { addr }.apply(client.0.world_mut()).unwrap();
     update_until(&mut [&mut host, &mut client], |apps| {
-        apps.iter_mut()
-            .all(|app| paddle_y(app, hosts).is_some() && paddle_y(app, joiners).is_some())
+        apps.iter_mut().all(|app| app.players() == 2)
     });
+    host.start_minigame();
+    wait_for_paddles(&mut host, &mut client);
 
     hold(&mut client, KeyCode::KeyW);
     update_until(&mut [&mut host, &mut client], |apps| {

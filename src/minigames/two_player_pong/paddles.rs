@@ -79,10 +79,11 @@ impl Side {
     }
 }
 
-/// Host only: when Pong starts, give the two players with the lowest ids a paddle each.
+/// Host only: when Pong starts, give the two lowest-numbered players a paddle each (the host is
+/// usually on the left). Other players watch.
 fn spawn_paddles(mut commands: Commands, players: Query<(&Player, &ControlledBy)>) {
     let mut players: Vec<_> = players.iter().collect();
-    players.sort_by_key(|(player, _)| player.id);
+    players.sort_by_key(|(player, _)| player.number);
     let [(left, left_link), (right, right_link), ..] = players[..] else {
         return;
     };

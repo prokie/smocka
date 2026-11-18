@@ -1,7 +1,9 @@
-//! Scoring: when the ball leaves the arena past a paddle, the other side gets a point.
+//! Scoring and the end of the game: when the ball leaves the arena past a paddle, the other side
+//! gets a point, and the first to [`PongRules::goals_to_win`] wins.
 //!
 //! The host keeps the score in a single replicated [`PongScore`] entity. After each goal it puts
-//! the ball back in the centre and serves it towards the side that conceded.
+//! the ball back in the centre and serves it towards the side that conceded. When someone wins, or
+//! a paddle's player leaves, it hands control back to the session with [`MinigameEnded`].
 
 use bevy::prelude::*;
 use lightyear::prelude::*;
@@ -9,10 +11,25 @@ use serde::{Deserialize, Serialize};
 
 use super::PongSystems;
 use super::ball::{BallPosition, BallVelocity, serve_velocity};
-use super::paddles::Side;
-use crate::config::minigames::two_player_pong::GOAL_X;
+use super::paddles::{Paddle, Side};
+use crate::config::minigames::two_player_pong::{GOAL_X, GOALS_TO_WIN};
 use crate::network::is_host;
-use crate::session::SessionPhase;
+use crate::session::{MinigameEnded, MinigameResult, SessionPhase};
+
+/// Host only: how a game of Pong is won.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PongRules {
+    /// Goals a player needs to win. Defaults to [`GOALS_TO_WIN`].
+    pub goals_to_win: u32,
+}
+
+impl Default for PongRules {
+    fn default() -> Self {
+        Self {
+            goals_to_win: GOALS_TO_WIN,
+        }
+    }
+}
 
 /// Goals scored by each side. One replicated entity per game, spawned by the host.
 #[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -41,12 +58,13 @@ impl PongScore {
     }
 }
 
-/// Registers the replicated [`PongScore`] and the host's goal detection.
+/// Registers the replicated [`PongScore`], the host's goal detection, and how the game ends.
 pub struct ScorePlugin;
 
 impl Plugin for ScorePlugin {
     fn build(&self, app: &mut App) {
         app.component::<PongScore>().replicate();
+        app.init_resource::<PongRules>();
 
         app.add_systems(
             OnEnter(SessionPhase::TwoPlayerPong),
@@ -56,6 +74,12 @@ impl Plugin for ScorePlugin {
             FixedUpdate,
             score_goals
                 .in_set(PongSystems::Score)
+                .run_if(is_host)
+                .run_if(in_state(SessionPhase::TwoPlayerPong)),
+        );
+        app.add_systems(
+            Update,
+            abandon_without_both_players
                 .run_if(is_host)
                 .run_if(in_state(SessionPhase::TwoPlayerPong)),
         );
@@ -71,10 +95,14 @@ fn spawn_score(mut commands: Commands) {
     ));
 }
 
-/// Host only: if the ball has left the arena, count the goal and serve the ball again.
+/// Host only: if the ball has left the arena, count the goal and serve the ball again. If that was
+/// the winning goal, end the game.
 fn score_goals(
     mut balls: Query<(&mut BallPosition, &mut BallVelocity)>,
     mut score: Single<&mut PongScore>,
+    paddles: Query<&Paddle>,
+    rules: Res<PongRules>,
+    mut commands: Commands,
 ) {
     for (mut position, mut velocity) in &mut balls {
         let Some(scorer) = scorer(position.0) else {
@@ -83,6 +111,26 @@ fn score_goals(
         score.add_goal(scorer);
         position.0 = Vec2::ZERO;
         velocity.0 = serve_velocity(scorer.opponent());
+
+        if score.of(scorer) < rules.goals_to_win {
+            continue;
+        }
+        let winner = paddles.iter().find(|paddle| paddle.side == scorer);
+        commands.trigger(match winner {
+            Some(winner) => MinigameEnded::Won(MinigameResult {
+                winner: winner.owner,
+                summary: format!("{} – {}", score.left, score.right),
+            }),
+            None => MinigameEnded::Abandoned,
+        });
+    }
+}
+
+/// Host only: if a paddle's player has left (their paddle is despawned with their connection),
+/// the game can't go on.
+fn abandon_without_both_players(paddles: Query<(), With<Paddle>>, mut commands: Commands) {
+    if paddles.iter().len() < 2 {
+        commands.trigger(MinigameEnded::Abandoned);
     }
 }
 

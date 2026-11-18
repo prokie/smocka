@@ -9,7 +9,7 @@ use smocka::SmockaPlugin;
 use smocka::app_state::{AppState, SessionEndReason};
 use smocka::lobby::Player;
 use smocka::network::{HostSession, JoinSession, LeaveSession};
-use smocka::session::SessionPhase;
+use smocka::session::{SessionPhase, StartMinigame};
 
 /// A headless app with the network plugin, plus queries for its connection state.
 pub struct TestApp(pub App);
@@ -44,6 +44,11 @@ impl TestApp {
     /// Leave the session the way the menu does, with [`LeaveSession`].
     pub fn leave(&mut self) {
         LeaveSession.apply(self.0.world_mut());
+    }
+
+    /// Start a minigame from the lobby, as the host's Start button does.
+    pub fn start_minigame(&mut self) {
+        StartMinigame.apply(self.0.world_mut());
     }
 
     /// This app's [`AppState`].
@@ -99,6 +104,33 @@ impl TestApp {
         self.count::<With<Player>>()
     }
 
+    /// The [`Player::number`]s this app can see, sorted.
+    pub fn player_numbers(&mut self) -> Vec<u32> {
+        let world = self.0.world_mut();
+        let mut numbers: Vec<u32> = world
+            .query::<&Player>()
+            .iter(world)
+            .map(|player| player.number)
+            .collect();
+        numbers.sort_unstable();
+        numbers
+    }
+
+    /// The number of the player this app is, once it can see it.
+    pub fn own_player_number(&mut self) -> Option<u32> {
+        let world = self.0.world_mut();
+        let own_id = world
+            .query_filtered::<&LocalId, (With<Client>, With<Connected>)>()
+            .iter(world)
+            .next()?
+            .0;
+        world
+            .query::<&Player>()
+            .iter(world)
+            .find(|player| player.id == own_id)
+            .map(|player| player.number)
+    }
+
     fn count<F: bevy::ecs::query::QueryFilter>(&mut self) -> usize {
         self.0
             .world_mut()
@@ -146,6 +178,18 @@ pub fn connected_pair() -> (TestApp, TestApp, SocketAddr) {
     let mut client = TestApp::join(addr);
     update_until(&mut [&mut host, &mut client], |apps| {
         apps[0].connected_remote_links() == 1 && apps[1].connected_clients() == 1
+    });
+    (host, client, addr)
+}
+
+/// Start a host and a joiner, have the host start Pong, and wait until both are playing it.
+pub fn pair_in_pong() -> (TestApp, TestApp, SocketAddr) {
+    let (mut host, mut client, addr) = connected_pair();
+    update_until(&mut [&mut host, &mut client], |apps| apps[0].players() == 2);
+    host.start_minigame();
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter()
+            .all(|app| app.phase() == Some(SessionPhase::TwoPlayerPong))
     });
     (host, client, addr)
 }

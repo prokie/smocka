@@ -5,11 +5,16 @@
 //! - **Main menu** ([`AppState::MainMenu`]): host, join an address, or quit. Shows why the last
 //!   session ended, if it wasn't the player's choice.
 //! - **Connecting** ([`AppState::Connecting`]): a cancel button.
-//! - **In a session** ([`AppState::InSession`]): `Esc` leaves. In the lobby, a line shows how many
-//!   players are waiting.
+//! - **In a session** ([`AppState::InSession`]): `Esc` leaves.
+//!   - **Lobby** ([`SessionPhase::Lobby`]): who is here; the host gets a Start button.
+//!   - **Results** ([`SessionPhase::Results`]): who won the last minigame, and a countdown to the
+//!     lobby.
 //!
 //! Needs a renderer, so the binary adds it next to the camera and minigame visuals; headless tests
 //! drive the same states through [`HostSession`], [`JoinSession`] and [`LeaveSession`] instead.
+
+mod lobby;
+mod results;
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
@@ -17,14 +22,13 @@ use bevy::input_focus::AutoFocus;
 use bevy::picking::hover::Hovered;
 use bevy::prelude::*;
 use bevy::text::{EditableText, TextCursorStyle};
-use bevy::ui::Pressed;
+use bevy::ui::{InteractionDisabled, Pressed};
 use bevy::ui_widgets::{Activate, Button, TextInput};
 
 use crate::app_state::{AppState, SessionEndReason};
 use crate::config::network::{HOST_ADDR, SERVER_ADDR, SERVER_PORT};
-use crate::lobby::Player;
 use crate::network::{HostSession, JoinSession, LeaveSession};
-use crate::session::SessionPhase;
+use crate::session::{SessionPhase, StartMinigame};
 
 /// Background of a button that isn't hovered or pressed.
 const BUTTON_COLOR: Color = Color::srgb(0.15, 0.15, 0.18);
@@ -32,6 +36,8 @@ const BUTTON_COLOR: Color = Color::srgb(0.15, 0.15, 0.18);
 const BUTTON_HOVERED_COLOR: Color = Color::srgb(0.25, 0.25, 0.3);
 /// Background of a pressed button.
 const BUTTON_PRESSED_COLOR: Color = Color::srgb(0.35, 0.55, 0.85);
+/// Background of a button that can't be used right now.
+const BUTTON_DISABLED_COLOR: Color = Color::srgb(0.1, 0.1, 0.1);
 /// Colour of messages about a session that ended or an address that can't be used.
 const ERROR_COLOR: Color = Color::srgb(1.0, 0.45, 0.45);
 /// Colour of secondary text, such as hints.
@@ -48,6 +54,8 @@ pub enum MenuButton {
     Quit,
     /// Stop connecting and go back to the main menu.
     Cancel,
+    /// Host only: start a minigame from the lobby.
+    Start,
 }
 
 /// The text field holding the address to join.
@@ -58,10 +66,6 @@ pub struct AddressInput;
 #[derive(Component)]
 pub struct MenuMessage;
 
-/// The lobby line showing how many players are waiting.
-#[derive(Component)]
-pub struct LobbyStatus;
-
 /// Adds the menus and in-session hints.
 pub struct MenuPlugin;
 
@@ -70,7 +74,11 @@ impl Plugin for MenuPlugin {
         app.add_systems(OnEnter(AppState::MainMenu), spawn_main_menu);
         app.add_systems(OnEnter(AppState::Connecting), spawn_connecting_screen);
         app.add_systems(OnEnter(AppState::InSession), spawn_leave_hint);
-        app.add_systems(OnEnter(SessionPhase::Lobby), spawn_lobby_status);
+        app.add_systems(OnEnter(SessionPhase::Lobby), lobby::spawn_lobby_screen);
+        app.add_systems(
+            OnEnter(SessionPhase::Results),
+            results::spawn_results_screen,
+        );
         app.add_observer(on_menu_button);
         app.add_systems(
             Update,
@@ -78,7 +86,8 @@ impl Plugin for MenuPlugin {
                 style_buttons,
                 join_on_enter.run_if(in_state(AppState::MainMenu)),
                 leave_on_escape.run_if(not(in_state(AppState::MainMenu))),
-                update_lobby_status.run_if(in_state(SessionPhase::Lobby)),
+                lobby::update_lobby_screen.run_if(in_state(SessionPhase::Lobby)),
+                results::update_results_screen.run_if(in_state(SessionPhase::Results)),
             ),
         );
     }
@@ -207,39 +216,22 @@ fn spawn_leave_hint(mut commands: Commands) {
     ));
 }
 
-/// In the lobby, show how many players are waiting.
-fn spawn_lobby_status(mut commands: Commands) {
-    commands.spawn((
-        screen(SessionPhase::Lobby),
-        children![(LobbyStatus, label("", 28.0, Color::WHITE))],
-    ));
-}
-
-/// Keep the lobby line up to date with the number of connected players.
-fn update_lobby_status(
-    players: Query<(), With<Player>>,
-    mut status: Single<&mut Text, With<LobbyStatus>>,
-) {
-    let shown = lobby_status(players.iter().len());
-    if status.0 != shown {
-        status.0 = shown;
-    }
-}
-
-/// The lobby line for `players` connected players.
-fn lobby_status(players: usize) -> String {
-    format!("Waiting for players ({players}/2)")
-}
+/// What [`style_buttons`] reads and writes on each button.
+type ButtonLook = (
+    &'static Hovered,
+    Has<Pressed>,
+    Has<InteractionDisabled>,
+    &'static mut BackgroundColor,
+);
 
 /// Colour each button for its hover and press state.
-fn style_buttons(
-    mut buttons: Query<(&Hovered, Has<Pressed>, &mut BackgroundColor), With<MenuButton>>,
-) {
-    for (hovered, pressed, mut background) in &mut buttons {
-        let color = match (pressed, hovered.get()) {
-            (true, _) => BUTTON_PRESSED_COLOR,
-            (false, true) => BUTTON_HOVERED_COLOR,
-            (false, false) => BUTTON_COLOR,
+fn style_buttons(mut buttons: Query<ButtonLook, With<MenuButton>>) {
+    for (hovered, pressed, disabled, mut background) in &mut buttons {
+        let color = match (disabled, pressed, hovered.get()) {
+            (true, _, _) => BUTTON_DISABLED_COLOR,
+            (false, true, _) => BUTTON_PRESSED_COLOR,
+            (false, false, true) => BUTTON_HOVERED_COLOR,
+            (false, false, false) => BUTTON_COLOR,
         };
         background.set_if_neq(BackgroundColor(color));
     }
@@ -269,6 +261,7 @@ fn on_menu_button(
             commands.write_message(AppExit::Success);
         }
         MenuButton::Cancel => commands.queue(LeaveSession),
+        MenuButton::Start => commands.queue(StartMinigame),
     }
 }
 
@@ -329,7 +322,7 @@ pub fn parse_address(typed: &str) -> Option<SocketAddr> {
 
 #[cfg(test)]
 mod tests {
-    use super::{lobby_status, parse_address};
+    use super::parse_address;
     use crate::config::network::SERVER_PORT;
     use std::net::SocketAddr;
 
@@ -366,10 +359,5 @@ mod tests {
         for typed in ["", "my-friend", "1.2.3", "1.2.3.4:port", "1.2.3.4:99999"] {
             assert_eq!(parse_address(typed), None, "{typed:?}");
         }
-    }
-
-    #[test]
-    fn lobby_status_counts_players() {
-        assert_eq!(lobby_status(1), "Waiting for players (1/2)");
     }
 }
