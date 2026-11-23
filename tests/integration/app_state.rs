@@ -143,6 +143,7 @@ fn a_joiner_can_join_a_new_session_after_the_host_left() {
 fn a_joiner_can_leave_and_join_the_same_host_again() {
     let (mut host, mut client, addr) = connected_pair();
     update_until(&mut [&mut host, &mut client], |apps| apps[0].players() == 2);
+    let first_addr = host.remote_client_addrs();
 
     client.leave();
     update_until(&mut [&mut host, &mut client], |apps| {
@@ -154,6 +155,8 @@ fn a_joiner_can_leave_and_join_the_same_host_again() {
         apps.iter_mut()
             .all(|app| app.app_state() == AppState::InSession && app.players() == 2)
     });
+    // A fresh socket, so the host doesn't mistake the new connection for the old one.
+    assert_ne!(host.remote_client_addrs(), first_addr);
 }
 
 #[test]

@@ -1,4 +1,7 @@
 //! Who is in the session: one replicated [`Player`] per connected person, independent of any minigame.
+//!
+//! When someone leaves, every peer still in the session gets a [`PlayerLeft`] event, so it can
+//! tell its player who went.
 
 use bevy::prelude::*;
 use lightyear::prelude::{server::ClientOf, *};
@@ -30,6 +33,12 @@ impl Player {
     }
 }
 
+/// Every peer: triggered when another player leaves the session this app is still in.
+///
+/// Not triggered for the players removed when this app itself leaves or loses the session.
+#[derive(Event, Debug, Clone, Copy, PartialEq)]
+pub struct PlayerLeft(pub Player);
+
 /// Host only: the [`Player::number`] the next player to join gets.
 #[derive(Resource, Debug)]
 struct NextPlayerNumber(u32);
@@ -48,6 +57,7 @@ impl Plugin for LobbyPlugin {
         app.component::<Player>().replicate();
         app.init_resource::<NextPlayerNumber>();
         app.add_observer(spawn_player);
+        app.add_observer(announce_player_left);
         app.add_systems(OnEnter(AppState::MainMenu), reset_player_numbers);
     }
 }
@@ -87,6 +97,30 @@ fn spawn_player(
         },
     ));
     info!("{} ({:?}) joined", player.name(), remote_id.0);
+}
+
+/// When a [`Player`] is removed while this app is connected and in a session, trigger
+/// [`PlayerLeft`].
+///
+/// On the host the player is despawned with its client's connection; on clients its replicated
+/// despawn arrives. Players removed because this app left (it is back in the menu, or its client is
+/// no longer [`Connected`]) are not announced.
+fn announce_player_left(
+    trigger: On<Remove<Player>>,
+    players: Query<&Player>,
+    state: Option<Res<State<AppState>>>,
+    connected: Query<(), (With<Client>, With<Connected>)>,
+    mut commands: Commands,
+) {
+    let in_session = state.is_some_and(|state| *state.get() == AppState::InSession);
+    if !in_session || connected.is_empty() {
+        return;
+    }
+    let Ok(player) = players.get(trigger.entity) else {
+        return;
+    };
+    info!("{} ({:?}) left", player.name(), player.id);
+    commands.trigger(PlayerLeft(*player));
 }
 
 /// Number the players of the next hosted session from 1 again.

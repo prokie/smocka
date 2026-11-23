@@ -7,12 +7,16 @@ use bevy::prelude::*;
 use lightyear::prelude::*;
 use smocka::SmockaPlugin;
 use smocka::app_state::{AppState, SessionEndReason};
-use smocka::lobby::Player;
+use smocka::lobby::{Player, PlayerLeft};
 use smocka::network::{HostSession, JoinSession, LeaveSession};
 use smocka::session::{SessionPhase, StartMinigame};
 
 /// A headless app with the network plugin, plus queries for its connection state.
 pub struct TestApp(pub App);
+
+/// The [`Player::number`]s of every [`PlayerLeft`] this app has seen, in order.
+#[derive(Resource, Default)]
+struct Departures(Vec<u32>);
 
 impl TestApp {
     pub fn new() -> Self {
@@ -20,6 +24,10 @@ impl TestApp {
         app.init_resource::<ButtonInput<KeyCode>>();
         app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin, SmockaPlugin));
         // `App::run` normally calls these; lightyear inserts resources in `finish`.
+        app.init_resource::<Departures>();
+        app.add_observer(|trigger: On<PlayerLeft>, mut seen: ResMut<Departures>| {
+            seen.0.push(trigger.event().0.number);
+        });
         app.finish();
         app.cleanup();
         Self(app)
@@ -99,6 +107,16 @@ impl TestApp {
         self.count::<(With<LinkOf>, With<Connected>, Without<Client>)>()
     }
 
+    /// The addresses of the remote clients connected to this app's server.
+    pub fn remote_client_addrs(&mut self) -> Vec<SocketAddr> {
+        let world = self.0.world_mut();
+        world
+            .query_filtered::<&PeerAddr, (With<LinkOf>, With<Connected>, Without<Client>)>()
+            .iter(world)
+            .map(|addr| addr.0)
+            .collect()
+    }
+
     /// Number of lobby players this app can see (spawned locally on the host, replicated on clients).
     pub fn players(&mut self) -> usize {
         self.count::<With<Player>>()
@@ -129,6 +147,11 @@ impl TestApp {
             .iter(world)
             .find(|player| player.id == own_id)
             .map(|player| player.number)
+    }
+
+    /// The [`Player::number`]s of the players this app was told left, in order.
+    pub fn departures(&self) -> Vec<u32> {
+        self.0.world().resource::<Departures>().0.clone()
     }
 
     fn count<F: bevy::ecs::query::QueryFilter>(&mut self) -> usize {

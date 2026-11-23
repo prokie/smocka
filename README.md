@@ -29,7 +29,8 @@ the firewall allows UDP on that port.
 
 Everyone who joins waits in the lobby, which lists the players. When at least two are there, the
 host presses **Start**. The two lowest-numbered players get the paddles, and anyone else watches.
-Press `Esc` in a session to leave. If the host leaves, everyone goes back to the menu.
+Press `Esc` in a session (or close the window) to leave. When a player leaves, everyone else sees
+a short "Player N left." notice. If the host leaves, everyone goes back to the menu.
 
 To skip the menu while developing:
 
@@ -45,7 +46,8 @@ Every process runs both the Lightyear client and server plugins. Whether it acts
 client is decided by queuing one of these commands (the menu does it for you):
 
 - `HostSession` starts a UDP server and a local client linked directly to it.
-- `JoinSession` connects to a host over UDP using netcode authentication.
+- `JoinSession` connects to a host over UDP using netcode authentication. Each join uses a new
+  local port, so a host never mistakes a returning player for their old connection.
 - `LeaveSession` goes back to the menu. Entering the menu disconnects the client and, on the
   host, stops the server, which disconnects everyone else.
 
@@ -63,7 +65,7 @@ src/
 │   ├── server/      Server-side handling of new client links
 │   └── transport.rs HostSession / JoinSession / LeaveSession
 ├── lobby/           Player: one replicated entity per connected client
-├── menu/            Main menu, connecting screen and in-session hints (UI)
+├── menu/            Main menu, connecting screen, in-session hints and notices (UI)
 ├── session/         SessionPhase state: the host decides it, every peer follows
 └── minigames/       One module per minigame
     ├── two_player_pong/
@@ -80,7 +82,8 @@ assets/
    send interval.
 2. `AppStatePlugin` - the local `AppState` (see below).
 3. `LobbyPlugin` - the host spawns a replicated `Player` for each client that connects (numbered
-   in joining order, so the host is Player 1) and despawns it when the client disconnects.
+   in joining order, so the host is Player 1) and despawns it when the client disconnects. Every
+   peer still in the session then gets a `PlayerLeft` event, which the menu shows as a notice.
 4. `SessionPlugin` - the `SessionPhase` state (lobby, a minigame, or results). See below.
 5. `MinigamesPlugin` - registers each minigame's replicated components and inputs.
 

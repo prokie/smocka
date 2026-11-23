@@ -2,7 +2,7 @@ mod client;
 mod server;
 mod transport;
 
-pub use transport::{HostSession, JoinSession, LeaveSession};
+pub use transport::{HostSession, JoinSession, LeaveSession, close_session};
 
 use crate::app_state::AppState;
 use crate::config::network::{SEND_INTERVAL, TICK_RATE};

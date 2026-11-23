@@ -5,15 +5,20 @@
 //! - **Main menu** ([`AppState::MainMenu`]): host, join an address, or quit. Shows why the last
 //!   session ended, if it wasn't the player's choice.
 //! - **Connecting** ([`AppState::Connecting`]): a cancel button.
-//! - **In a session** ([`AppState::InSession`]): `Esc` leaves.
+//! - **In a session** ([`AppState::InSession`]): `Esc` leaves, and short notices (such as
+//!   "Player 2 left.") pop up near the bottom of the screen.
 //!   - **Lobby** ([`SessionPhase::Lobby`]): who is here; the host gets a Start button.
 //!   - **Results** ([`SessionPhase::Results`]): who won the last minigame, and a countdown to the
 //!     lobby.
+//!
+//! Closing the window also closes the session straight away, so the other players hear about it
+//! at once instead of waiting for the connection to time out.
 //!
 //! Needs a renderer, so the binary adds it next to the camera and minigame visuals; headless tests
 //! drive the same states through [`HostSession`], [`JoinSession`] and [`LeaveSession`] instead.
 
 mod lobby;
+mod notices;
 mod results;
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -24,10 +29,11 @@ use bevy::prelude::*;
 use bevy::text::{EditableText, TextCursorStyle};
 use bevy::ui::{InteractionDisabled, Pressed};
 use bevy::ui_widgets::{Activate, Button, TextInput};
+use bevy::window::WindowCloseRequested;
 
 use crate::app_state::{AppState, SessionEndReason};
 use crate::config::network::{HOST_ADDR, SERVER_ADDR, SERVER_PORT};
-use crate::network::{HostSession, JoinSession, LeaveSession};
+use crate::network::{HostSession, JoinSession, LeaveSession, close_session};
 use crate::session::{SessionPhase, StartMinigame};
 
 /// Background of a button that isn't hovered or pressed.
@@ -73,13 +79,17 @@ impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(AppState::MainMenu), spawn_main_menu);
         app.add_systems(OnEnter(AppState::Connecting), spawn_connecting_screen);
-        app.add_systems(OnEnter(AppState::InSession), spawn_leave_hint);
+        app.add_systems(
+            OnEnter(AppState::InSession),
+            (spawn_leave_hint, notices::spawn_notice_area),
+        );
         app.add_systems(OnEnter(SessionPhase::Lobby), lobby::spawn_lobby_screen);
         app.add_systems(
             OnEnter(SessionPhase::Results),
             results::spawn_results_screen,
         );
         app.add_observer(on_menu_button);
+        app.add_observer(notices::notice_player_left);
         app.add_systems(
             Update,
             (
@@ -88,6 +98,8 @@ impl Plugin for MenuPlugin {
                 leave_on_escape.run_if(not(in_state(AppState::MainMenu))),
                 lobby::update_lobby_screen.run_if(in_state(SessionPhase::Lobby)),
                 results::update_results_screen.run_if(in_state(SessionPhase::Results)),
+                notices::expire_notices,
+                close_session.run_if(on_message::<WindowCloseRequested>),
             ),
         );
     }

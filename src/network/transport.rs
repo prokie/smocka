@@ -112,6 +112,13 @@ impl Command for JoinSession {
             .next();
         let client = match earlier {
             Some(client) => {
+                // Close the old socket, so `Connect` binds a new one on a new port. Lightyear's
+                // UDP server remembers the address of every client it has seen, so coming back
+                // from the same one makes it drop the first packet and log an error.
+                world.trigger(Unlink {
+                    entity: client,
+                    reason: UnlinkReason::UserRequested(None),
+                });
                 world.entity_mut(client).insert((PeerAddr(addr), netcode));
                 client
             }
@@ -165,13 +172,16 @@ impl Command for LeaveSession {
     }
 }
 
-/// On entering the main menu: disconnect this app's client and stop its server, if they are
-/// still running. A hosting player stopping the server disconnects everyone else too.
+/// Disconnect this app's client and stop its server, if they are still running. A hosting player
+/// stopping the server disconnects everyone else too.
+///
+/// Runs on entering the main menu. The menu also runs it when the window is closed, since the app
+/// exits before it would get back to the menu.
 ///
 /// This runs during the state transition, before `PostUpdate`, so the goodbye packets are sent
 /// this frame, before Lightyear despawns the server's client links in the next one. Otherwise
 /// the other players would only notice when their connection times out.
-pub(super) fn close_session(
+pub fn close_session(
     clients: Query<Entity, (With<Client>, Without<Disconnected>)>,
     servers: Query<Entity, (With<Server>, With<Started>)>,
     mut commands: Commands,
