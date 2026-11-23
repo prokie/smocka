@@ -2,6 +2,9 @@
 
 use std::time::Duration;
 
+use bevy::prelude::*;
+use lightyear::prelude::*;
+
 use crate::common::{TestApp, connected_pair, free_addr, update_until, update_until_within};
 
 #[test]
@@ -21,6 +24,26 @@ fn client_joins_host() {
     update_until(&mut [&mut host, &mut client], |apps| {
         apps[0].connected_remote_links() == 1 && apps[1].connected_clients() == 1
     });
+}
+
+#[test]
+fn only_remote_links_are_set_up_as_joining_clients() {
+    let (mut host, _client, _) = connected_pair();
+    let world = host.0.world_mut();
+
+    let host_client: Vec<(String, bool)> = world
+        .query_filtered::<(&Name, Has<ReplicationSender>), (With<Client>, With<LinkOf>)>()
+        .iter(world)
+        .map(|(name, sender)| (name.to_string(), sender))
+        .collect();
+    assert_eq!(host_client, [("HostClient".to_string(), false)]);
+
+    let remote: Vec<(String, bool)> = world
+        .query_filtered::<(&Name, Has<ReplicationSender>), (With<LinkOf>, Without<Client>)>()
+        .iter(world)
+        .map(|(name, sender)| (name.to_string(), sender))
+        .collect();
+    assert_eq!(remote, [("Client".to_string(), true)]);
 }
 
 #[test]
