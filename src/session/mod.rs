@@ -24,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use crate::app_state::AppState;
 use crate::config::session::{MIN_PLAYERS, RESULTS_DURATION};
 use crate::lobby::Player;
+use crate::minigames::Minigame;
 use crate::network::is_host;
 
 /// What the session is doing. A local Bevy sub-state of [`AppState::InSession`] that follows the
@@ -36,6 +37,8 @@ pub enum SessionPhase {
     Lobby,
     /// Playing two-player Pong.
     TwoPlayerPong,
+    /// Playing the racing minigame.
+    Racing,
     /// Showing who won the last minigame, before going back to the lobby.
     Results,
 }
@@ -44,7 +47,7 @@ impl SessionPhase {
     /// Whether this phase is a minigame being played.
     pub fn is_minigame(self) -> bool {
         match self {
-            SessionPhase::TwoPlayerPong => true,
+            SessionPhase::TwoPlayerPong | SessionPhase::Racing => true,
             SessionPhase::Lobby | SessionPhase::Results => false,
         }
     }
@@ -115,13 +118,13 @@ impl Plugin for SessionPlugin {
     }
 }
 
-/// Command: the host starts a minigame from the lobby.
+/// Command: the host starts the given [`Minigame`] from the lobby.
 ///
 /// Does nothing (apart from a log line) unless this app is hosting, the session is in the lobby,
-/// and at least [`MIN_PLAYERS`] players are connected. There is only Pong for now; a board or
-/// vote will pick the minigame later.
+/// and at least [`MIN_PLAYERS`] players are connected. For now the host picks the minigame in the
+/// lobby; a board or vote will pick it later.
 #[derive(Debug, Clone, Copy)]
-pub struct StartMinigame;
+pub struct StartMinigame(pub Minigame);
 
 impl Command for StartMinigame {
     type Out = ();
@@ -146,8 +149,9 @@ impl Command for StartMinigame {
             warn!("Need at least {MIN_PLAYERS} players to start, have {players}");
             return;
         }
-        phase.0 = SessionPhase::TwoPlayerPong;
-        info!("Starting Pong with {players} players");
+        let StartMinigame(game) = self;
+        phase.0 = game.phase();
+        info!("Starting {game:?} with {players} players");
     }
 }
 
@@ -245,6 +249,7 @@ mod tests {
     #[test]
     fn only_minigames_are_minigames() {
         assert!(SessionPhase::TwoPlayerPong.is_minigame());
+        assert!(SessionPhase::Racing.is_minigame());
         assert!(!SessionPhase::Lobby.is_minigame());
         assert!(!SessionPhase::Results.is_minigame());
     }

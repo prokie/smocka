@@ -7,7 +7,8 @@
 //! - **Connecting** ([`AppState::Connecting`]): a cancel button.
 //! - **In a session** ([`AppState::InSession`]): `Esc` leaves, and short notices (such as
 //!   "Player 2 left.") pop up near the bottom of the screen.
-//!   - **Lobby** ([`SessionPhase::Lobby`]): who is here; the host gets a Start button.
+//!   - **Lobby** ([`SessionPhase::Lobby`]): who is here; the host gets a start button per
+//!     minigame.
 //!   - **Results** ([`SessionPhase::Results`]): who won the last minigame, and a countdown to the
 //!     lobby.
 //!
@@ -34,6 +35,7 @@ use bevy::window::WindowCloseRequested;
 
 use crate::app_state::{AppState, SessionEndReason};
 use crate::config::network::{HOST_ADDR, SERVER_ADDR, SERVER_PORT};
+use crate::minigames::Minigame;
 use crate::network::{HostSession, JoinSession, LeaveSession, close_session};
 use crate::session::{SessionPhase, StartMinigame};
 
@@ -61,8 +63,8 @@ pub enum MenuButton {
     Quit,
     /// Stop connecting and go back to the main menu.
     Cancel,
-    /// Host only: start a minigame from the lobby.
-    Start,
+    /// Host only: start this minigame from the lobby.
+    Start(Minigame),
 }
 
 /// The text field holding the address to join.
@@ -278,7 +280,7 @@ fn on_menu_button(
             commands.write_message(AppExit::Success);
         }
         MenuButton::Cancel => commands.queue(LeaveSession),
-        MenuButton::Start => commands.queue(StartMinigame),
+        MenuButton::Start(game) => commands.queue(StartMinigame(*game)),
     }
 }
 

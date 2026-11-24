@@ -3,7 +3,8 @@
 A multiplayer party game in the style of *Pummel Party*, built with [Bevy](https://bevyengine.org/) and [Lightyear](https://github.com/cBournhonesque/lightyear). Players gather in a shared session and play a series of short, self-contained minigames against each other.
 
 > **Status:** early development. A main menu hosts or joins a session. In the lobby the host
-> starts a game once at least two players are there. The first minigame is two-player Pong: both
+> picks a minigame once at least two players are there. Racing can be picked but isn't playable
+> yet. The first minigame is two-player Pong: both
 > players move their paddles, the ball bounces off the top and bottom walls and the paddles, and
 > a ball that gets past a paddle is a goal for the other player. The first to 5 goals wins; the
 > results are shown, then everyone goes back to the lobby.
@@ -28,7 +29,8 @@ field. The field starts as `127.0.0.1:5000`, a host on the same machine. The hos
 the firewall allows UDP on that port.
 
 Everyone who joins waits in the lobby, which lists the players. When at least two are there, the
-host presses **Start**. The two lowest-numbered players get the paddles, and anyone else watches.
+host picks a minigame: **Pong** or **Racing**. In Pong the two lowest-numbered players get the
+paddles, and anyone else watches.
 Press `Esc` in a session (or close the window) to leave. When a player leaves, everyone else sees
 a short "Player N left." notice. If the host leaves, everyone goes back to the menu.
 
@@ -71,6 +73,7 @@ src/
 ├── session/         SessionPhase state: the host decides it, every peer follows
 └── minigames/       One module per minigame
     ├── two_player_pong/
+    ├── racing/      Not playable yet
     └── four_player_pong/
 assets/
 └── minigames/       Sprites per minigame (PNG)
@@ -87,7 +90,8 @@ assets/
    in joining order, so the host is Player 1) and despawns it when the client disconnects. Every
    peer still in the session then gets a `PlayerLeft` event, which the menu shows as a notice.
 4. `SessionPlugin` - the `SessionPhase` state (lobby, a minigame, or results). See below.
-5. `MinigamesPlugin` - registers each minigame's replicated components and inputs.
+5. `MinigamesPlugin` - registers each minigame's replicated components and inputs. The
+   `Minigame` enum lists the minigames the lobby offers and the `SessionPhase` each is played in.
 
 Replicated components must be registered in the **same order on every peer**, so keep this plugin order intact. `CameraPlugin`, `MinigameVisualsPlugin` (sprites) and `MenuPlugin` (UI) are added separately by the binary so tests can run headless.
 
@@ -101,7 +105,7 @@ answered), `SessionEndReason` says why and the menu shows it.
 
 ### Session phase
 
-`SessionPhase` (`Lobby`, `TwoPlayerPong` or `Results`) is a Bevy sub-state of
+`SessionPhase` (`Lobby`, a minigame such as `TwoPlayerPong` or `Racing`, or `Results`) is a Bevy sub-state of
 `AppState::InSession`: it only exists while in a session, and leaving the session exits it like
 any other state change. Bevy states can't be replicated, so the host keeps its decision in a
 replicated `CurrentPhase` component, and every peer (host included) copies that into its local
@@ -110,12 +114,12 @@ replicated `CurrentPhase` component, and every peer (host included) copies that 
 Only the host changes the phase:
 
 ```
-Lobby ──StartMinigame──▶ TwoPlayerPong ──MinigameEnded::Won──▶ Results ──5 s──▶ Lobby
-                               └──────────MinigameEnded::Abandoned──────────────▶ Lobby
+Lobby ──StartMinigame(game)──▶ game.phase() ──MinigameEnded::Won──▶ Results ──5 s──▶ Lobby
+                                    └──────────MinigameEnded::Abandoned─────────────▶ Lobby
 ```
 
-- `StartMinigame` (the host's Start button) leaves the lobby once at least `MIN_PLAYERS` (2) are
-  connected.
+- `StartMinigame(game)` (one of the host's start buttons) leaves the lobby for that `Minigame`'s
+  phase once at least `MIN_PLAYERS` (2) are connected.
 - A minigame ends itself by triggering `MinigameEnded` on the host: `Won(MinigameResult)` shows the
   replicated result during `Results`, and `Abandoned` (for example, a player left) goes straight
   back to the lobby.
@@ -147,8 +151,10 @@ overwrite the PNG with the same name; no code changes are needed. Draw player-co
 
 ### Adding a minigame
 
-1. Add a variant for it to `SessionPhase`, and create a module under `src/minigames/` with its
-   own plugin. Spawn, gate and despawn its entities with that state (see *Session phase*).
+1. Add a variant for it to `SessionPhase` (and to `is_minigame`) and to `Minigame` (with its
+   `phase`, its `name` for the lobby button, and `Minigame::ALL`). Create a module under
+   `src/minigames/` with its own plugin. Spawn, gate and despawn its entities with that state
+   (see *Session phase*).
 2. Register its replicated components (`app.component::<T>().replicate()`, plus `.predict()` /
    `.add_linear_interpolation()` where needed) and its input type.
 3. On the host, trigger `MinigameEnded::Won` when someone wins and `MinigameEnded::Abandoned` if

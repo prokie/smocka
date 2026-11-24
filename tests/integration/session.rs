@@ -6,6 +6,7 @@ use std::time::Duration;
 use bevy::prelude::*;
 use lightyear::prelude::PeerId;
 use smocka::config::session::RESULTS_DURATION;
+use smocka::minigames::Minigame;
 use smocka::minigames::two_player_pong::ball::Ball;
 use smocka::minigames::two_player_pong::paddles::Paddle;
 use smocka::minigames::two_player_pong::score::PongRules;
@@ -46,7 +47,7 @@ fn a_lone_host_cannot_start() {
     let mut host = TestApp::host(free_addr());
     update_until(&mut [&mut host], |apps| apps[0].players() == 1);
 
-    host.start_minigame();
+    host.start_minigame(Minigame::TwoPlayerPong);
     wait_a_bit(&mut [&mut host]);
 
     assert_eq!(host.phase(), Some(SessionPhase::Lobby));
@@ -63,12 +64,28 @@ fn players_wait_in_the_lobby_until_the_host_starts() {
     assert_eq!(host.phase(), Some(SessionPhase::Lobby));
     assert_eq!(client.phase(), Some(SessionPhase::Lobby));
 
-    host.start_minigame();
+    host.start_minigame(Minigame::TwoPlayerPong);
 
     update_until(&mut [&mut host, &mut client], |apps| {
         apps.iter()
             .all(|app| app.phase() == Some(SessionPhase::TwoPlayerPong))
     });
+}
+
+#[test]
+fn the_host_picks_which_minigame_to_start() {
+    let (mut host, mut client, _) = connected_pair();
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut().all(|app| app.players() == 2)
+    });
+
+    host.start_minigame(Minigame::Racing);
+
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter()
+            .all(|app| app.phase() == Some(SessionPhase::Racing))
+    });
+    assert_eq!(pong_entities(&mut host), 0);
 }
 
 #[test]
@@ -79,7 +96,7 @@ fn a_joiner_cannot_start() {
             .all(|app| app.players() == 2 && app.phase() == Some(SessionPhase::Lobby))
     });
 
-    client.start_minigame();
+    client.start_minigame(Minigame::TwoPlayerPong);
     wait_a_bit(&mut [&mut host, &mut client]);
 
     assert_eq!(host.phase(), Some(SessionPhase::Lobby));
@@ -93,7 +110,7 @@ fn winning_shows_the_result_then_returns_to_the_lobby() {
         .world_mut()
         .insert_resource(PongRules { goals_to_win: 1 });
     update_until(&mut [&mut host, &mut client], |apps| apps[0].players() == 2);
-    host.start_minigame();
+    host.start_minigame(Minigame::TwoPlayerPong);
 
     // Nobody moves, so the first serve flies past the right paddle: the host (left) wins 1–0.
     update_until_within(
@@ -147,7 +164,7 @@ fn a_paddle_player_leaving_ends_pong_even_with_a_spectator_left() {
     update_until(&mut [&mut host, &mut player, &mut spectator], |apps| {
         apps[0].players() == 3
     });
-    host.start_minigame();
+    host.start_minigame(Minigame::TwoPlayerPong);
     update_until(&mut [&mut host, &mut player, &mut spectator], |apps| {
         apps.iter_mut()
             .all(|app| app.phase() == Some(SessionPhase::TwoPlayerPong) && pong_entities(app) == 3)

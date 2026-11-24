@@ -8,6 +8,7 @@ use lightyear::prelude::*;
 use smocka::SmockaPlugin;
 use smocka::app_state::{AppState, SessionEndReason};
 use smocka::lobby::{Player, PlayerLeft};
+use smocka::minigames::Minigame;
 use smocka::network::{HostSession, JoinSession, LeaveSession};
 use smocka::session::{SessionPhase, StartMinigame};
 
@@ -54,9 +55,9 @@ impl TestApp {
         LeaveSession.apply(self.0.world_mut());
     }
 
-    /// Start a minigame from the lobby, as the host's Start button does.
-    pub fn start_minigame(&mut self) {
-        StartMinigame.apply(self.0.world_mut());
+    /// Start `game` from the lobby, as the host's start buttons do.
+    pub fn start_minigame(&mut self, game: Minigame) {
+        StartMinigame(game).apply(self.0.world_mut());
     }
 
     /// This app's [`AppState`].
@@ -209,7 +210,7 @@ pub fn connected_pair() -> (TestApp, TestApp, SocketAddr) {
 pub fn pair_in_pong() -> (TestApp, TestApp, SocketAddr) {
     let (mut host, mut client, addr) = connected_pair();
     update_until(&mut [&mut host, &mut client], |apps| apps[0].players() == 2);
-    host.start_minigame();
+    host.start_minigame(Minigame::TwoPlayerPong);
     update_until(&mut [&mut host, &mut client], |apps| {
         apps.iter()
             .all(|app| app.phase() == Some(SessionPhase::TwoPlayerPong))

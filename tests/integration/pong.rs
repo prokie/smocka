@@ -2,6 +2,7 @@
 
 use bevy::prelude::*;
 use lightyear::prelude::PeerId;
+use smocka::minigames::Minigame;
 use smocka::minigames::two_player_pong::ball::{Ball, BallPosition};
 use smocka::minigames::two_player_pong::paddles::{Paddle, PaddlePosition};
 use smocka::minigames::two_player_pong::score::PongScore;
@@ -147,7 +148,7 @@ fn a_joiner_who_rejoins_can_still_move_their_paddle() {
     update_until(&mut [&mut host, &mut client], |apps| {
         apps.iter_mut().all(|app| app.players() == 2)
     });
-    host.start_minigame();
+    host.start_minigame(Minigame::TwoPlayerPong);
     wait_for_paddles(&mut host, &mut client);
 
     hold(&mut client, KeyCode::KeyW);
