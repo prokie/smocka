@@ -142,7 +142,9 @@ fn score_goals(
 /// Host only: if a paddle's player has left (their paddle is despawned with their connection),
 /// the game can't go on.
 fn abandon_without_both_players(paddles: Query<(), With<Paddle>>, mut commands: Commands) {
-    if paddles.iter().len() < 2 {
+    let paddles = paddles.iter().len();
+    if paddles < 2 {
+        info!("Abandoning Pong: a paddle's player left ({paddles} of 2 paddles remain)");
         commands.trigger(MinigameEnded::Abandoned);
     }
 }

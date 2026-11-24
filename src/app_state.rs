@@ -57,6 +57,7 @@ fn enter_session_when_connected(
     mut next: ResMut<NextState<AppState>>,
 ) {
     if clients.contains(trigger.entity) {
+        info!("Connected: entering the session");
         next.set(AppState::InSession);
     }
 }
@@ -82,6 +83,11 @@ fn return_to_menu_when_disconnected(
     if state == AppState::MainMenu {
         return;
     }
+    // The menu only shows a friendly summary, so keep Lightyear's own reason in the log.
+    info!(
+        "Disconnected while {state:?}: {:?}. Back to the menu",
+        disconnected.reason
+    );
     reason.0 = describe(&disconnected.reason, state);
     next.set(AppState::MainMenu);
 }

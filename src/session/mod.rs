@@ -230,6 +230,7 @@ fn follow_phase(
         return;
     };
     if *state.get() != phase.0 {
+        info!("Session phase {:?} -> {:?}", state.get(), phase.0);
         next.set(phase.0);
     }
 }
