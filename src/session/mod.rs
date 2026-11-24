@@ -127,12 +127,7 @@ impl Command for StartMinigame {
     type Out = ();
 
     fn apply(self, world: &mut World) {
-        let hosting = world
-            .query_filtered::<(), (With<Server>, With<Started>)>()
-            .iter(world)
-            .next()
-            .is_some();
-        if !hosting {
+        if !world.run_system_cached(is_host).unwrap_or(false) {
             warn!("Only the host can start a minigame");
             return;
         }

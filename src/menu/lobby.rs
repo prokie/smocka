@@ -6,6 +6,7 @@ use lightyear::prelude::*;
 
 use super::{HINT_COLOR, MenuButton, label, menu_button, screen};
 use crate::lobby::{Player, local_peer_id};
+use crate::network::Hosting;
 use crate::session::{SessionPhase, can_start};
 
 /// The list of players in the lobby.
@@ -17,10 +18,7 @@ pub struct PlayerList;
 pub struct LobbyHint;
 
 /// When the lobby opens, show the player list, plus a Start button if this app is hosting.
-pub(super) fn spawn_lobby_screen(
-    hosting: Query<(), (With<Server>, With<server::Started>)>,
-    mut commands: Commands,
-) {
+pub(super) fn spawn_lobby_screen(hosting: Hosting, mut commands: Commands) {
     let root = commands
         .spawn((
             screen(SessionPhase::Lobby),
@@ -30,7 +28,7 @@ pub(super) fn spawn_lobby_screen(
             ],
         ))
         .id();
-    if !hosting.is_empty() {
+    if hosting.is_hosting() {
         commands
             .entity(root)
             .with_child((menu_button(MenuButton::Start, "Start"), InteractionDisabled));
@@ -44,7 +42,7 @@ pub(super) fn spawn_lobby_screen(
 pub(super) fn update_lobby_screen(
     players: Query<&Player>,
     clients: Query<&LocalId, (With<Client>, With<Connected>)>,
-    hosting: Query<(), (With<Server>, With<server::Started>)>,
+    hosting: Hosting,
     mut list: Single<&mut Text, (With<PlayerList>, Without<LobbyHint>)>,
     mut hint: Single<&mut Text, (With<LobbyHint>, Without<PlayerList>)>,
     start: Query<(Entity, Has<InteractionDisabled>), With<MenuButton>>,
@@ -60,7 +58,7 @@ pub(super) fn update_lobby_screen(
     }
 
     let startable = can_start(players.len());
-    let shown = lobby_hint(!hosting.is_empty(), startable);
+    let shown = lobby_hint(hosting.is_hosting(), startable);
     if hint.0 != shown {
         hint.0 = shown.to_string();
     }
