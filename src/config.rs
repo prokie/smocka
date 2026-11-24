@@ -3,7 +3,7 @@ pub mod network {
     use std::time::Duration;
 
     pub const TICK_RATE: f64 = 128.0;
-    pub const SEND_INTERVAL: Duration = Duration::from_millis(50);
+    pub const SEND_INTERVAL: Duration = Duration::from_nanos((2.0 * 1e9 / TICK_RATE) as u64);
 
     /// UDP port the host listens on, and the port joiners use if they don't give one.
     pub const SERVER_PORT: u16 = 5000;
