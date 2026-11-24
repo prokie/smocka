@@ -58,7 +58,10 @@ pub struct MinigameVisualsPlugin;
 
 impl Plugin for MinigameVisualsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(two_player_pong::PongVisualsPlugin);
+        app.add_plugins((
+            two_player_pong::PongVisualsPlugin,
+            racing::RacingVisualsPlugin,
+        ));
     }
 }
 

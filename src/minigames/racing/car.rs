@@ -1,0 +1,319 @@
+//! Cars: who drives them, where they are, and how input moves them.
+//!
+//! All of a car's motion lives in one component, [`CarState`], which is predicted for its driver
+//! and interpolated for everyone else. [`drive`] is the whole of the handling: a pure function of
+//! the state, this tick's input and the tick length, so Lightyear can re-run it during rollback.
+
+use std::f32::consts::{PI, TAU};
+
+use bevy::prelude::*;
+use lightyear::prelude::input::native::ActionState;
+use lightyear::prelude::*;
+use serde::{Deserialize, Serialize};
+
+use super::RacingSystems;
+use super::racing_input::RacingInput;
+use crate::config::minigames::racing::{
+    ACCELERATION, BRAKE_DECELERATION, CAR_MAX_X, CAR_MAX_Y, COAST_DECELERATION, EDGE_MAX_SPEED,
+    FULL_STEER_SPEED, GRID_SPACING, GRID_X, MAX_REVERSE_SPEED, MAX_SPEED, REVERSE_ACCELERATION,
+    TURN_RATE,
+};
+use crate::lobby::Player;
+use crate::network::is_host;
+use crate::session::SessionPhase;
+
+/// Who drives this car. Set once at spawn.
+#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Car {
+    /// The driver's [`Player::id`].
+    pub owner: PeerId,
+    /// The driver's [`Player::number`], kept here so the car can be coloured with
+    /// [`player_color`](crate::lobby::player_color) without looking the player up.
+    pub number: u32,
+}
+
+/// Where a car is and how it is moving. Changes every tick.
+///
+/// Predicted for the driver and interpolated for everyone else. Everything [`drive`] reads or
+/// writes lives here: if part of it were in a component that isn't predicted, rollback would
+/// re-run [`drive`] from the wrong state.
+#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub struct CarState {
+    /// Centre of the car, in world units.
+    pub position: Vec2,
+    /// Which way the car points, in radians anticlockwise from facing right (+x). Always in
+    /// `-π..π`.
+    pub heading: f32,
+    /// Speed along [`heading`](Self::heading), in world units per second. Negative in reverse.
+    pub speed: f32,
+}
+
+impl CarState {
+    /// A car standing still at `position`, pointing along `heading`.
+    pub fn parked(position: Vec2, heading: f32) -> Self {
+        Self {
+            position,
+            heading,
+            speed: 0.0,
+        }
+    }
+}
+
+impl Ease for CarState {
+    fn interpolating_curve_unbounded(start: Self, end: Self) -> impl Curve<Self> {
+        FunctionCurve::new(Interval::UNIT, move |t| CarState {
+            position: start.position.lerp(end.position, t),
+            heading: lerp_angle(start.heading, end.heading, t),
+            speed: start.speed.lerp(end.speed, t),
+        })
+    }
+}
+
+/// Registers the replicated car components, spawns the cars, and drives them.
+pub struct CarPlugin;
+
+impl Plugin for CarPlugin {
+    fn build(&self, app: &mut App) {
+        app.component::<Car>().replicate();
+
+        app.component::<CarState>()
+            .replicate()
+            .predict()
+            .add_linear_interpolation();
+
+        app.add_systems(OnEnter(SessionPhase::Racing), spawn_cars.run_if(is_host));
+        app.add_systems(
+            FixedUpdate,
+            drive_cars
+                .in_set(RacingSystems::Drive)
+                .run_if(in_state(SessionPhase::Racing)),
+        );
+    }
+}
+
+/// Host only: when the race starts, give every player a car on the starting grid, in joining order.
+fn spawn_cars(mut commands: Commands, players: Query<(&Player, &ControlledBy)>) {
+    let mut players: Vec<_> = players.iter().collect();
+    players.sort_by_key(|(player, _)| player.number);
+    let count = players.len();
+    for (slot, (player, link)) in players.into_iter().enumerate() {
+        commands.spawn((
+            Car {
+                owner: player.id,
+                number: player.number,
+            },
+            CarState::parked(grid_position(slot, count), 0.0),
+            DespawnOnExit(SessionPhase::Racing),
+            Replicate::to_clients(NetworkTarget::All),
+            PredictionTarget::to_clients(NetworkTarget::Single(player.id)),
+            InterpolationTarget::to_clients(NetworkTarget::AllExceptSingle(player.id)),
+            ControlledBy {
+                owner: link.owner,
+                lifetime: Lifetime::default(),
+            },
+        ));
+    }
+}
+
+/// Where the car in starting `slot` (counting from 0) of `count` cars starts: a column on the left
+/// of the screen, centred vertically, with every car facing right.
+pub fn grid_position(slot: usize, count: usize) -> Vec2 {
+    let offset = slot as f32 - (count.saturating_sub(1)) as f32 / 2.0;
+    Vec2::new(GRID_X, -offset * GRID_SPACING)
+}
+
+/// Drive every car that has input with this tick's [`RacingInput`].
+///
+/// Runs on the host for every car (inputs from remote players arrive as [`ActionState`]) and on
+/// each client for its own predicted car. Other players' cars on a client have no `ActionState`
+/// and are interpolated instead.
+fn drive_cars(time: Res<Time>, mut cars: Query<(&mut CarState, &ActionState<RacingInput>)>) {
+    for (mut state, input) in &mut cars {
+        *state = drive(*state, input.0, time.delta_secs());
+    }
+}
+
+/// The car's state after driving for `dt` seconds with `input`.
+///
+/// - Throttle speeds the car up to [`MAX_SPEED`]; brake slows it down, then reverses up to
+///   [`MAX_REVERSE_SPEED`]. Pushing against the way the car is rolling always brakes.
+/// - With neither (or both) held, the car coasts to a stop.
+/// - Steering turns the car at up to [`TURN_RATE`], less when it is slow, and the other way when
+///   it reverses, like a real car.
+/// - The car stays on screen. Pushing into an edge limits it to [`EDGE_MAX_SPEED`].
+pub fn drive(state: CarState, input: RacingInput, dt: f32) -> CarState {
+    let pedal: f32 = match (input.throttle, input.brake) {
+        (true, false) => 1.0,
+        (false, true) => -1.0,
+        _ => 0.0,
+    };
+    let speed = state.speed;
+    let mut speed = if pedal == 0.0 {
+        approach_zero(speed, COAST_DECELERATION * dt)
+    } else if speed * pedal < 0.0 {
+        approach_zero(speed, BRAKE_DECELERATION * dt)
+    } else if pedal > 0.0 {
+        (speed + ACCELERATION * dt).min(MAX_SPEED)
+    } else {
+        (speed - REVERSE_ACCELERATION * dt).max(-MAX_REVERSE_SPEED)
+    };
+
+    let steer = f32::from(input.steer.clamp(-1, 1));
+    let grip = (speed.abs() / FULL_STEER_SPEED).min(1.0);
+    let turn = steer * TURN_RATE * grip * dt;
+    let heading = wrap_angle(if speed < 0.0 {
+        state.heading - turn
+    } else {
+        state.heading + turn
+    });
+
+    let moved = state.position + Vec2::from_angle(heading) * speed * dt;
+    let limit = Vec2::new(CAR_MAX_X, CAR_MAX_Y);
+    let position = moved.clamp(-limit, limit);
+    if position != moved {
+        speed = speed.clamp(-EDGE_MAX_SPEED, EDGE_MAX_SPEED);
+    }
+
+    CarState {
+        position,
+        heading,
+        speed,
+    }
+}
+
+/// `speed` moved `amount` towards zero, without overshooting.
+fn approach_zero(speed: f32, amount: f32) -> f32 {
+    if speed > 0.0 {
+        (speed - amount).max(0.0)
+    } else {
+        (speed + amount).min(0.0)
+    }
+}
+
+/// `angle` wrapped into `-π..π`.
+fn wrap_angle(angle: f32) -> f32 {
+    (angle + PI).rem_euclid(TAU) - PI
+}
+
+/// The angle a fraction `t` of the way from `start` to `end`, turning the short way round.
+///
+/// A plain lerp from just below `π` to just above `-π` would spin almost a full turn the wrong way.
+fn lerp_angle(start: f32, end: f32, t: f32) -> f32 {
+    wrap_angle(start + wrap_angle(end - start) * t)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::f32::consts::{FRAC_PI_2, PI};
+
+    use bevy::math::Vec2;
+
+    use super::{CarState, RacingInput, drive, grid_position, lerp_angle, wrap_angle};
+    use crate::config::minigames::racing::{
+        CAR_MAX_X, EDGE_MAX_SPEED, MAX_REVERSE_SPEED, MAX_SPEED,
+    };
+
+    const DT: f32 = 1.0 / 128.0;
+
+    const THROTTLE: RacingInput = RacingInput {
+        throttle: true,
+        brake: false,
+        steer: 0,
+    };
+    const BRAKE: RacingInput = RacingInput {
+        throttle: false,
+        brake: true,
+        steer: 0,
+    };
+    const COAST: RacingInput = RacingInput {
+        throttle: false,
+        brake: false,
+        steer: 0,
+    };
+
+    fn moving(speed: f32) -> CarState {
+        CarState {
+            speed,
+            ..CarState::parked(Vec2::ZERO, 0.0)
+        }
+    }
+
+    /// `state` after driving with `input` for `seconds`, one tick at a time.
+    fn drive_for(mut state: CarState, input: RacingInput, seconds: f32) -> CarState {
+        for _ in 0..(seconds / DT) as usize {
+            state = drive(state, input, DT);
+        }
+        state
+    }
+
+    // Keep these drives short (about a second), or the car reaches the edge of the screen and is
+    // slowed down by it.
+
+    #[test]
+    fn throttle_drives_forwards_up_to_top_speed() {
+        let state = drive_for(moving(0.0), THROTTLE, 1.0);
+        assert_eq!(state.speed, MAX_SPEED);
+        assert!(state.position.x > 0.0);
+        assert_eq!(state.heading, 0.0);
+    }
+
+    #[test]
+    fn brake_stops_then_reverses_up_to_reverse_speed() {
+        let state = drive(moving(100.0), BRAKE, DT);
+        assert!(state.speed > 0.0 && state.speed < 100.0);
+        let state = drive_for(moving(100.0), BRAKE, 1.0);
+        assert_eq!(state.speed, -MAX_REVERSE_SPEED);
+    }
+
+    #[test]
+    fn coasting_rolls_to_a_stop_without_reversing() {
+        assert_eq!(drive_for(moving(100.0), COAST, 1.0).speed, 0.0);
+        assert_eq!(drive_for(moving(-50.0), COAST, 1.0).speed, 0.0);
+    }
+
+    #[test]
+    fn a_car_standing_still_cannot_turn() {
+        let input = RacingInput { steer: 1, ..COAST };
+        assert_eq!(drive(moving(0.0), input, DT).heading, 0.0);
+    }
+
+    #[test]
+    fn steering_left_turns_anticlockwise_forwards_and_clockwise_in_reverse() {
+        let input = RacingInput { steer: 1, ..COAST };
+        assert!(drive(moving(100.0), input, DT).heading > 0.0);
+        assert!(drive(moving(-50.0), input, DT).heading < 0.0);
+    }
+
+    #[test]
+    fn the_car_stays_on_screen_and_slows_at_the_edge() {
+        let state = CarState {
+            speed: MAX_SPEED,
+            ..CarState::parked(Vec2::new(CAR_MAX_X, 0.0), 0.0)
+        };
+        let state = drive(state, THROTTLE, DT);
+        assert_eq!(state.position.x, CAR_MAX_X);
+        assert_eq!(state.speed, EDGE_MAX_SPEED);
+    }
+
+    #[test]
+    fn headings_stay_between_minus_pi_and_pi() {
+        assert!((wrap_angle(3.0 * FRAC_PI_2) + FRAC_PI_2).abs() < 1e-5);
+        assert!((wrap_angle(-3.0 * FRAC_PI_2) - FRAC_PI_2).abs() < 1e-5);
+        assert!((wrap_angle(1.0) - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn interpolation_turns_the_short_way_round() {
+        let start = PI - 0.1;
+        let end = -PI + 0.1;
+        let halfway = lerp_angle(start, end, 0.5);
+        assert!(halfway.abs() > PI - 1e-3, "went the long way: {halfway}");
+    }
+
+    #[test]
+    fn the_grid_is_centred_and_spaced_out() {
+        assert_eq!(grid_position(0, 1).y, 0.0);
+        assert_eq!(grid_position(0, 2).y, -grid_position(1, 2).y);
+        assert_ne!(grid_position(0, 4), grid_position(1, 4));
+    }
+}

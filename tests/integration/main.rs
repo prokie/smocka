@@ -6,4 +6,5 @@ mod common;
 mod lobby;
 mod network;
 mod pong;
+mod racing;
 mod session;

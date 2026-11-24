@@ -3,8 +3,8 @@
 A multiplayer party game in the style of *Pummel Party*, built with [Bevy](https://bevyengine.org/) and [Lightyear](https://github.com/cBournhonesque/lightyear). Players gather in a shared session and play a series of short, self-contained minigames against each other.
 
 > **Status:** early development. A main menu hosts or joins a session. In the lobby the host
-> picks a minigame once at least two players are there. Racing can be picked but isn't playable
-> yet. The first minigame is two-player Pong: both
+> picks a minigame once at least two players are there. Racing is in progress: every player can
+> drive a car around an empty screen, but there is no track or finish yet. The first minigame is two-player Pong: both
 > players move their paddles, the ball bounces off the top and bottom walls and the paddles, and
 > a ball that gets past a paddle is a goal for the other player. The first to 5 goals wins; the
 > results are shown, then everyone goes back to the lobby.
@@ -73,7 +73,7 @@ src/
 ├── session/         SessionPhase state: the host decides it, every peer follows
 └── minigames/       One module per minigame
     ├── two_player_pong/
-    ├── racing/      Not playable yet
+    ├── racing/      In progress: cars, but no track or finish yet
     └── four_player_pong/
 assets/
 └── minigames/       Sprites per minigame (PNG)
@@ -149,6 +149,12 @@ overwrite the PNG with the same name; no code changes are needed. Draw player-co
 | `paddle.png` | 8×48 | Paddles, tinted per side |
 | `ball.png` | 8×8 | Ball |
 
+| File (`assets/minigames/racing/`) | Size | Used |
+|---|---|---|
+| `car.png` | 16×10 | Cars, pointing right, tinted per player |
+
+Per-player colours come from `player_color` in `src/lobby/mod.rs`, in joining order.
+
 ### Adding a minigame
 
 1. Add a variant for it to `SessionPhase` (and to `is_minigame`) and to `Minigame` (with its
@@ -182,9 +188,25 @@ Where the ball hits a paddle decides where it goes, so players can aim: the cent
 sends it straight back across, and the ends send it off at up to `BALL_MAX_BOUNCE_ANGLE` (37°)
 up or down.
 
-### Controls (Pong)
+### Racing
 
-`W` / `↑` moves your paddle up, `S` / `↓` moves it down.
+Every player in the lobby gets a car, lined up on a starting grid on the left of the screen.
+Cars pass through each other. Like Pong's paddles, each car is predicted for its driver and
+interpolated for everyone else.
+
+All of a car's motion is in one replicated component, `CarState` (position, heading and speed),
+and `drive` in `src/minigames/racing/car.rs` is the whole of the handling: a pure function of that
+state, the tick's `RacingInput` and the tick length, so Lightyear can re-run it during rollback.
+Throttle and brake speed up and slow down (brake reverses once stopped), the car coasts to a stop
+when neither is held, and steering turns faster the quicker the car goes, up to `TURN_RATE`. The
+handling constants are in `config::minigames::racing`. Cars stay on screen, and a car pushing into
+the edge is slowed to `EDGE_MAX_SPEED`.
+
+### Controls
+
+Pong: `W` / `↑` moves your paddle up, `S` / `↓` moves it down.
+
+Racing: `W` / `↑` accelerates, `S` / `↓` brakes and then reverses, `A` / `←` and `D` / `→` steer.
 
 ## Development
 

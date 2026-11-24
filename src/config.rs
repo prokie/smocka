@@ -89,4 +89,49 @@ pub mod minigames {
         /// Font size of the score at the top of the arena, in world units.
         pub const SCORE_FONT_SIZE: f32 = 32.0;
     }
+
+    /// Car handling and the starting grid for the racing minigame. Speeds are in world units per
+    /// second, accelerations in world units per second², and angles in radians.
+    pub mod racing {
+        use crate::config::display::{VIEW_HEIGHT, VIEW_WIDTH};
+
+        /// Car length (nose to tail) in world units. Keep `car.png` the same width.
+        pub const CAR_LENGTH: f32 = 16.0;
+        /// Car width in world units. Keep `car.png` the same height.
+        pub const CAR_WIDTH: f32 = 10.0;
+
+        /// Top speed going forwards.
+        pub const MAX_SPEED: f32 = 200.0;
+        /// Top speed in reverse.
+        pub const MAX_REVERSE_SPEED: f32 = 70.0;
+        /// How fast the throttle speeds the car up.
+        pub const ACCELERATION: f32 = 250.0;
+        /// How fast holding brake (or throttle while rolling backwards) slows the car down.
+        pub const BRAKE_DECELERATION: f32 = 500.0;
+        /// How fast brake speeds the car up backwards once it has stopped.
+        pub const REVERSE_ACCELERATION: f32 = 150.0;
+        /// How fast the car slows down with neither throttle nor brake held.
+        pub const COAST_DECELERATION: f32 = 150.0;
+
+        /// How fast the car turns with steering held, once it is going at least
+        /// [`FULL_STEER_SPEED`]. Slower cars turn proportionally slower, and a car standing still
+        /// can't turn at all.
+        pub const TURN_RATE: f32 = 3.5;
+        /// The speed (either way) at which steering reaches its full [`TURN_RATE`].
+        pub const FULL_STEER_SPEED: f32 = 60.0;
+
+        /// The furthest a car centre may get from the middle of the screen, sideways and up or
+        /// down. Keeps the whole car on screen whichever way it points.
+        pub const CAR_MAX_X: f32 = VIEW_WIDTH / 2.0 - CAR_LENGTH / 2.0;
+        /// See [`CAR_MAX_X`].
+        pub const CAR_MAX_Y: f32 = VIEW_HEIGHT / 2.0 - CAR_LENGTH / 2.0;
+        /// A car pushing against the edge of the screen goes no faster than this, so it can still
+        /// turn away from it.
+        pub const EDGE_MAX_SPEED: f32 = 40.0;
+
+        /// `x` of the starting grid's column of cars.
+        pub const GRID_X: f32 = -240.0;
+        /// Distance between neighbouring cars on the starting grid.
+        pub const GRID_SPACING: f32 = 28.0;
+    }
 }

@@ -33,6 +33,24 @@ impl Player {
     }
 }
 
+/// Colours given to players in joining order, for minigames that tint things per player.
+const PLAYER_COLORS: [Color; 8] = [
+    Color::srgb(0.35, 0.65, 1.0), // blue
+    Color::srgb(1.0, 0.4, 0.4),   // red
+    Color::srgb(0.45, 0.9, 0.45), // green
+    Color::srgb(1.0, 0.85, 0.3),  // yellow
+    Color::srgb(0.8, 0.5, 1.0),   // purple
+    Color::srgb(1.0, 0.6, 0.25),  // orange
+    Color::srgb(0.35, 0.95, 0.9), // cyan
+    Color::srgb(1.0, 0.55, 0.85), // pink
+];
+
+/// The colour for the player with [`Player::number`] `number`. Numbers past the last colour start
+/// again from the first.
+pub fn player_color(number: u32) -> Color {
+    PLAYER_COLORS[(number.saturating_sub(1) as usize) % PLAYER_COLORS.len()]
+}
+
 /// Every peer: triggered when another player leaves the session this app is still in.
 ///
 /// Not triggered for the players removed when this app itself leaves or loses the session.
