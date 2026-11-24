@@ -96,6 +96,13 @@ fn spawn_cars(mut commands: Commands, players: Query<(&Player, &ControlledBy)>) 
     let mut players: Vec<_> = players.iter().collect();
     players.sort_by_key(|(player, _)| player.number);
     let count = players.len();
+    debug!(
+        "Spawning {count} cars: {:?}",
+        players
+            .iter()
+            .map(|(player, _)| player.name())
+            .collect::<Vec<_>>()
+    );
     for (slot, (player, link)) in players.into_iter().enumerate() {
         commands.spawn((
             Car {

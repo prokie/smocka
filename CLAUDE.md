@@ -9,11 +9,11 @@ A shared "hub"/board flow hosts many short, self-contained minigames.
 - If something doesn't compile, suspect an API change before trying other workarounds.
 
 ## Verification & Quality Checks
-Before considering any task complete, verify that both lints and tests pass cleanly:
+Before considering any task complete, verify that all checks pass cleanly:
 - **Clippy:** Run `cargo clippy --all-targets -- -D warnings` and resolve all errors and warnings before finishing.
 - **Tests:** Run `cargo test` and ensure the entire test suite passes.
-- **Format:** Run `cargo fmt` to ensure everything is formatted propertly.
-- **Documentation:** Maintain clear rustdoc comments (`///` and `//!`) on modules, public types, components, and systems, and keep `README.md` updated whenever architecture, usage, or features change. Run `cargo doc --no-deps` to verify there are no broken doc links or warnings.
+- **Format:** Run `cargo fmt` to ensure everything is formatted properly.
+- **Documentation:** Maintain clear rustdoc comments (`///` and `//!`) on public types, components, and non-obvious systems. Run `cargo doc --no-deps` to verify there are no broken doc links or warnings.
 
 ## Logging
 Use Bevy's `info!` / `warn!` / `error!` / `debug!` (from `bevy::prelude`), never `println!`. Adding logs for state changes, endings, and refused requests is part of task completion alongside the checks above.

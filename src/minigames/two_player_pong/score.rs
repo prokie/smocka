@@ -122,6 +122,7 @@ fn score_goals(
             continue;
         };
         score.add_goal(scorer);
+        debug!("Goal for {scorer:?}: {} – {}", score.left, score.right);
 
         if score.winner(rules.goals_to_win).is_none() {
             position.0 = Vec2::ZERO;

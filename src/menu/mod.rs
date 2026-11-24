@@ -319,6 +319,7 @@ fn join(typed: &str, commands: &mut Commands, message: &mut Query<&mut Text, Wit
             commands.queue_handled(JoinSession { addr }, warn);
         }
         None => {
+            debug!("Not joining: {typed:?} isn't an address");
             for mut text in message.iter_mut() {
                 text.0 = format!(
                     "\"{}\" isn't an address like 192.168.1.10:5000.",
