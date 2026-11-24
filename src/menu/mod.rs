@@ -24,7 +24,7 @@ mod results;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use bevy::ecs::error::warn;
-use bevy::input_focus::AutoFocus;
+use bevy::input_focus::{AutoFocus, InputFocus};
 use bevy::picking::hover::Hovered;
 use bevy::prelude::*;
 use bevy::text::{EditableText, TextCursorStyle};
@@ -95,7 +95,11 @@ impl Plugin for MenuPlugin {
             Update,
             (
                 style_buttons,
-                (join_on_enter, show_session_end_reason).run_if(in_state(AppState::MainMenu)),
+                (
+                    join_on_enter.run_if(address_input_focused),
+                    show_session_end_reason,
+                )
+                    .run_if(in_state(AppState::MainMenu)),
                 leave_on_escape.run_if(not(in_state(AppState::MainMenu))),
                 lobby::update_lobby_screen.run_if(in_state(SessionPhase::Lobby)),
                 results::update_results_screen.run_if(in_state(SessionPhase::Results)),
@@ -278,7 +282,22 @@ fn on_menu_button(
     }
 }
 
-/// In the main menu, `Enter` joins the typed address, like the Join button.
+/// Whether the [`AddressInput`] has keyboard focus.
+///
+/// [`join_on_enter`] only runs then: when a button has focus, the button widget turns `Enter`
+/// into its own [`Activate`], and joining as well would do the wrong thing.
+fn address_input_focused(
+    focus: Option<Res<InputFocus>>,
+    address: Query<(), With<AddressInput>>,
+) -> bool {
+    focus
+        .and_then(|focus| focus.get())
+        .is_some_and(|entity| address.contains(entity))
+}
+
+/// In the main menu, `Enter` in the address field joins the typed address, like the Join button.
+///
+/// Runs only while the field has focus (see [`address_input_focused`]).
 fn join_on_enter(
     keys: Res<ButtonInput<KeyCode>>,
     address: Single<&EditableText, With<AddressInput>>,
@@ -353,10 +372,37 @@ pub fn parse_address(typed: &str) -> Option<SocketAddr> {
 
 #[cfg(test)]
 mod tests {
-    use super::{MenuMessage, SessionEndReason, parse_address, show_session_end_reason};
+    use super::{
+        AddressInput, MenuMessage, SessionEndReason, address_input_focused, parse_address,
+        show_session_end_reason,
+    };
     use crate::config::network::SERVER_PORT;
+    use bevy::input_focus::InputFocus;
     use bevy::prelude::*;
     use std::net::SocketAddr;
+
+    /// Run [`address_input_focused`] once in `world`.
+    fn address_focused(world: &mut World) -> bool {
+        world.run_system_cached(address_input_focused).unwrap()
+    }
+
+    #[test]
+    fn enter_joins_only_from_the_address_field() {
+        let mut world = World::new();
+        let address = world.spawn(AddressInput).id();
+        let button = world.spawn_empty().id();
+
+        assert!(!address_focused(&mut world), "no focus resource");
+
+        world.insert_resource(InputFocus::default());
+        assert!(!address_focused(&mut world), "nothing focused");
+
+        world.insert_resource(InputFocus::from_entity(button));
+        assert!(!address_focused(&mut world), "a button focused");
+
+        world.insert_resource(InputFocus::from_entity(address));
+        assert!(address_focused(&mut world), "the address field focused");
+    }
 
     #[test]
     fn shows_a_reason_set_while_in_the_menu() {

@@ -22,9 +22,9 @@ cargo run
 ```
 
 This opens the main menu. One player picks **Host game**. The others type the host's address
-(for example `192.168.1.10`, or `192.168.1.10:5000`) and press **Join** or `Enter`. The field
-starts as `127.0.0.1:5000`, a host on the same machine. The host listens on port 5000 on every
-network interface (`HOST_ADDR` in `src/config.rs`), so players on the same network can join if
+(for example `192.168.1.10`, or `192.168.1.10:5000`) and press **Join**, or `Enter` in the
+field. The field starts as `127.0.0.1:5000`, a host on the same machine. The host listens on port
+5000 on every network interface (`HOST_ADDR` in `src/config.rs`), so players on the same network can join if
 the firewall allows UDP on that port.
 
 Everyone who joins waits in the lobby, which lists the players. When at least two are there, the
