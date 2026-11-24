@@ -5,7 +5,7 @@ use crate::config::display::{VIEW_HEIGHT, VIEW_WIDTH};
 
 /// Marker component for the main game camera.
 #[derive(Component)]
-pub struct MainCamera;
+struct MainCamera;
 
 /// Spawn the main 2D camera.
 ///
