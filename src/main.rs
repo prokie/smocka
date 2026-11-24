@@ -1,3 +1,4 @@
+use bevy::ecs::error::warn;
 use bevy::prelude::*;
 use smocka::config::network::{HOST_ADDR, SERVER_ADDR};
 use smocka::menu::{MenuPlugin, parse_address};
@@ -43,7 +44,8 @@ fn main() {
     app.add_systems(Startup, move |mut commands: Commands| match launch {
         Launch::Menu => {}
         Launch::Host => commands.queue(HostSession { addr: HOST_ADDR }),
-        Launch::Join(addr) => commands.queue(JoinSession { addr }),
+        // A failure stays in the main menu, which shows why.
+        Launch::Join(addr) => commands.queue_handled(JoinSession { addr }, warn),
     });
 
     app.run();

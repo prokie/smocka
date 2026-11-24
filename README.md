@@ -47,7 +47,9 @@ client is decided by queuing one of these commands (the menu does it for you):
 
 - `HostSession` starts a UDP server and a local client linked directly to it.
 - `JoinSession` connects to a host over UDP using netcode authentication. Each join uses a new
-  local port, so a host never mistakes a returning player for their old connection.
+  local port, so a host never mistakes a returning player for their old connection. If the
+  netcode client can't be set up, it returns an error and changes nothing but `SessionEndReason`,
+  so the app stays in the menu and shows why.
 - `LeaveSession` goes back to the menu. Entering the menu disconnects the client and, on the
   host, stops the server, which disconnects everyone else.
 

@@ -23,6 +23,7 @@ mod results;
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
+use bevy::ecs::error::warn;
 use bevy::input_focus::AutoFocus;
 use bevy::picking::hover::Hovered;
 use bevy::prelude::*;
@@ -94,7 +95,7 @@ impl Plugin for MenuPlugin {
             Update,
             (
                 style_buttons,
-                join_on_enter.run_if(in_state(AppState::MainMenu)),
+                (join_on_enter, show_session_end_reason).run_if(in_state(AppState::MainMenu)),
                 leave_on_escape.run_if(not(in_state(AppState::MainMenu))),
                 lobby::update_lobby_screen.run_if(in_state(SessionPhase::Lobby)),
                 results::update_results_screen.run_if(in_state(SessionPhase::Results)),
@@ -293,7 +294,8 @@ fn join_on_enter(
 fn join(typed: &str, commands: &mut Commands, message: &mut Query<&mut Text, With<MenuMessage>>) {
     match parse_address(typed) {
         Some(addr) => {
-            commands.queue(JoinSession { addr });
+            // A failure leaves the app in this menu, and `show_session_end_reason` shows why.
+            commands.queue_handled(JoinSession { addr }, warn);
         }
         None => {
             for mut text in message.iter_mut() {
@@ -302,6 +304,23 @@ fn join(typed: &str, commands: &mut Commands, message: &mut Query<&mut Text, Wit
                     typed.trim()
                 );
             }
+        }
+    }
+}
+
+/// While in the main menu, show a newly set [`SessionEndReason`] in the [`MenuMessage`], such as a
+/// [`JoinSession`] that failed before leaving the menu. The menu reads the reason when it is
+/// spawned too, for sessions that ended elsewhere.
+fn show_session_end_reason(
+    reason: Res<SessionEndReason>,
+    mut message: Query<&mut Text, With<MenuMessage>>,
+) {
+    if !reason.is_changed() {
+        return;
+    }
+    if let Some(text) = &reason.0 {
+        for mut line in &mut message {
+            line.0.clone_from(text);
         }
     }
 }
@@ -334,9 +353,26 @@ pub fn parse_address(typed: &str) -> Option<SocketAddr> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_address;
+    use super::{MenuMessage, SessionEndReason, parse_address, show_session_end_reason};
     use crate::config::network::SERVER_PORT;
+    use bevy::prelude::*;
     use std::net::SocketAddr;
+
+    #[test]
+    fn shows_a_reason_set_while_in_the_menu() {
+        let mut world = World::new();
+        world.init_resource::<SessionEndReason>();
+        let message = world.spawn((MenuMessage, Text::new(""))).id();
+        let mut system = IntoSystem::into_system(show_session_end_reason);
+        system.initialize(&mut world);
+
+        system.run((), &mut world).unwrap();
+        assert_eq!(world.get::<Text>(message).unwrap().0, "");
+
+        world.resource_mut::<SessionEndReason>().0 = Some("Couldn't join.".into());
+        system.run((), &mut world).unwrap();
+        assert_eq!(world.get::<Text>(message).unwrap().0, "Couldn't join.");
+    }
 
     fn addr(text: &str) -> SocketAddr {
         text.parse().unwrap()

@@ -82,7 +82,12 @@ impl Command for HostSession {
 
 /// Command: connect to the host at `addr` over UDP.
 ///
-/// Queue it with `commands.queue(JoinSession { addr })`, or apply it directly with `.apply(world)`.
+/// The netcode client is built before anything else changes, so if that fails the app stays where
+/// it was (in the main menu), [`SessionEndReason`] says why, and the error is returned.
+///
+/// Queue it with `commands.queue_handled(JoinSession { addr }, warn)` (the player already sees the
+/// reason, so the error only needs logging), or apply it directly with `.apply(world)`. A plain
+/// `commands.queue` hands a failure to Bevy's default error handler, which panics.
 #[derive(Debug, Clone, Copy)]
 pub struct JoinSession {
     pub addr: SocketAddr,
@@ -92,7 +97,6 @@ impl Command for JoinSession {
     type Out = Result;
 
     fn apply(self, world: &mut World) -> Result {
-        start_new_session(world);
         let addr = self.addr;
         let client_id = new_client_id();
 
@@ -103,7 +107,17 @@ impl Command for JoinSession {
             protocol_id: PROTOCOL_ID,
         };
 
-        let netcode = NetcodeClient::new(auth, client::NetcodeConfig::default())?;
+        let netcode = match NetcodeClient::new(auth, client::NetcodeConfig::default()) {
+            Ok(netcode) => netcode,
+            Err(error) => {
+                if let Some(mut reason) = world.get_resource_mut::<SessionEndReason>() {
+                    reason.0 = Some(format!("Couldn't set up a connection to {addr}."));
+                }
+                return Err(error.into());
+            }
+        };
+
+        start_new_session(world);
 
         // Reuse the client from an earlier join, if there is one (see `start_new_session`).
         let earlier = world
