@@ -167,7 +167,8 @@ Pong's game logic runs in a fixed order each tick, set by the `PongSystems` syst
 move first, then the ball (so it collides with this tick's paddles), then scoring. The host
 alone moves the ball and keeps the score: when the ball leaves through the left or right edge, it
 adds a goal to the replicated `PongScore` and serves the ball again from the centre, towards the
-player who conceded. The first to `PongRules::goals_to_win` (5 by default, `GOALS_TO_WIN`) wins.
+player who conceded. The first to `PongRules::goals_to_win` (5 by default, `GOALS_TO_WIN`) wins;
+the winning goal isn't re-served, and no more goals count once the game is won.
 If a paddle's player leaves, the game is abandoned. Each paddle hit makes the ball faster (`BALL_HIT_SPEEDUP`, up to
 `BALL_MAX_SPEED` in `src/config.rs`), and every serve starts at the serve speed again.
 

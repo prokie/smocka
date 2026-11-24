@@ -1,9 +1,10 @@
 //! Scoring and the end of the game: when the ball leaves the arena past a paddle, the other side
 //! gets a point, and the first to [`PongRules::goals_to_win`] wins.
 //!
-//! The host keeps the score in a single replicated [`PongScore`] entity. After each goal it puts
-//! the ball back in the centre and serves it towards the side that conceded. When someone wins, or
-//! a paddle's player leaves, it hands control back to the session with [`MinigameEnded`].
+//! The host keeps the score in a single replicated [`PongScore`] entity. After each goal that
+//! doesn't end the game it puts the ball back in the centre and serves it towards the side that
+//! conceded. When someone wins, or a paddle's player leaves, it hands control back to the session
+//! with [`MinigameEnded`].
 
 use bevy::prelude::*;
 use lightyear::prelude::*;
@@ -56,6 +57,13 @@ impl PongScore {
             Side::Right => self.right += 1,
         }
     }
+
+    /// The side that has reached `goals_to_win`, if either has.
+    pub fn winner(&self, goals_to_win: u32) -> Option<Side> {
+        [Side::Left, Side::Right]
+            .into_iter()
+            .find(|&side| self.of(side) >= goals_to_win)
+    }
 }
 
 /// Registers the replicated [`PongScore`], the host's goal detection, and how the game ends.
@@ -95,8 +103,8 @@ fn spawn_score(mut commands: Commands) {
     ));
 }
 
-/// Host only: if the ball has left the arena, count the goal and serve the ball again. If that was
-/// the winning goal, end the game.
+/// Host only: if the ball has left the arena, count the goal. If that was the winning goal, end the
+/// game and leave the ball where it went out; otherwise serve it again from the centre.
 fn score_goals(
     mut balls: Query<(&mut BallPosition, &mut BallVelocity)>,
     mut score: Single<&mut PongScore>,
@@ -104,15 +112,20 @@ fn score_goals(
     rules: Res<PongRules>,
     mut commands: Commands,
 ) {
+    // The phase only changes at the start of the next frame, so more ticks can run after the
+    // winning goal. The ball is left where it went out, so don't count it again.
+    if score.winner(rules.goals_to_win).is_some() {
+        return;
+    }
     for (mut position, mut velocity) in &mut balls {
         let Some(scorer) = scorer(position.0) else {
             continue;
         };
         score.add_goal(scorer);
-        position.0 = Vec2::ZERO;
-        velocity.0 = serve_velocity(scorer.opponent());
 
-        if score.of(scorer) < rules.goals_to_win {
+        if score.winner(rules.goals_to_win).is_none() {
+            position.0 = Vec2::ZERO;
+            velocity.0 = serve_velocity(scorer.opponent());
             continue;
         }
         let winner = paddles.iter().find(|paddle| paddle.side == scorer);
@@ -176,5 +189,17 @@ mod tests {
         score.add_goal(Side::Left);
         score.add_goal(Side::Right);
         assert_eq!((score.of(Side::Left), score.of(Side::Right)), (2, 1));
+    }
+
+    #[test]
+    fn nobody_wins_below_the_goal_count() {
+        let score = PongScore { left: 2, right: 2 };
+        assert_eq!(score.winner(3), None);
+    }
+
+    #[test]
+    fn the_side_that_reaches_the_goal_count_wins() {
+        assert_eq!(PongScore { left: 3, right: 1 }.winner(3), Some(Side::Left));
+        assert_eq!(PongScore { left: 0, right: 3 }.winner(3), Some(Side::Right));
     }
 }
