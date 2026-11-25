@@ -130,6 +130,29 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
       order.
 - [ ] **Points across games**: a score per `Player`, and a standings screen after each result.
 - [ ] **Player limits per minigame**: min and max players on `Minigame`. Pong needs exactly 2.
+      Needed by tournaments (below).
+- [ ] **Tournaments for minigames with fewer seats than players.** Pong takes 2 players, so with
+      more in the session, play a knockout bracket instead of leaving the rest to watch. Today
+      `spawn_paddles` just picks the two lowest-numbered players.
+  - Bracket: seed the players (randomly, or by points later), give byes when the count isn't a
+    power of 2 (3 players: one bye), and let winners advance to a final. The tournament winner
+    is the minigame's result.
+  - The session decides who plays each match and tells the minigame (a list of participants), so
+    minigames stop picking players themselves.
+  - **Matches one after another** (do this first): one match at a time, everyone else watches,
+    with a short "next match" screen in between. Simple, but slow with many players: 8 players
+    is 7 matches.
+  - **Matches at the same time** (later): every entity needs a match id, because Pong assumes
+    one of everything (`Single<&mut PongScore>`, one ball, and `abandon_without_both_players`
+    counts every paddle). Lightyear's rooms (`RoomPlugin` / `RoomId`, in `lightyear_replication`'s
+    visibility module) can limit which matches each client receives.
+  - Someone who leaves mid-tournament loses their match by walkover and their opponent advances.
+    Only abandon if fewer than two players are left.
+  - Log the bracket and each match's result with `info!`.
+- [ ] **Spectating when knocked out** (or waiting for your next match). With matches one after
+      another, it's the normal view plus a "Watching: Player 2 vs Player 4" label and the
+      bracket. With matches at the same time, spectators pick which match to watch (a key to
+      cycle through them), so they need to receive every match.
 - [ ] **The board/hub** that picks the next minigame.
 
 ## Loose ends

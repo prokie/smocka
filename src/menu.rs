@@ -2,8 +2,6 @@ mod lobby;
 mod notices;
 mod results;
 
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-
 use bevy::ecs::error::warn;
 use bevy::input_focus::{AutoFocus, InputFocus};
 use bevy::picking::hover::Hovered;
@@ -12,6 +10,7 @@ use bevy::text::{EditableText, TextCursorStyle};
 use bevy::ui::{InteractionDisabled, Pressed};
 use bevy::ui_widgets::{Activate, Button, TextInput};
 use bevy::window::WindowCloseRequested;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use crate::app_state::{AppState, SessionEndReason};
 use crate::config::network::{HOST_ADDR, SERVER_ADDR, SERVER_PORT};
