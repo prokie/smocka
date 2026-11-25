@@ -1,5 +1,3 @@
-//! Commands that start, join and leave a session.
-
 use crate::app_state::{AppState, SessionEndReason};
 use crate::config::network::{PRIVATE_KEY, PROTOCOL_ID};
 use bevy::ecs::resource::IsResource;
@@ -12,11 +10,8 @@ use lightyear::prelude::{
 };
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
-/// Get ready for a new session: remove the server and host client left over from the last time
-/// this app hosted, forget why the last session ended, and go to [`AppState::Connecting`].
-///
-/// Old entities are only removed here, not when leaving, so that their goodbye packets have time
-/// to be sent.
+/// Old server and host-client entities are only removed here, not when leaving, so their goodbye
+/// packets have time to be sent.
 ///
 /// A joining client is never removed: Lightyear stores client-side resources (such as the
 /// prediction manager) on it, so it must live as long as the app. [`JoinSession`] reuses it.
@@ -39,9 +34,7 @@ fn start_new_session(world: &mut World) {
     }
 }
 
-/// Command: start a server on `addr` and a local client in this process (the player hosting the session).
-///
-/// Queue it with `commands.queue(HostSession { addr })`, or apply it directly with `.apply(world)`.
+/// Command: start a server on `addr` and a local client in this process.
 #[derive(Debug, Clone, Copy)]
 pub struct HostSession {
     pub addr: SocketAddr,
@@ -82,12 +75,8 @@ impl Command for HostSession {
 
 /// Command: connect to the host at `addr` over UDP.
 ///
-/// The netcode client is built before anything else changes, so if that fails the app stays where
-/// it was (in the main menu), [`SessionEndReason`] says why, and the error is returned.
-///
-/// Queue it with `commands.queue_handled(JoinSession { addr }, warn)` (the player already sees the
-/// reason, so the error only needs logging), or apply it directly with `.apply(world)`. A plain
-/// `commands.queue` hands a failure to Bevy's default error handler, which panics.
+/// On failure the app stays in the menu and [`SessionEndReason`] says why. Queue it with
+/// `commands.queue_handled(JoinSession { addr }, warn)`: a plain `commands.queue` panics on error.
 #[derive(Debug, Clone, Copy)]
 pub struct JoinSession {
     pub addr: SocketAddr,
@@ -157,21 +146,14 @@ impl Command for JoinSession {
     }
 }
 
-/// A netcode client id for a joining client: random, and never 0.
-///
-/// The client picks its own id, and the host refuses a connection whose id is already connected
-/// (the joiner just times out with "Couldn't connect to the host"). A random 64-bit id makes two
-/// players picking the same one practically impossible. Don't derive it from the clock: clients
-/// started at about the same time can get the same value.
+/// Random and never 0. The host refuses an id that is already connected, so don't derive it from
+/// the clock: clients started at about the same time would collide.
 fn new_client_id() -> u64 {
     rand::random_range(1..=u64::MAX)
 }
 
-/// Command: leave the current session (or stop connecting to one) and go back to the main menu.
-///
-/// This only switches to [`AppState::MainMenu`]. Entering the menu then disconnects this app's
-/// client and stops its server, so it works the same whether the player or a lost connection
-/// ended the session.
+/// Command: leave the session (or stop connecting) and go back to the main menu, which then runs
+/// [`close_session`].
 #[derive(Debug, Clone, Copy)]
 pub struct LeaveSession;
 
@@ -186,15 +168,11 @@ impl Command for LeaveSession {
     }
 }
 
-/// Disconnect this app's client and stop its server, if they are still running. A hosting player
-/// stopping the server disconnects everyone else too.
+/// Disconnect this app's client and stop its server. Runs on entering the main menu and when the
+/// window is closed.
 ///
-/// Runs on entering the main menu. The menu also runs it when the window is closed, since the app
-/// exits before it would get back to the menu.
-///
-/// This runs during the state transition, before `PostUpdate`, so the goodbye packets are sent
-/// this frame, before Lightyear despawns the server's client links in the next one. Otherwise
-/// the other players would only notice when their connection times out.
+/// It must run before `PostUpdate`, so goodbye packets go out before Lightyear despawns the
+/// server's client links; otherwise other players only notice when their connection times out.
 pub fn close_session(
     clients: Query<Entity, (With<Client>, Without<Disconnected>)>,
     servers: Query<Entity, (With<Server>, With<Started>)>,

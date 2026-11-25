@@ -1,22 +1,3 @@
-//! What the session is doing right now (waiting in the lobby, playing a minigame, or showing its
-//! results), decided by the host and followed by every peer.
-//!
-//! [`SessionPhase`] is a sub-state of [`AppState::InSession`]: it only exists while this app is in
-//! a session, and is removed (running `OnExit` and [`DespawnOnExit`]) when the app goes back to
-//! the menu.
-//!
-//! Bevy [`States`] only exist inside one app, so they can't be replicated directly. Instead:
-//!
-//! 1. The host spawns one [`CurrentPhase`] entity and replicates it to every client.
-//! 2. Only the host changes [`CurrentPhase`]: [`StartMinigame`] leaves the lobby, a minigame
-//!    triggers [`MinigameEnded`] when it is over, and the results return to the lobby by
-//!    themselves after [`RESULTS_DURATION`].
-//! 3. Every peer, host included, copies [`CurrentPhase`] into its local [`SessionPhase`] state
-//!    (see `follow_phase`).
-//!
-//! Gameplay code then uses ordinary Bevy state tools, the same way on every peer:
-//! `OnEnter(SessionPhase::TwoPlayerPong)`, `run_if(in_state(...))` and `DespawnOnExit(...)`.
-
 use bevy::prelude::*;
 use lightyear::prelude::{server::Started, *};
 use serde::{Deserialize, Serialize};
@@ -55,7 +36,8 @@ impl SessionPhase {
 
 /// The host's decision about the [`SessionPhase`], replicated to every client.
 ///
-/// There is exactly one, spawned by the host when its server starts.
+/// Bevy states can't be replicated, so only the host changes this, and every peer (host included)
+/// copies it into its local [`SessionPhase`].
 #[derive(Component, Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 pub struct CurrentPhase(pub SessionPhase);
 
@@ -69,10 +51,8 @@ pub struct MinigameResult {
     pub summary: String,
 }
 
-/// Host only: trigger this (`commands.trigger(...)`) when the current minigame is over.
-///
-/// This is how a minigame hands control back to the session. Triggering it outside a minigame,
-/// or more than once for the same game, does nothing.
+/// Host only: trigger this when the current minigame is over. Triggering it outside a minigame,
+/// or more than once, does nothing.
 #[derive(Event, Debug, Clone, PartialEq, Eq)]
 pub enum MinigameEnded {
     /// Someone won: show the result, then go back to the lobby.
@@ -85,12 +65,8 @@ pub enum MinigameEnded {
 #[derive(Resource, Debug)]
 struct ResultsTimer(Timer);
 
-/// Registers the session state, its replicated components, and the host's phase changes.
-///
-/// Must be added after [`NetworkPlugin`](crate::network::NetworkPlugin) and
-/// [`AppStatePlugin`](crate::app_state::AppStatePlugin), and before
-/// [`MinigamesPlugin`](crate::minigames::MinigamesPlugin): it registers replicated components,
-/// its state is a sub-state of [`AppState`], and minigames use [`SessionPhase`].
+/// Must be added after [`AppStatePlugin`](crate::app_state::AppStatePlugin) and before
+/// [`MinigamesPlugin`](crate::minigames::MinigamesPlugin).
 pub struct SessionPlugin;
 
 impl Plugin for SessionPlugin {
@@ -118,11 +94,8 @@ impl Plugin for SessionPlugin {
     }
 }
 
-/// Command: the host starts the given [`Minigame`] from the lobby.
-///
-/// Does nothing (apart from a log line) unless this app is hosting, the session is in the lobby,
-/// and at least [`MIN_PLAYERS`] players are connected. For now the host picks the minigame in the
-/// lobby; a board or vote will pick it later.
+/// Command: the host starts a [`Minigame`] from the lobby. Refused unless hosting, in the lobby,
+/// with at least [`MIN_PLAYERS`] players.
 #[derive(Debug, Clone, Copy)]
 pub struct StartMinigame(pub Minigame);
 
@@ -160,8 +133,6 @@ pub fn can_start(players: usize) -> bool {
     players >= MIN_PLAYERS
 }
 
-/// Host only: when the server starts, spawn the [`CurrentPhase`] entity that clients will follow.
-/// It is removed when the host goes back to the menu.
 fn spawn_current_phase(_trigger: On<Add<Started>>, mut commands: Commands) {
     commands.spawn((
         Name::from("CurrentPhase"),
@@ -171,7 +142,6 @@ fn spawn_current_phase(_trigger: On<Add<Started>>, mut commands: Commands) {
     ));
 }
 
-/// Host only: when a minigame ends, show its result or go straight back to the lobby.
 fn end_minigame(
     trigger: On<MinigameEnded>,
     mut phase: Single<&mut CurrentPhase>,
@@ -198,12 +168,10 @@ fn end_minigame(
     }
 }
 
-/// Host only: when the results appear, start counting down to the lobby.
 fn start_results_timer(mut commands: Commands) {
     commands.insert_resource(ResultsTimer(Timer::new(RESULTS_DURATION, TimerMode::Once)));
 }
 
-/// Host only: go back to the lobby once the results have been up for [`RESULTS_DURATION`].
 fn return_to_lobby_after_results(
     time: Res<Time>,
     timer: Option<ResMut<ResultsTimer>>,
@@ -217,10 +185,8 @@ fn return_to_lobby_after_results(
     }
 }
 
-/// Every peer: if the local [`SessionPhase`] differs from the host's [`CurrentPhase`], switch to it.
-///
-/// This compares instead of waiting for [`CurrentPhase`] to change: a joiner can receive it before
-/// its [`SessionPhase`] exists (while still [`AppState::Connecting`]), and must still pick it up.
+/// Compares instead of waiting for [`CurrentPhase`] to change: a joiner can receive it before its
+/// [`SessionPhase`] exists, and must still pick it up.
 fn follow_phase(
     phase: Option<Single<&CurrentPhase>>,
     state: Option<Res<State<SessionPhase>>>,

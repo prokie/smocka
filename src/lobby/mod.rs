@@ -1,8 +1,3 @@
-//! Who is in the session: one replicated [`Player`] per connected person, independent of any minigame.
-//!
-//! When someone leaves, every peer still in the session gets a [`PlayerLeft`] event, so it can
-//! tell its player who went.
-
 use bevy::prelude::*;
 use lightyear::prelude::{server::ClientOf, *};
 use serde::{Deserialize, Serialize};
@@ -13,7 +8,6 @@ use crate::app_state::AppState;
 /// and replicated to everyone.
 #[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 pub struct Player {
-    /// The player's network id.
     pub id: PeerId,
     /// Shown to people as "Player {number}". Given out in joining order, starting at 1 for the
     /// host, and not reused in the same session.
@@ -21,7 +15,6 @@ pub struct Player {
 }
 
 impl Player {
-    /// The name shown for this player.
     pub fn name(&self) -> String {
         format!("Player {}", self.number)
     }
@@ -45,8 +38,7 @@ const PLAYER_COLORS: [Color; 8] = [
     Color::srgb(1.0, 0.55, 0.85), // pink
 ];
 
-/// The colour for the player with [`Player::number`] `number`. Numbers past the last colour start
-/// again from the first.
+/// Numbers past the last colour wrap around.
 pub fn player_color(number: u32) -> Color {
     PLAYER_COLORS[(number.saturating_sub(1) as usize) % PLAYER_COLORS.len()]
 }
@@ -86,10 +78,7 @@ pub fn local_peer_id(clients: &Query<&LocalId, (With<Client>, With<Connected>)>)
     clients.iter().next().map(|id| id.0)
 }
 
-/// When a client connects, the host spawns its [`Player`].
-///
-/// `ClientOf` limits this to the host's side of each connection. `ControlledBy` with the default
-/// session-based lifetime despawns the player again when that client disconnects.
+/// `ControlledBy` with the default lifetime despawns the player when its client disconnects.
 fn spawn_player(
     trigger: On<Add<Connected>>,
     clients: Query<&RemoteId, With<ClientOf>>,
@@ -117,12 +106,7 @@ fn spawn_player(
     info!("{} ({:?}) joined", player.name(), remote_id.0);
 }
 
-/// When a [`Player`] is removed while this app is connected and in a session, trigger
-/// [`PlayerLeft`].
-///
-/// On the host the player is despawned with its client's connection; on clients its replicated
-/// despawn arrives. Players removed because this app left (it is back in the menu, or its client is
-/// no longer [`Connected`]) are not announced.
+/// Players removed because this app itself left are not announced.
 fn announce_player_left(
     trigger: On<Remove<Player>>,
     players: Query<&Player>,
@@ -141,7 +125,6 @@ fn announce_player_left(
     commands.trigger(PlayerLeft(*player));
 }
 
-/// Number the players of the next hosted session from 1 again.
 fn reset_player_numbers(mut next_number: ResMut<NextPlayerNumber>) {
     *next_number = NextPlayerNumber::default();
 }

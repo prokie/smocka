@@ -1,12 +1,3 @@
-//! Racing: every player drives a car around a single-screen top-down track, and the first to
-//! finish the laps wins.
-//!
-//! So far each player gets a car to drive around an empty screen. There is no track, and the race
-//! never ends: press `Esc` to leave.
-//!
-//! Cars don't collide with each other. Each car is predicted for its driver and interpolated for
-//! everyone else, the same way as Pong's paddles.
-
 pub mod car;
 mod racing_input;
 mod visuals;

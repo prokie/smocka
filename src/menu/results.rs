@@ -1,5 +1,3 @@
-//! The results screen: who won the last minigame, and how long until the lobby.
-
 use bevy::prelude::*;
 use lightyear::prelude::*;
 
@@ -21,7 +19,6 @@ pub struct SummaryText;
 #[derive(Component)]
 pub struct LobbyCountdown(Timer);
 
-/// When the results appear, show them. The text fills in once the result has arrived.
 pub(super) fn spawn_results_screen(mut commands: Commands) {
     commands.spawn((
         screen(SessionPhase::Results),
@@ -39,7 +36,6 @@ pub(super) fn spawn_results_screen(mut commands: Commands) {
 /// Excludes the winner and summary lines, so the countdown's text can be borrowed alongside them.
 type NotHeadlines = (Without<WinnerText>, Without<SummaryText>);
 
-/// Keep the results text up to date with the replicated [`MinigameResult`] and the countdown.
 pub(super) fn update_results_screen(
     time: Res<Time>,
     result: Option<Single<&MinigameResult>>,
@@ -72,7 +68,6 @@ pub(super) fn update_results_screen(
     }
 }
 
-/// The results headline for `winner`, from the point of view of the player with id `you`.
 pub fn headline(winner: Option<&Player>, you: Option<PeerId>) -> String {
     match winner {
         Some(winner) if Some(winner.id) == you => "You win!".into(),

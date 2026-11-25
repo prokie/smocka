@@ -1,5 +1,3 @@
-//! The minigames: which ones exist ([`Minigame`]), and the plugins that run them.
-
 mod four_player_pong;
 pub mod racing;
 pub mod two_player_pong;
@@ -38,10 +36,7 @@ impl Minigame {
     }
 }
 
-/// Registers every minigame's replicated components, inputs and game logic.
-///
-/// Replicated types must be registered in the same order on every peer, so keep the order of the
-/// plugins below the same everywhere.
+/// Replicated types must be registered in the same order on every peer: keep the plugin order.
 pub struct MinigamesPlugin;
 
 impl Plugin for MinigamesPlugin {
@@ -50,10 +45,7 @@ impl Plugin for MinigamesPlugin {
     }
 }
 
-/// Sprites and other local-only visuals for every minigame.
-///
-/// Kept separate from [`MinigamesPlugin`] because it needs a renderer and an asset server.
-/// The binary adds it next to [`CameraPlugin`](crate::camera::CameraPlugin), so tests can stay headless.
+/// Local-only visuals. Separate from [`MinigamesPlugin`] so tests can run headless.
 pub struct MinigameVisualsPlugin;
 
 impl Plugin for MinigameVisualsPlugin {

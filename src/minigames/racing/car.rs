@@ -1,9 +1,3 @@
-//! Cars: who drives them, where they are, and how input moves them.
-//!
-//! All of a car's motion lives in one component, [`CarState`], which is predicted for its driver
-//! and interpolated for everyone else. [`drive`] is the whole of the handling: a pure function of
-//! the state, this tick's input and the tick length, so Lightyear can re-run it during rollback.
-
 use std::f32::consts::{PI, TAU};
 
 use bevy::prelude::*;
@@ -25,18 +19,13 @@ use crate::session::SessionPhase;
 /// Who drives this car. Set once at spawn.
 #[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Car {
-    /// The driver's [`Player::id`].
     pub owner: PeerId,
-    /// The driver's [`Player::number`], kept here so the car can be coloured with
-    /// [`player_color`](crate::lobby::player_color) without looking the player up.
+    /// The driver's [`Player::number`], for [`player_color`](crate::lobby::player_color).
     pub number: u32,
 }
 
-/// Where a car is and how it is moving. Changes every tick.
-///
 /// Predicted for the driver and interpolated for everyone else. Everything [`drive`] reads or
-/// writes lives here: if part of it were in a component that isn't predicted, rollback would
-/// re-run [`drive`] from the wrong state.
+/// writes must live here, or rollback would re-run it from the wrong state.
 #[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 pub struct CarState {
     /// Centre of the car, in world units.
@@ -49,7 +38,6 @@ pub struct CarState {
 }
 
 impl CarState {
-    /// A car standing still at `position`, pointing along `heading`.
     pub fn parked(position: Vec2, heading: f32) -> Self {
         Self {
             position,
@@ -91,7 +79,6 @@ impl Plugin for CarPlugin {
     }
 }
 
-/// Host only: when the race starts, give every player a car on the starting grid, in joining order.
 fn spawn_cars(mut commands: Commands, players: Query<(&Player, &ControlledBy)>) {
     let mut players: Vec<_> = players.iter().collect();
     players.sort_by_key(|(player, _)| player.number);
@@ -122,32 +109,21 @@ fn spawn_cars(mut commands: Commands, players: Query<(&Player, &ControlledBy)>) 
     }
 }
 
-/// Where the car in starting `slot` (counting from 0) of `count` cars starts: a column on the left
-/// of the screen, centred vertically, with every car facing right.
+/// Start position of `slot` (from 0) of `count` cars: a column on the left, centred vertically.
 pub fn grid_position(slot: usize, count: usize) -> Vec2 {
     let offset = slot as f32 - (count.saturating_sub(1)) as f32 / 2.0;
     Vec2::new(GRID_X, -offset * GRID_SPACING)
 }
 
-/// Drive every car that has input with this tick's [`RacingInput`].
-///
-/// Runs on the host for every car (inputs from remote players arrive as [`ActionState`]) and on
-/// each client for its own predicted car. Other players' cars on a client have no `ActionState`
-/// and are interpolated instead.
+/// Runs on the host for every car and on each client for its own predicted one.
 fn drive_cars(time: Res<Time>, mut cars: Query<(&mut CarState, &ActionState<RacingInput>)>) {
     for (mut state, input) in &mut cars {
         *state = drive(*state, input.0, time.delta_secs());
     }
 }
 
-/// The car's state after driving for `dt` seconds with `input`.
-///
-/// - Throttle speeds the car up to [`MAX_SPEED`]; brake slows it down, then reverses up to
-///   [`MAX_REVERSE_SPEED`]. Pushing against the way the car is rolling always brakes.
-/// - With neither (or both) held, the car coasts to a stop.
-/// - Steering turns the car at up to [`TURN_RATE`], less when it is slow, and the other way when
-///   it reverses, like a real car.
-/// - The car stays on screen. Pushing into an edge limits it to [`EDGE_MAX_SPEED`].
+/// The car's state after driving for `dt` seconds with `input`. A pure function, so Lightyear can
+/// re-run it during rollback.
 pub fn drive(state: CarState, input: RacingInput, dt: f32) -> CarState {
     let pedal: f32 = match (input.throttle, input.brake) {
         (true, false) => 1.0,
@@ -188,7 +164,6 @@ pub fn drive(state: CarState, input: RacingInput, dt: f32) -> CarState {
     }
 }
 
-/// `speed` moved `amount` towards zero, without overshooting.
 fn approach_zero(speed: f32, amount: f32) -> f32 {
     if speed > 0.0 {
         (speed - amount).max(0.0)
@@ -202,9 +177,7 @@ fn wrap_angle(angle: f32) -> f32 {
     (angle + PI).rem_euclid(TAU) - PI
 }
 
-/// The angle a fraction `t` of the way from `start` to `end`, turning the short way round.
-///
-/// A plain lerp from just below `π` to just above `-π` would spin almost a full turn the wrong way.
+/// Turns the short way round: a plain lerp across `±π` would spin almost a full turn.
 fn lerp_angle(start: f32, end: f32, t: f32) -> f32 {
     wrap_angle(start + wrap_angle(end - start) * t)
 }

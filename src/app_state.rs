@@ -1,21 +1,7 @@
-//! What this app is doing: sitting in the main menu, connecting, or in a session.
-//!
-//! [`AppState`] is local to each peer and never replicated: only this machine decides whether it
-//! is in the menu. Inside a session, the host-decided [`SessionPhase`](crate::session::SessionPhase)
-//! takes over as a sub-state of [`AppState::InSession`].
-//!
-//! The network drives the transitions:
-//!
-//! - [`HostSession`](crate::network::HostSession) and [`JoinSession`](crate::network::JoinSession)
-//!   go to [`AppState::Connecting`].
-//! - When this app's client connects, it goes to [`AppState::InSession`].
-//! - When this app's client disconnects (the host left, the connection was lost or never came up),
-//!   or after [`LeaveSession`](crate::network::LeaveSession), it goes back to [`AppState::MainMenu`].
-
 use bevy::prelude::*;
 use lightyear::prelude::*;
 
-/// What this app is doing. Local to each peer.
+/// What this app is doing. Local to each peer and never replicated.
 #[derive(States, Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AppState {
     /// Choosing whether to host or join.
@@ -27,16 +13,11 @@ pub enum AppState {
     InSession,
 }
 
-/// Why the last session ended or failed to start, if it wasn't this player's choice.
-///
-/// Set when the app is sent back to the menu by a disconnect, so the menu can say why.
-/// Cleared when a new session starts.
+/// Why the last session ended or failed to start, if it wasn't this player's choice. Shown in the
+/// main menu; cleared when a new session starts.
 #[derive(Resource, Default, Debug, Clone, PartialEq, Eq)]
 pub struct SessionEndReason(pub Option<String>);
 
-/// Registers [`AppState`] and moves between its states as this app's client connects and
-/// disconnects.
-///
 /// Must be added before [`SessionPlugin`](crate::session::SessionPlugin), whose state is a
 /// sub-state of [`AppState`].
 pub struct AppStatePlugin;
@@ -50,7 +31,6 @@ impl Plugin for AppStatePlugin {
     }
 }
 
-/// When this app's client connects, enter the session.
 fn enter_session_when_connected(
     trigger: On<Add<Connected>>,
     clients: Query<(), With<Client>>,
@@ -62,11 +42,8 @@ fn enter_session_when_connected(
     }
 }
 
-/// When this app's client disconnects during a session (or while connecting), go back to the menu
-/// and remember why.
-///
 /// A joining client is created already [`Disconnected`] while the app is still in the menu; that
-/// is ignored, because the app hasn't left the menu yet.
+/// is ignored.
 fn return_to_menu_when_disconnected(
     trigger: On<Add<Disconnected>>,
     clients: Query<&Disconnected, With<Client>>,
@@ -92,8 +69,7 @@ fn return_to_menu_when_disconnected(
     next.set(AppState::MainMenu);
 }
 
-/// A short, player-facing explanation of why the connection ended while in `state`, or `None` if
-/// this player chose to leave.
+/// `None` if this player chose to leave.
 fn describe(reason: &DisconnectedReason, state: AppState) -> Option<String> {
     let text = match (reason, state) {
         (DisconnectedReason::UserRequested(_), _) => return None,

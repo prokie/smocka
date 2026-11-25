@@ -1,6 +1,3 @@
-//! Short messages that pop up during a session, such as "Player 2 left.", and go away by
-//! themselves after [`NOTICE_DURATION`].
-
 use std::time::Duration;
 
 use bevy::prelude::*;
@@ -9,12 +6,10 @@ use super::label;
 use crate::app_state::AppState;
 use crate::lobby::PlayerLeft;
 
-/// How long a notice stays on screen.
 pub const NOTICE_DURATION: Duration = Duration::from_secs(4);
-/// Background of a notice.
 const NOTICE_BACKGROUND: Color = Color::srgba(0.1, 0.1, 0.12, 0.85);
 
-/// The column near the bottom of the screen that notices are stacked in, newest last.
+/// Where notices (such as "Player 2 left.") stack up, newest last.
 #[derive(Component)]
 pub struct NoticeArea;
 
@@ -22,7 +17,6 @@ pub struct NoticeArea;
 #[derive(Component)]
 pub struct Notice(Timer);
 
-/// When a session starts, make room for its notices.
 pub(super) fn spawn_notice_area(mut commands: Commands) {
     commands.spawn((
         NoticeArea,
@@ -39,7 +33,6 @@ pub(super) fn spawn_notice_area(mut commands: Commands) {
     ));
 }
 
-/// When another player leaves, say so.
 pub(super) fn notice_player_left(
     trigger: On<PlayerLeft>,
     area: Query<Entity, With<NoticeArea>>,
@@ -53,7 +46,6 @@ pub(super) fn notice_player_left(
     }
 }
 
-/// A notice saying `text`.
 fn notice(text: String) -> impl Bundle {
     (
         Notice(Timer::new(NOTICE_DURATION, TimerMode::Once)),
@@ -67,7 +59,6 @@ fn notice(text: String) -> impl Bundle {
     )
 }
 
-/// Remove notices that have been up for [`NOTICE_DURATION`].
 pub(super) fn expire_notices(
     time: Res<Time>,
     mut notices: Query<(Entity, &mut Notice)>,

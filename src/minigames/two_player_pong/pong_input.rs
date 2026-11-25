@@ -37,10 +37,7 @@ impl Plugin for PongInputPlugin {
     }
 }
 
-/// Read the keyboard and record this tick's [`PongInput`] for the paddle this machine controls.
-///
-/// Only the locally controlled paddle has an [`InputMarker`], so `Single` matches at most one entity.
-/// If there is none (no game running, or this player isn't in it), the system is skipped.
+/// Only the locally controlled paddle has an [`InputMarker`]; spectators skip this system.
 fn buffer_pong_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut paddle: Single<&mut ActionState<PongInput>, With<InputMarker<PongInput>>>,
@@ -54,7 +51,6 @@ fn buffer_pong_input(
     };
 }
 
-/// When this machine gains control of a paddle, mark it as the one that receives local keyboard input.
 fn mark_controlled_paddle(
     trigger: On<Add<Controlled>>,
     paddles: Query<(), With<Paddle>>,

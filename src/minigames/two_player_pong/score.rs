@@ -1,11 +1,3 @@
-//! Scoring and the end of the game: when the ball leaves the arena past a paddle, the other side
-//! gets a point, and the first to [`PongRules::goals_to_win`] wins.
-//!
-//! The host keeps the score in a single replicated [`PongScore`] entity. After each goal that
-//! doesn't end the game it puts the ball back in the centre and serves it towards the side that
-//! conceded. When someone wins, or a paddle's player leaves, it hands control back to the session
-//! with [`MinigameEnded`].
-
 use bevy::prelude::*;
 use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -42,7 +34,6 @@ pub struct PongScore {
 }
 
 impl PongScore {
-    /// `side`'s score.
     pub fn of(&self, side: Side) -> u32 {
         match side {
             Side::Left => self.left,
@@ -50,7 +41,6 @@ impl PongScore {
         }
     }
 
-    /// Give `side` one more goal.
     pub fn add_goal(&mut self, side: Side) {
         match side {
             Side::Left => self.left += 1,
@@ -66,7 +56,6 @@ impl PongScore {
     }
 }
 
-/// Registers the replicated [`PongScore`], the host's goal detection, and how the game ends.
 pub struct ScorePlugin;
 
 impl Plugin for ScorePlugin {
@@ -94,7 +83,6 @@ impl Plugin for ScorePlugin {
     }
 }
 
-/// Host only: when Pong starts, spawn the score at 0–0.
 fn spawn_score(mut commands: Commands) {
     commands.spawn((
         PongScore::default(),
@@ -103,8 +91,6 @@ fn spawn_score(mut commands: Commands) {
     ));
 }
 
-/// Host only: if the ball has left the arena, count the goal. If that was the winning goal, end the
-/// game and leave the ball where it went out; otherwise serve it again from the centre.
 fn score_goals(
     mut balls: Query<(&mut BallPosition, &mut BallVelocity)>,
     mut score: Single<&mut PongScore>,
@@ -140,8 +126,6 @@ fn score_goals(
     }
 }
 
-/// Host only: if a paddle's player has left (their paddle is despawned with their connection),
-/// the game can't go on.
 fn abandon_without_both_players(paddles: Query<(), With<Paddle>>, mut commands: Commands) {
     let paddles = paddles.iter().len();
     if paddles < 2 {
@@ -150,8 +134,7 @@ fn abandon_without_both_players(paddles: Query<(), With<Paddle>>, mut commands: 
     }
 }
 
-/// The side that scores with the ball at `position`, if the ball is fully past the left or right
-/// edge. A ball off the left edge is a goal for the right side, and the other way round.
+/// The side that scores with the ball at `position`, once it is fully past an edge.
 pub fn scorer(position: Vec2) -> Option<Side> {
     if position.x < -GOAL_X {
         Some(Side::Right)

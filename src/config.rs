@@ -19,7 +19,6 @@ pub mod network {
     pub const PRIVATE_KEY: [u8; 32] = [0; 32];
 }
 
-/// Rules for the session as a whole, outside any one minigame.
 pub mod session {
     use std::time::Duration;
 
@@ -29,7 +28,6 @@ pub mod session {
     pub const RESULTS_DURATION: Duration = Duration::from_secs(5);
 }
 
-/// Rendering constants shared by every minigame.
 pub mod display {
     /// Width of the virtual screen in world units (one unit = one art pixel).
     ///

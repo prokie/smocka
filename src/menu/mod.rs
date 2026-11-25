@@ -1,23 +1,3 @@
-//! Menus and on-screen hints: the main menu, the connecting screen, and the in-session overlay.
-//!
-//! All local UI, driven by [`AppState`] and [`SessionPhase`]:
-//!
-//! - **Main menu** ([`AppState::MainMenu`]): host, join an address, or quit. Shows why the last
-//!   session ended, if it wasn't the player's choice.
-//! - **Connecting** ([`AppState::Connecting`]): a cancel button.
-//! - **In a session** ([`AppState::InSession`]): `Esc` leaves, and short notices (such as
-//!   "Player 2 left.") pop up near the bottom of the screen.
-//!   - **Lobby** ([`SessionPhase::Lobby`]): who is here; the host gets a start button per
-//!     minigame.
-//!   - **Results** ([`SessionPhase::Results`]): who won the last minigame, and a countdown to the
-//!     lobby.
-//!
-//! Closing the window also closes the session straight away, so the other players hear about it
-//! at once instead of waiting for the connection to time out.
-//!
-//! Needs a renderer, so the binary adds it next to the camera and minigame visuals; headless tests
-//! drive the same states through [`HostSession`], [`JoinSession`] and [`LeaveSession`] instead.
-
 mod lobby;
 mod notices;
 mod results;
@@ -39,31 +19,20 @@ use crate::minigames::Minigame;
 use crate::network::{HostSession, JoinSession, LeaveSession, close_session};
 use crate::session::{SessionPhase, StartMinigame};
 
-/// Background of a button that isn't hovered or pressed.
 const BUTTON_COLOR: Color = Color::srgb(0.15, 0.15, 0.18);
-/// Background of a hovered button.
 const BUTTON_HOVERED_COLOR: Color = Color::srgb(0.25, 0.25, 0.3);
-/// Background of a pressed button.
 const BUTTON_PRESSED_COLOR: Color = Color::srgb(0.35, 0.55, 0.85);
-/// Background of a button that can't be used right now.
 const BUTTON_DISABLED_COLOR: Color = Color::srgb(0.1, 0.1, 0.1);
-/// Colour of messages about a session that ended or an address that can't be used.
 const ERROR_COLOR: Color = Color::srgb(1.0, 0.45, 0.45);
-/// Colour of secondary text, such as hints.
 const HINT_COLOR: Color = Color::srgb(0.7, 0.7, 0.75);
 
 /// What a menu button does when activated.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuButton {
-    /// Host a session on [`HOST_ADDR`].
     Host,
-    /// Join the session at the address typed into the [`AddressInput`].
     Join,
-    /// Close the game.
     Quit,
-    /// Stop connecting and go back to the main menu.
     Cancel,
-    /// Host only: start this minigame from the lobby.
     Start(Minigame),
 }
 
@@ -71,11 +40,11 @@ pub enum MenuButton {
 #[derive(Component)]
 pub struct AddressInput;
 
-/// The line under the main menu buttons that explains what went wrong, if anything.
+/// The main menu line that explains what went wrong, if anything.
 #[derive(Component)]
 pub struct MenuMessage;
 
-/// Adds the menus and in-session hints.
+/// All local UI. Needs a renderer, so headless tests leave it out.
 pub struct MenuPlugin;
 
 impl Plugin for MenuPlugin {
@@ -112,7 +81,6 @@ impl Plugin for MenuPlugin {
     }
 }
 
-/// A full-screen node that centres its children in a column. Removed when leaving `state`.
 fn screen<S: States>(state: S) -> impl Bundle {
     (
         DespawnOnExit(state),
@@ -128,7 +96,6 @@ fn screen<S: States>(state: S) -> impl Bundle {
     )
 }
 
-/// A line of text in the given size and colour.
 fn label(text: impl Into<String>, size: f32, color: Color) -> impl Bundle {
     (
         Text::new(text),
@@ -140,7 +107,6 @@ fn label(text: impl Into<String>, size: f32, color: Color) -> impl Bundle {
     )
 }
 
-/// A clickable button labelled `text` that does `action`.
 fn menu_button(action: MenuButton, text: &str) -> impl Bundle {
     (
         action,
@@ -159,8 +125,6 @@ fn menu_button(action: MenuButton, text: &str) -> impl Bundle {
     )
 }
 
-/// The main menu: title, host, address field and join, quit, and the reason the last session
-/// ended (if any).
 fn spawn_main_menu(mut commands: Commands, reason: Res<SessionEndReason>) {
     commands.spawn((
         screen(AppState::MainMenu),
@@ -210,7 +174,6 @@ fn spawn_main_menu(mut commands: Commands, reason: Res<SessionEndReason>) {
     ));
 }
 
-/// The connecting screen: a message and a cancel button.
 fn spawn_connecting_screen(mut commands: Commands) {
     commands.spawn((
         screen(AppState::Connecting),
@@ -221,7 +184,6 @@ fn spawn_connecting_screen(mut commands: Commands) {
     ));
 }
 
-/// While in a session, remind the player how to leave.
 fn spawn_leave_hint(mut commands: Commands) {
     commands.spawn((
         DespawnOnExit(AppState::InSession),
@@ -235,7 +197,6 @@ fn spawn_leave_hint(mut commands: Commands) {
     ));
 }
 
-/// What [`style_buttons`] reads and writes on each button.
 type ButtonLook = (
     &'static Hovered,
     Has<Pressed>,
@@ -243,7 +204,6 @@ type ButtonLook = (
     &'static mut BackgroundColor,
 );
 
-/// Colour each button for its hover and press state.
 fn style_buttons(mut buttons: Query<ButtonLook, With<MenuButton>>) {
     for (hovered, pressed, disabled, mut background) in &mut buttons {
         let color = match (disabled, pressed, hovered.get()) {
@@ -256,7 +216,6 @@ fn style_buttons(mut buttons: Query<ButtonLook, With<MenuButton>>) {
     }
 }
 
-/// Do what a [`MenuButton`] says when it is clicked.
 fn on_menu_button(
     trigger: On<Activate>,
     buttons: Query<&MenuButton>,
@@ -284,10 +243,7 @@ fn on_menu_button(
     }
 }
 
-/// Whether the [`AddressInput`] has keyboard focus.
-///
-/// [`join_on_enter`] only runs then: when a button has focus, the button widget turns `Enter`
-/// into its own [`Activate`], and joining as well would do the wrong thing.
+/// Gates [`join_on_enter`]: a focused button already turns `Enter` into its own [`Activate`].
 fn address_input_focused(
     focus: Option<Res<InputFocus>>,
     address: Query<(), With<AddressInput>>,
@@ -297,9 +253,6 @@ fn address_input_focused(
         .is_some_and(|entity| address.contains(entity))
 }
 
-/// In the main menu, `Enter` in the address field joins the typed address, like the Join button.
-///
-/// Runs only while the field has focus (see [`address_input_focused`]).
 fn join_on_enter(
     keys: Res<ButtonInput<KeyCode>>,
     address: Single<&EditableText, With<AddressInput>>,
@@ -311,7 +264,6 @@ fn join_on_enter(
     }
 }
 
-/// Join the session at `typed`, or explain in the menu message why it isn't a usable address.
 fn join(typed: &str, commands: &mut Commands, message: &mut Query<&mut Text, With<MenuMessage>>) {
     match parse_address(typed) {
         Some(addr) => {
@@ -330,9 +282,7 @@ fn join(typed: &str, commands: &mut Commands, message: &mut Query<&mut Text, Wit
     }
 }
 
-/// While in the main menu, show a newly set [`SessionEndReason`] in the [`MenuMessage`], such as a
-/// [`JoinSession`] that failed before leaving the menu. The menu reads the reason when it is
-/// spawned too, for sessions that ended elsewhere.
+/// Shows a reason set while already in the menu, such as a [`JoinSession`] that failed.
 fn show_session_end_reason(
     reason: Res<SessionEndReason>,
     mut message: Query<&mut Text, With<MenuMessage>>,
@@ -347,18 +297,14 @@ fn show_session_end_reason(
     }
 }
 
-/// In a session or while connecting, `Esc` leaves and goes back to the main menu.
 fn leave_on_escape(keys: Res<ButtonInput<KeyCode>>, mut commands: Commands) {
     if keys.just_pressed(KeyCode::Escape) {
         commands.queue(LeaveSession);
     }
 }
 
-/// The address a player typed, as something to connect to.
-///
-/// Accepts an IPv4 address with or without a port (`192.168.1.10`, `192.168.1.10:5000`), or
-/// `localhost`. Without a port, [`SERVER_PORT`] is used. Host names other than `localhost` are not
-/// looked up, so this never blocks on DNS.
+/// Accepts an IPv4 address or `localhost`, with or without a port (default [`SERVER_PORT`]).
+/// Other host names are not looked up, so this never blocks on DNS.
 pub fn parse_address(typed: &str) -> Option<SocketAddr> {
     let typed = typed.trim();
     let (host, port) = match typed.rsplit_once(':') {
@@ -384,7 +330,6 @@ mod tests {
     use bevy::prelude::*;
     use std::net::SocketAddr;
 
-    /// Run [`address_input_focused`] once in `world`.
     fn address_focused(world: &mut World) -> bool {
         world.run_system_cached(address_input_focused).unwrap()
     }

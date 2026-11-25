@@ -1,6 +1,3 @@
-//! Two-player Pong: each player moves a paddle on their side of the arena, and scores when the
-//! ball gets past the other player's paddle.
-
 pub mod ball;
 mod collisions;
 pub mod paddles;

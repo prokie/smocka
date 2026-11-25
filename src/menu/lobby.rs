@@ -1,5 +1,3 @@
-//! The lobby screen: who is here, and (for the host) a button for each minigame to start it.
-
 use bevy::prelude::*;
 use bevy::ui::InteractionDisabled;
 use lightyear::prelude::*;
@@ -18,8 +16,6 @@ pub struct PlayerList;
 #[derive(Component)]
 pub struct LobbyHint;
 
-/// When the lobby opens, show the player list, plus a start button per [`Minigame`] if this app is
-/// hosting.
 pub(super) fn spawn_lobby_screen(hosting: Hosting, mut commands: Commands) {
     let root = commands
         .spawn((
@@ -43,7 +39,6 @@ pub(super) fn spawn_lobby_screen(hosting: Hosting, mut commands: Commands) {
         .with_child((LobbyHint, label("", 20.0, HINT_COLOR)));
 }
 
-/// Keep the player list, the hint and the start buttons up to date with who is connected.
 pub(super) fn update_lobby_screen(
     players: Query<&Player>,
     clients: Query<&LocalId, (With<Client>, With<Connected>)>,
@@ -99,7 +94,6 @@ pub fn player_list(players: &[&Player], you: Option<PeerId>) -> String {
         .join("\n")
 }
 
-/// What the lobby tells this player to expect.
 pub fn lobby_hint(hosting: bool, startable: bool) -> &'static str {
     match (hosting, startable) {
         (true, true) => "Pick a game when everyone is here.",

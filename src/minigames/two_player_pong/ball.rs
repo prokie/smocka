@@ -1,8 +1,3 @@
-//! The ball: spawned and moved by the host, replicated to every client.
-//!
-//! The host is the only peer that decides where the ball is. Clients interpolate it: they show
-//! it slightly in the past, smoothly moving between the positions the host sends.
-
 use bevy::prelude::*;
 use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -32,10 +27,7 @@ impl Ease for BallPosition {
     }
 }
 
-/// How fast and in which direction the ball moves, in world units per second.
-///
-/// Host only: it is not registered for replication, so clients never receive it. They only need
-/// the [`BallPosition`] to draw the ball.
+/// World units per second. Host only: not replicated, clients only need [`BallPosition`].
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 pub struct BallVelocity(pub Vec2);
 
@@ -64,7 +56,6 @@ impl Plugin for BallPlugin {
     }
 }
 
-/// Host only: when Pong starts, spawn the ball in the centre of the arena, served to the right.
 fn spawn_ball(mut commands: Commands) {
     commands.spawn((
         Ball,
@@ -76,7 +67,6 @@ fn spawn_ball(mut commands: Commands) {
     ));
 }
 
-/// Host only: move the ball one tick and bounce it off the walls and paddles.
 fn move_ball(
     time: Res<Time>,
     mut balls: Query<(&mut BallPosition, &mut BallVelocity)>,
@@ -98,11 +88,6 @@ pub fn serve_velocity(side: Side) -> Vec2 {
 }
 
 /// The ball's next position and velocity after moving for `dt` seconds past `paddles`.
-///
-/// The ball moves in a straight line, then bounces off the walls (see [`bounce_off_walls`]) and
-/// off the first paddle it hits (see [`hits_paddle`]). A paddle hit sends the ball back at an
-/// angle set by where it hit the paddle (see [`bounce_off_paddle`]) and makes it
-/// [`BALL_HIT_SPEEDUP`] times faster, up to [`BALL_MAX_SPEED`].
 fn step_ball(
     position: Vec2,
     velocity: Vec2,

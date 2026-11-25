@@ -1,5 +1,3 @@
-//! Paddles: who owns them, where they are, and how input moves them.
-
 use bevy::prelude::*;
 use lightyear::prelude::input::native::ActionState;
 use lightyear::prelude::*;
@@ -79,8 +77,7 @@ impl Side {
     }
 }
 
-/// Host only: when Pong starts, give the two lowest-numbered players a paddle each (the host is
-/// usually on the left). Other players watch.
+/// The two lowest-numbered players get a paddle; everyone else watches.
 fn spawn_paddles(mut commands: Commands, players: Query<(&Player, &ControlledBy)>) {
     let mut players: Vec<_> = players.iter().collect();
     players.sort_by_key(|(player, _)| player.number);
@@ -106,12 +103,8 @@ fn spawn_paddle(commands: &mut Commands, owner: PeerId, link: Entity, side: Side
     ));
 }
 
-/// Move every paddle that has input according to this tick's [`PongInput`].
-///
-/// Runs on the host for every paddle (inputs from remote players arrive as [`ActionState`]) and on
-/// each client for its own predicted paddle. Lightyear re-runs it during rollback, so it must only
-/// depend on the input and the current position. Other players' paddles on a client have no
-/// `ActionState` and are interpolated instead.
+/// Runs on the host for every paddle and on each client for its own predicted one. Lightyear
+/// re-runs it during rollback, so it must only depend on the input and the current position.
 fn move_paddles(
     time: Res<Time>,
     mut paddles: Query<(&mut PaddlePosition, &ActionState<PongInput>), With<Paddle>>,
@@ -121,7 +114,6 @@ fn move_paddles(
     }
 }
 
-/// The paddle's next `y` after moving for `dt` seconds with `input`, kept inside the arena.
 fn step(y: f32, input: PongInput, dt: f32) -> f32 {
     let direction = match input {
         PongInput::Up => 1.0,

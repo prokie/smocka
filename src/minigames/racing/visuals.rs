@@ -1,9 +1,3 @@
-//! Local-only rendering for racing: the ground and a sprite for each car.
-//!
-//! None of this is replicated. Each peer attaches sprites to the replicated cars it sees. The art
-//! lives in `assets/minigames/racing/`. Overwrite those PNGs to change how the game looks: no code
-//! changes are needed as long as the file names stay the same.
-
 use bevy::prelude::*;
 
 use super::car::{Car, CarState};
@@ -11,23 +5,20 @@ use crate::config::display::{VIEW_HEIGHT, VIEW_WIDTH};
 use crate::lobby::player_color;
 use crate::session::SessionPhase;
 
-/// Car image (16×10), pointing right. Drawn in white/grey and tinted per player.
+/// Points right. Drawn in white/grey and tinted per player.
 const CAR_IMAGE: &str = "minigames/racing/car.png";
 
-/// Colour of the ground the cars drive on, until there is track art.
+/// Until there is track art.
 const GROUND_COLOR: Color = Color::srgb(0.2, 0.42, 0.22);
 
 /// Draw order: higher values are drawn on top.
 const GROUND_Z: f32 = 0.0;
 const CAR_Z: f32 = 1.0;
 
-/// Marker for the local ground sprite.
 #[derive(Component)]
 pub struct Ground;
 
-/// Adds sprites to racing entities. Needs a renderer and an [`AssetServer`], so it is added by the
-/// binary (through [`MinigameVisualsPlugin`](crate::minigames::MinigameVisualsPlugin)), not by
-/// headless tests.
+/// Local-only sprites for racing.
 pub struct RacingVisualsPlugin;
 
 impl Plugin for RacingVisualsPlugin {
@@ -41,8 +32,6 @@ impl Plugin for RacingVisualsPlugin {
     }
 }
 
-/// When the race starts, cover the screen with plain ground. It is local to each peer and removed
-/// when the race ends.
 fn spawn_ground(mut commands: Commands) {
     commands.spawn((
         Ground,
@@ -52,7 +41,6 @@ fn spawn_ground(mut commands: Commands) {
     ));
 }
 
-/// When a car appears, give it a sprite in its driver's colour.
 fn add_car_sprite(
     trigger: On<Add<Car>>,
     cars: Query<&Car>,
@@ -71,7 +59,6 @@ fn add_car_sprite(
     ));
 }
 
-/// Move and turn each car sprite to match its (predicted or interpolated) [`CarState`].
 fn sync_car_transform(mut cars: Query<(&CarState, &mut Transform), With<Car>>) {
     for (state, mut transform) in &mut cars {
         transform.translation.x = state.position.x;

@@ -1,5 +1,3 @@
-//! The input a player sends each tick to drive their car, and the keyboard reading that fills it.
-
 use bevy::ecs::entity::{EntityMapper, MapEntities};
 use bevy::prelude::*;
 use lightyear::input::client::InputSystems;
@@ -11,14 +9,10 @@ use super::car::Car;
 use crate::session::SessionPhase;
 
 /// What a player is doing with their car this tick.
-///
-/// A struct rather than an enum (like Pong's input), because a driver can hold the throttle and
-/// steer at the same time.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default, Reflect)]
 pub struct RacingInput {
-    /// Speed up forwards.
     pub throttle: bool,
-    /// Slow down, then reverse once stopped.
+    /// Slows down, then reverses once stopped.
     pub brake: bool,
     /// `1` steers left (anticlockwise), `-1` right, `0` straight. Anything else counts as the
     /// nearest of those.
@@ -29,7 +23,6 @@ impl MapEntities for RacingInput {
     fn map_entities<M: EntityMapper>(&mut self, _entity_mapper: &mut M) {}
 }
 
-/// Registers [`RacingInput`] with Lightyear and reads the keyboard into it.
 pub struct RacingInputPlugin;
 
 impl Plugin for RacingInputPlugin {
@@ -46,10 +39,7 @@ impl Plugin for RacingInputPlugin {
     }
 }
 
-/// Read the keyboard and record this tick's [`RacingInput`] for the car this machine controls.
-///
-/// Only the locally controlled car has an [`InputMarker`], so `Single` matches at most one entity.
-/// If there is none (this player has no car), the system is skipped.
+/// Only the locally controlled car has an [`InputMarker`]; without one this system is skipped.
 fn buffer_racing_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut car: Single<&mut ActionState<RacingInput>, With<InputMarker<RacingInput>>>,
@@ -63,7 +53,6 @@ fn buffer_racing_input(
     };
 }
 
-/// When this machine gains control of a car, mark it as the one that receives local keyboard input.
 fn mark_controlled_car(
     trigger: On<Add<Controlled>>,
     cars: Query<(), With<Car>>,

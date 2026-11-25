@@ -1,11 +1,3 @@
-//! Collisions between the ball and the arena walls or the paddles.
-//!
-//! Only the top and bottom of the arena have walls. The left and right edges are open: a ball
-//! that leaves through one is a goal (see [`score`](super::score)).
-//!
-//! Plain functions on positions and velocities, with no ECS, so they are easy to unit-test. The
-//! ball systems in [`ball`](super::ball) call them every tick on the host.
-
 use bevy::math::Vec2;
 use bevy::shape::{Aabb2d, IntersectsVolume};
 
@@ -13,10 +5,7 @@ use crate::config::minigames::two_player_pong::{
     BALL_MAX_BOUNCE_ANGLE, BALL_MAX_Y, BALL_SIZE, PADDLE_HEIGHT, PADDLE_WIDTH,
 };
 
-/// Bounce the ball off the top and bottom walls.
-///
-/// If the ball has passed a wall, it is put back on that wall and its vertical velocity flips.
-/// The left and right edges are left alone, so the ball can leave through them.
+/// Bounce the ball off the top and bottom walls. The left and right edges are open (goals).
 pub fn bounce_off_walls(mut position: Vec2, mut velocity: Vec2) -> (Vec2, Vec2) {
     if position.y.abs() > BALL_MAX_Y {
         position.y = position.y.clamp(-BALL_MAX_Y, BALL_MAX_Y);
@@ -25,12 +14,8 @@ pub fn bounce_off_walls(mut position: Vec2, mut velocity: Vec2) -> (Vec2, Vec2) 
     (position, velocity)
 }
 
-/// Whether the ball at `ball` should bounce off the paddle at `paddle`.
-///
-/// It must overlap the paddle and be moving towards the edge that paddle guards (left paddle:
-/// moving left, right paddle: moving right). The direction check stops a ball that is already
-/// bouncing away from being caught by the same paddle again on the next tick, and lets a ball
-/// that got behind a paddle pass through it instead of bouncing off its back.
+/// The ball must overlap the paddle and move towards the edge it guards. The direction check stops
+/// a ball from being caught again on the next tick, and lets one behind the paddle pass through.
 pub fn hits_paddle(ball: Vec2, velocity: Vec2, paddle: Vec2) -> bool {
     let ball_box = Aabb2d::new(ball, Vec2::splat(BALL_SIZE / 2.0));
     let paddle_box = Aabb2d::new(paddle, Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT) / 2.0);
@@ -38,12 +23,8 @@ pub fn hits_paddle(ball: Vec2, velocity: Vec2, paddle: Vec2) -> bool {
     moving_towards_its_edge && ball_box.intersects(&paddle_box)
 }
 
-/// The ball's velocity after bouncing off the paddle at `paddle`, at the same speed.
-///
-/// Where the ball hits the paddle decides where it goes, so players can aim: a hit on the centre
-/// sends it straight back across the arena, and a hit further towards an end sends it off at a
-/// steeper angle in that direction, up to [`BALL_MAX_BOUNCE_ANGLE`] at the very end. The ball
-/// always leaves towards the other side of the arena, whatever angle it came in at.
+/// Same speed, aimed by where it hit: the centre sends it straight across, the ends at up to
+/// [`BALL_MAX_BOUNCE_ANGLE`].
 pub fn bounce_off_paddle(ball: Vec2, velocity: Vec2, paddle: Vec2) -> Vec2 {
     // -1 at the bottom end of the paddle, 0 at its centre, 1 at the top end. A ball overlapping
     // just past an end counts as hitting that end.
