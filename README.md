@@ -3,7 +3,7 @@
 A multiplayer party game in the style of *Pummel Party*, built with [Bevy](https://bevyengine.org/) and [Lightyear](https://github.com/cBournhonesque/lightyear). Players gather in a shared session and play a series of short minigames against each other.
 
 > **Status:** early development. Two minigames: two-player Pong (first to 5 goals) and Racing
-> (drivable cars, no track or finish yet).
+> (drivable cars on an oval track, no laps or finish yet).
 
 ## Requirements
 
@@ -34,12 +34,14 @@ cargo run -- join 192.168.1.10   # join another machine (port 5000 unless given)
 
 - **Pong:** `W` / `↑` up, `S` / `↓` down.
 - **Racing:** `W` / `↑` accelerate, `S` / `↓` brake and reverse, `A` / `←` and `D` / `→` steer.
+  `F3` draws the track's road edges over the art.
 
 ## Art
 
 Sprites live in `assets/minigames/<minigame>/` on a 640×360 virtual screen (one world unit is one
 pixel). Overwrite a PNG with the same name and size to replace it. Draw player-coloured parts in
-white or grey: the game tints them.
+white or grey: the game tints them. The racing track's art must match the shape set in
+`config::minigames::racing` (`TRACK_*` constants); press `F3` in a race to check.
 
 ## Development
 

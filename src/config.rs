@@ -127,9 +127,28 @@ pub mod minigames {
         /// turn away from it.
         pub const EDGE_MAX_SPEED: f32 = 40.0;
 
-        /// `x` of the starting grid's column of cars.
-        pub const GRID_X: f32 = -240.0;
-        /// Distance between neighbouring cars on the starting grid.
-        pub const GRID_SPACING: f32 = 28.0;
+        /// Top speed either way on grass.
+        pub const GRASS_MAX_SPEED: f32 = 80.0;
+        /// How fast a car going faster than [`GRASS_MAX_SPEED`] slows down on grass. Keep it above
+        /// [`ACCELERATION`], or throttle would beat it.
+        pub const GRASS_DECELERATION: f32 = 400.0;
+
+        /// The track is a stadium-shaped ring: the road is every point between
+        /// [`TRACK_INNER_RADIUS`] and [`TRACK_OUTER_RADIUS`] from a horizontal centre line running
+        /// from `-TRACK_HALF_LENGTH` to `TRACK_HALF_LENGTH` along `y = 0`. Redraw `track.png` if
+        /// you change these.
+        pub const TRACK_HALF_LENGTH: f32 = 140.0;
+        /// See [`TRACK_HALF_LENGTH`].
+        pub const TRACK_INNER_RADIUS: f32 = 100.0;
+        /// See [`TRACK_HALF_LENGTH`].
+        pub const TRACK_OUTER_RADIUS: f32 = 160.0;
+
+        /// `x` of the start line, on the bottom straight. Cars race anticlockwise, so they cross it
+        /// heading right.
+        pub const START_LINE_X: f32 = 0.0;
+        /// Distance between rows of the starting grid, and from the start line to the front row.
+        pub const GRID_ROW_SPACING: f32 = 24.0;
+        /// Distance of each of the grid's two lanes from the middle of the road.
+        pub const GRID_LANE_OFFSET: f32 = 14.0;
     }
 }

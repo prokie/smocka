@@ -7,9 +7,10 @@ use serde::{Deserialize, Serialize};
 
 use super::RacingSystems;
 use super::racing_input::RacingInput;
+use super::track::{START_HEADING, Surface, grid_position, surface_at};
 use crate::config::minigames::racing::{
     ACCELERATION, BRAKE_DECELERATION, CAR_MAX_X, CAR_MAX_Y, COAST_DECELERATION, EDGE_MAX_SPEED,
-    FULL_STEER_SPEED, GRID_SPACING, GRID_X, MAX_REVERSE_SPEED, MAX_SPEED, REVERSE_ACCELERATION,
+    FULL_STEER_SPEED, GRASS_DECELERATION, MAX_REVERSE_SPEED, MAX_SPEED, REVERSE_ACCELERATION,
     TURN_RATE,
 };
 use crate::lobby::Player;
@@ -96,7 +97,7 @@ fn spawn_cars(mut commands: Commands, players: Query<(&Player, &ControlledBy)>) 
                 owner: player.id,
                 number: player.number,
             },
-            CarState::parked(grid_position(slot, count), 0.0),
+            CarState::parked(grid_position(slot), START_HEADING),
             DespawnOnExit(SessionPhase::Racing),
             Replicate::to_clients(NetworkTarget::All),
             PredictionTarget::to_clients(NetworkTarget::Single(player.id)),
@@ -109,22 +110,21 @@ fn spawn_cars(mut commands: Commands, players: Query<(&Player, &ControlledBy)>) 
     }
 }
 
-/// Start position of `slot` (from 0) of `count` cars: a column on the left, centred vertically.
-pub fn grid_position(slot: usize, count: usize) -> Vec2 {
-    let offset = slot as f32 - (count.saturating_sub(1)) as f32 / 2.0;
-    Vec2::new(GRID_X, -offset * GRID_SPACING)
-}
-
 /// Runs on the host for every car and on each client for its own predicted one.
 fn drive_cars(time: Res<Time>, mut cars: Query<(&mut CarState, &ActionState<RacingInput>)>) {
     for (mut state, input) in &mut cars {
-        *state = drive(*state, input.0, time.delta_secs());
+        *state = drive(
+            *state,
+            input.0,
+            surface_at(state.position),
+            time.delta_secs(),
+        );
     }
 }
 
-/// The car's state after driving for `dt` seconds with `input`. A pure function, so Lightyear can
-/// re-run it during rollback.
-pub fn drive(state: CarState, input: RacingInput, dt: f32) -> CarState {
+/// The car's state after driving for `dt` seconds with `input` on `surface`. A pure function, so
+/// Lightyear can re-run it during rollback.
+pub fn drive(state: CarState, input: RacingInput, surface: Surface, dt: f32) -> CarState {
     let pedal: f32 = match (input.throttle, input.brake) {
         (true, false) => 1.0,
         (false, true) => -1.0,
@@ -140,6 +140,11 @@ pub fn drive(state: CarState, input: RacingInput, dt: f32) -> CarState {
     } else {
         (speed - REVERSE_ACCELERATION * dt).max(-MAX_REVERSE_SPEED)
     };
+    // Grass slows a fast car down over a moment instead of all at once.
+    let surface_max = surface.max_speed();
+    if speed.abs() > surface_max {
+        speed = (speed.abs() - GRASS_DECELERATION * dt).max(surface_max) * speed.signum();
+    }
 
     let steer = f32::from(input.steer.clamp(-1, 1));
     let grip = (speed.abs() / FULL_STEER_SPEED).min(1.0);
@@ -188,10 +193,11 @@ mod tests {
 
     use bevy::math::Vec2;
 
-    use super::{CarState, RacingInput, drive, grid_position, lerp_angle, wrap_angle};
+    use super::{CarState, RacingInput, drive, lerp_angle, wrap_angle};
     use crate::config::minigames::racing::{
-        CAR_MAX_X, EDGE_MAX_SPEED, MAX_REVERSE_SPEED, MAX_SPEED,
+        CAR_MAX_X, EDGE_MAX_SPEED, GRASS_MAX_SPEED, MAX_REVERSE_SPEED, MAX_SPEED,
     };
+    use crate::minigames::racing::track::Surface;
 
     const DT: f32 = 1.0 / 128.0;
 
@@ -219,9 +225,14 @@ mod tests {
     }
 
     /// `state` after driving with `input` for `seconds`, one tick at a time.
-    fn drive_for(mut state: CarState, input: RacingInput, seconds: f32) -> CarState {
+    fn drive_for(
+        mut state: CarState,
+        input: RacingInput,
+        surface: Surface,
+        seconds: f32,
+    ) -> CarState {
         for _ in 0..(seconds / DT) as usize {
-            state = drive(state, input, DT);
+            state = drive(state, input, surface, DT);
         }
         state
     }
@@ -231,7 +242,7 @@ mod tests {
 
     #[test]
     fn throttle_drives_forwards_up_to_top_speed() {
-        let state = drive_for(moving(0.0), THROTTLE, 1.0);
+        let state = drive_for(moving(0.0), THROTTLE, Surface::Road, 1.0);
         assert_eq!(state.speed, MAX_SPEED);
         assert!(state.position.x > 0.0);
         assert_eq!(state.heading, 0.0);
@@ -239,29 +250,35 @@ mod tests {
 
     #[test]
     fn brake_stops_then_reverses_up_to_reverse_speed() {
-        let state = drive(moving(100.0), BRAKE, DT);
+        let state = drive(moving(100.0), BRAKE, Surface::Road, DT);
         assert!(state.speed > 0.0 && state.speed < 100.0);
-        let state = drive_for(moving(100.0), BRAKE, 1.0);
+        let state = drive_for(moving(100.0), BRAKE, Surface::Road, 1.0);
         assert_eq!(state.speed, -MAX_REVERSE_SPEED);
     }
 
     #[test]
     fn coasting_rolls_to_a_stop_without_reversing() {
-        assert_eq!(drive_for(moving(100.0), COAST, 1.0).speed, 0.0);
-        assert_eq!(drive_for(moving(-50.0), COAST, 1.0).speed, 0.0);
+        assert_eq!(
+            drive_for(moving(100.0), COAST, Surface::Road, 1.0).speed,
+            0.0
+        );
+        assert_eq!(
+            drive_for(moving(-50.0), COAST, Surface::Road, 1.0).speed,
+            0.0
+        );
     }
 
     #[test]
     fn a_car_standing_still_cannot_turn() {
         let input = RacingInput { steer: 1, ..COAST };
-        assert_eq!(drive(moving(0.0), input, DT).heading, 0.0);
+        assert_eq!(drive(moving(0.0), input, Surface::Road, DT).heading, 0.0);
     }
 
     #[test]
     fn steering_left_turns_anticlockwise_forwards_and_clockwise_in_reverse() {
         let input = RacingInput { steer: 1, ..COAST };
-        assert!(drive(moving(100.0), input, DT).heading > 0.0);
-        assert!(drive(moving(-50.0), input, DT).heading < 0.0);
+        assert!(drive(moving(100.0), input, Surface::Road, DT).heading > 0.0);
+        assert!(drive(moving(-50.0), input, Surface::Road, DT).heading < 0.0);
     }
 
     #[test]
@@ -270,7 +287,7 @@ mod tests {
             speed: MAX_SPEED,
             ..CarState::parked(Vec2::new(CAR_MAX_X, 0.0), 0.0)
         };
-        let state = drive(state, THROTTLE, DT);
+        let state = drive(state, THROTTLE, Surface::Road, DT);
         assert_eq!(state.position.x, CAR_MAX_X);
         assert_eq!(state.speed, EDGE_MAX_SPEED);
     }
@@ -291,9 +308,22 @@ mod tests {
     }
 
     #[test]
-    fn the_grid_is_centred_and_spaced_out() {
-        assert_eq!(grid_position(0, 1).y, 0.0);
-        assert_eq!(grid_position(0, 2).y, -grid_position(1, 2).y);
-        assert_ne!(grid_position(0, 4), grid_position(1, 4));
+    fn grass_limits_the_top_speed() {
+        let state = drive_for(moving(0.0), THROTTLE, Surface::Grass, 1.0);
+        assert_eq!(state.speed, GRASS_MAX_SPEED);
+    }
+
+    #[test]
+    fn grass_slows_a_fast_car_gradually() {
+        let state = drive(moving(MAX_SPEED), THROTTLE, Surface::Grass, DT);
+        assert!(state.speed < MAX_SPEED && state.speed > GRASS_MAX_SPEED);
+        let state = drive_for(moving(MAX_SPEED), THROTTLE, Surface::Grass, 1.0);
+        assert_eq!(state.speed, GRASS_MAX_SPEED);
+    }
+
+    #[test]
+    fn grass_doesnt_limit_reversing_below_its_top_speed() {
+        let state = drive_for(moving(0.0), BRAKE, Surface::Grass, 1.0);
+        assert_eq!(state.speed, -MAX_REVERSE_SPEED.min(GRASS_MAX_SPEED));
     }
 }

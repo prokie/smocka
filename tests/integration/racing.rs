@@ -4,6 +4,7 @@ use bevy::prelude::*;
 use lightyear::prelude::PeerId;
 use smocka::minigames::Minigame;
 use smocka::minigames::racing::car::{Car, CarState};
+use smocka::minigames::racing::track::{Surface, surface_at};
 use smocka::session::SessionPhase;
 
 use crate::common::{TestApp, connected_pair, update_until};
@@ -63,6 +64,17 @@ fn every_player_gets_one_car_on_every_peer() {
     let (mut host, mut client) = race_pair();
     assert_eq!(cars(&mut host), 2);
     assert_eq!(cars(&mut client), 2);
+}
+
+#[test]
+fn cars_start_on_the_road() {
+    let (mut host, mut client) = race_pair();
+    for app in [&mut host, &mut client] {
+        for driver in [hosts, joiners] {
+            let position = car(app, driver).unwrap().position;
+            assert_eq!(surface_at(position), Surface::Road, "{position}");
+        }
+    }
 }
 
 #[test]

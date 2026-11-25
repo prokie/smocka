@@ -1,5 +1,6 @@
 pub mod car;
 mod racing_input;
+pub mod track;
 mod visuals;
 
 pub use racing_input::RacingInput;
