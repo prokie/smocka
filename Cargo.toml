@@ -4,7 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy = { version = "0.20.1", features = ["file_watcher"] }
+bevy = { version = "0.20.1", default-features = false, features = [
+    "2d",
+    "ui",
+    "file_watcher",
+] }
 rand = "0.10.4"
 lightyear = { version = "0.31.0", features = [
     "client",
