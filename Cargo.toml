@@ -34,3 +34,7 @@ strip = true
 [[bin]]
 name = "smocka"
 test = false
+
+[lints.clippy]
+# Name module files after their folder (`menu.rs` next to `menu/`), never `mod.rs`.
+mod_module_files = "warn"

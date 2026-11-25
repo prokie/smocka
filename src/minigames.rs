@@ -1,4 +1,3 @@
-mod four_player_pong;
 pub mod racing;
 pub mod two_player_pong;
 

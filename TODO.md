@@ -57,7 +57,7 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
 - [ ] **Don't mark unchanged state as changed** (quick win). Replication sends components that
       Bevy change detection marks as changed. `drive_cars` writes `*state = drive(...)` and
       `move_paddles` writes `position.0.y` every tick, even for a parked car or an idle paddle.
-      Use `set_if_neq` instead (as `style_buttons` in `src/menu/mod.rs` already does).
+      Use `set_if_neq` instead (as `style_buttons` in `src/menu.rs` already does).
 - [ ] **Smooth rendering between ticks, and blend out rollback snaps.** The `sync_*_transform`
       systems copy the latest fixed-tick state into `Transform`. At 128 Hz on a 60/144/165 Hz
       screen that can stutter a little. Calling `.add_correction()` on the predicted
@@ -114,5 +114,5 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
 
 - [x] Track-art generator in the repo: `python3 tools/make_track.py` redraws `track.png`. Keep its
       constants in step with the `TRACK_*` / `GRID_*` ones in `src/config.rs`.
-- [ ] Delete the empty `src/minigames/four_player_pong` module, or start it.
+- [x] Delete the empty `src/minigames/four_player_pong` module.
 - [ ] README: mention `RUST_LOG=info,smocka=debug cargo run` for the `debug!` logs.
