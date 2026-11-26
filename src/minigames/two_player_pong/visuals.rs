@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use super::ball::{Ball, BallPosition};
 use super::paddles::{Paddle, PaddlePosition, Side};
 use super::score::PongScore;
+use crate::camera::gameplay_camera_2d;
 use crate::config::display::{ART_SCALE, VIEW_HEIGHT, VIEW_WIDTH};
 use crate::config::minigames::two_player_pong::{
     BALL_SIZE, PADDLE_HEIGHT, PADDLE_WIDTH, SCORE_FONT_SIZE, WALL_THICKNESS,
@@ -38,7 +39,7 @@ impl Plugin for PongVisualsPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             OnEnter(SessionPhase::TwoPlayerPong),
-            (spawn_arena, spawn_score_text),
+            (spawn_camera, spawn_arena, spawn_score_text),
         );
         app.add_observer(add_paddle_sprite);
         app.add_observer(add_ball_sprite);
@@ -48,6 +49,16 @@ impl Plugin for PongVisualsPlugin {
         );
         app.add_systems(Update, update_score_text);
     }
+}
+
+/// The arena fills the screen.
+fn spawn_camera(mut commands: Commands) {
+    debug!("Spawning the Pong camera");
+    commands.spawn(gameplay_camera_2d(
+        SessionPhase::TwoPlayerPong,
+        VIEW_WIDTH,
+        VIEW_HEIGHT,
+    ));
 }
 
 fn spawn_arena(assets: Res<AssetServer>, mut commands: Commands) {

@@ -62,12 +62,11 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
         and `compressed_image_saver` features (and a C++ compiler) to build, and `ktx2` to load.
   - [ ] Simple shapes could skip image files: `Mesh2d` with a `ColorMaterial` gives crisp,
         resizable shapes, with edges smoothed by the camera's MSAA (on by default, 4 samples).
-- [ ] **Let each minigame own its camera.** Today one `Camera2d` is spawned at startup
-      (`src/camera/main_camera.rs`) and shared by the menus and every minigame. A 3D minigame
-      would need its own `Camera3d` and lights, and a minigame might want its own zoom. Plan: the
-      menus and UI keep one camera at screen resolution, and each minigame spawns its gameplay
-      camera on `OnEnter` and despawns it with `DespawnOnExit`. Not urgent until a minigame
-      needs a different camera, but cheap while there are only two.
+- [x] **Let each minigame own its camera.** `src/camera.rs`: one `UiCamera` (order 1, no world
+      render layers) draws all UI at screen resolution and clears the window only when no
+      minigame is drawing. Each minigame spawns its own camera with `gameplay_camera_2d` on
+      `OnEnter`, despawned with `DespawnOnExit`. A 3D minigame spawns a `Camera3d` (and lights)
+      with the `GameplayCamera` marker instead.
 
 ## Playing with friends
 

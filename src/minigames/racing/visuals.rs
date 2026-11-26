@@ -7,6 +7,7 @@ use super::progress::{RaceProgress, lap_label, position_label, running_order};
 use super::race::{RaceStatus, status_label};
 use super::skid_marks::SkidMarksPlugin;
 use super::track::{CHECKPOINTS, outline};
+use crate::camera::gameplay_camera_2d;
 use crate::config::display::{VIEW_HEIGHT, VIEW_WIDTH};
 use crate::config::minigames::racing::{
     CAR_LENGTH, CAR_WIDTH, START_LINE_X, TRACK_INNER_RADIUS, TRACK_OUTER_RADIUS,
@@ -67,6 +68,7 @@ impl Plugin for RacingVisualsPlugin {
         app.add_systems(
             OnEnter(SessionPhase::Racing),
             (
+                spawn_camera,
                 spawn_track,
                 spawn_lap_text,
                 spawn_position_text,
@@ -91,6 +93,16 @@ impl Plugin for RacingVisualsPlugin {
             sync_car_transform.before(TransformSystems::Propagate),
         );
     }
+}
+
+/// The whole track fits on screen.
+fn spawn_camera(mut commands: Commands) {
+    debug!("Spawning the racing camera");
+    commands.spawn(gameplay_camera_2d(
+        SessionPhase::Racing,
+        VIEW_WIDTH,
+        VIEW_HEIGHT,
+    ));
 }
 
 fn spawn_track(assets: Res<AssetServer>, mut commands: Commands) {
