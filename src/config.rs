@@ -101,11 +101,18 @@ pub mod minigames {
 
         /// Ball width and height in world units. Draw `ball.png` square.
         pub const BALL_SIZE: f32 = 8.0;
-        /// Ball speed along each axis when it is served, in world units per second.
-        /// Keep `x` positive: serves flip it to aim at the side being served to.
-        pub const BALL_SERVE_VELOCITY: bevy::math::Vec2 = bevy::math::Vec2::new(150.0, 100.0);
+        /// Ball speed when it is served, in world units per second.
+        pub const BALL_SERVE_SPEED: f32 = 180.0;
+        /// The flattest angle a serve can take, in radians away from straight across.
+        pub const BALL_SERVE_MIN_ANGLE: f32 = 15.0_f32.to_radians();
+        /// The steepest angle a serve can take, in radians away from straight across.
+        ///
+        /// Each serve picks an angle between [`BALL_SERVE_MIN_ANGLE`] and this, up or down at
+        /// random. Keep it at most [`BALL_MAX_BOUNCE_ANGLE`], so a serve is never steeper than a
+        /// return can be.
+        pub const BALL_SERVE_MAX_ANGLE: f32 = 35.0_f32.to_radians();
         /// Each paddle hit multiplies the ball's speed by this, up to [`BALL_MAX_SPEED`].
-        /// Each serve starts again at [`BALL_SERVE_VELOCITY`].
+        /// Each serve starts again at [`BALL_SERVE_SPEED`].
         pub const BALL_HIT_SPEEDUP: f32 = 1.1;
         /// The ball never gets faster than this, in world units per second.
         ///

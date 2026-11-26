@@ -1,12 +1,13 @@
 use bevy::prelude::*;
 use lightyear::prelude::*;
+use rand::RngExt;
 use serde::{Deserialize, Serialize};
 
 use super::PongSystems;
 use super::collisions::{bounce_off_paddle, bounce_off_walls, hits_paddle};
 use super::paddles::{Paddle, PaddlePosition, Side};
 use crate::config::minigames::two_player_pong::{
-    BALL_HIT_SPEEDUP, BALL_MAX_SPEED, BALL_SERVE_VELOCITY,
+    BALL_HIT_SPEEDUP, BALL_MAX_SPEED, BALL_SERVE_MAX_ANGLE, BALL_SERVE_MIN_ANGLE, BALL_SERVE_SPEED,
 };
 use crate::network::is_host;
 use crate::session::SessionPhase;
@@ -56,12 +57,20 @@ impl Plugin for BallPlugin {
     }
 }
 
+/// Spawns the ball in the centre, served to a random side.
 fn spawn_ball(mut commands: Commands) {
+    let mut rng = rand::rng();
+    let side = if rng.random_bool(0.5) {
+        Side::Left
+    } else {
+        Side::Right
+    };
+    debug!("Pong: first serve goes to {side:?}");
     commands.spawn((
         Ball,
         DespawnOnExit(SessionPhase::TwoPlayerPong),
         BallPosition(Vec2::ZERO),
-        BallVelocity(serve_velocity(Side::Right)),
+        BallVelocity(serve_velocity(side, &mut rng)),
         Replicate::to_clients(NetworkTarget::All),
         InterpolationTarget::to_clients(NetworkTarget::All),
     ));
@@ -79,12 +88,15 @@ fn move_ball(
     }
 }
 
-/// The velocity of a ball served from the centre towards `side`'s paddle.
-pub fn serve_velocity(side: Side) -> Vec2 {
+/// The velocity of a ball served from the centre towards `side`'s paddle: [`BALL_SERVE_SPEED`],
+/// at a random angle between [`BALL_SERVE_MIN_ANGLE`] and [`BALL_SERVE_MAX_ANGLE`], up or down.
+pub fn serve_velocity(side: Side, rng: &mut impl RngExt) -> Vec2 {
+    let angle = rng.random_range(BALL_SERVE_MIN_ANGLE..=BALL_SERVE_MAX_ANGLE);
+    let up_or_down = if rng.random_bool(0.5) { 1.0 } else { -1.0 };
     Vec2::new(
-        BALL_SERVE_VELOCITY.x * side.x_pos().signum(),
-        BALL_SERVE_VELOCITY.y,
-    )
+        side.x_pos().signum() * angle.cos(),
+        up_or_down * angle.sin(),
+    ) * BALL_SERVE_SPEED
 }
 
 /// The ball's next position and velocity after moving for `dt` seconds past `paddles`.
@@ -112,7 +124,8 @@ fn step_ball(
 mod tests {
     use super::{serve_velocity, step_ball};
     use crate::config::minigames::two_player_pong::{
-        BALL_HIT_SPEEDUP, BALL_MAX_SPEED, BALL_MAX_Y, GOAL_X, PADDLE_HEIGHT, PADDLE_X_OFFSET,
+        BALL_HIT_SPEEDUP, BALL_MAX_SPEED, BALL_MAX_Y, BALL_SERVE_MAX_ANGLE, BALL_SERVE_MIN_ANGLE,
+        BALL_SERVE_SPEED, GOAL_X, PADDLE_HEIGHT, PADDLE_X_OFFSET,
     };
     use crate::config::network::TICK_RATE;
     use crate::minigames::two_player_pong::paddles::Side;
@@ -189,8 +202,25 @@ mod tests {
     }
 
     #[test]
-    fn serves_towards_the_given_side() {
-        assert!(serve_velocity(Side::Left).x < 0.0);
-        assert!(serve_velocity(Side::Right).x > 0.0);
+    fn serves_towards_the_given_side_at_an_allowed_angle() {
+        let mut rng = rand::rng();
+        let (mut ups, mut downs) = (0, 0);
+        for side in [Side::Left, Side::Right].repeat(100) {
+            let velocity = serve_velocity(side, &mut rng);
+            assert_eq!(velocity.x.signum(), side.x_pos().signum(), "{velocity}");
+            assert!((velocity.length() - BALL_SERVE_SPEED).abs() < 1e-3);
+            let angle = velocity.y.abs().atan2(velocity.x.abs());
+            assert!(
+                (BALL_SERVE_MIN_ANGLE - 1e-5..=BALL_SERVE_MAX_ANGLE + 1e-5).contains(&angle),
+                "{angle}"
+            );
+            if velocity.y > 0.0 {
+                ups += 1;
+            } else {
+                downs += 1;
+            }
+        }
+        // 200 coin flips all landing the same way is about as likely as a 1 in 10^60 event.
+        assert!(ups > 0 && downs > 0, "{ups} up, {downs} down");
     }
 }

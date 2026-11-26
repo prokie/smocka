@@ -114,7 +114,7 @@ fn score_goals(
 
         if score.winner(rules.goals_to_win).is_none() {
             position.0 = Vec2::ZERO;
-            velocity.0 = serve_velocity(scorer.opponent());
+            velocity.0 = serve_velocity(scorer.opponent(), &mut rand::rng());
             continue;
         }
         let player_on = |side| {
