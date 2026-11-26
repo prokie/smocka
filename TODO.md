@@ -107,6 +107,14 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
       remaining laps alone and scores 0 points. Pong abandons as soon as a paddle's player
       leaves. Abandon when fewer than two cars are left and `director.finishers` is empty.
       Racing needs 2 players to start, so a solo race isn't otherwise possible.
+- [ ] **Racing doesn't tell you when you miss a checkpoint.** `RaceProgress::advance`
+      (`progress.rs`) only counts the next checkpoint in order, so a car that cuts across the
+      grass past one gets no laps until it drives back to it. The only sign is a host-side
+      `debug!` in `count_laps`. The player just sees the lap counter not go up. Show it: a
+      "Missed checkpoint!" message when your car enters a checkpoint out of order, and mark the
+      checkpoint it needs next (or an arrow towards it). `RaceProgress` is replicated, so each
+      client already knows its own car's `next_checkpoint` and can check its own `CarState`
+      against `checkpoint_at`, with no new message from the host.
 - [ ] **A new name is lost when quitting from the main menu.** `save_profile` only runs on
       `OnExit(AppState::MainMenu)`. Clicking Quit or closing the window after typing a name
       never leaves the main menu, so the name isn't saved. Save on `AppExit` too.
