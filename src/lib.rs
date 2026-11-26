@@ -7,6 +7,7 @@ pub mod network;
 pub mod players;
 pub mod profile;
 pub mod session;
+pub mod standings;
 
 use bevy::prelude::*;
 
@@ -20,6 +21,7 @@ impl Plugin for SmockaPlugin {
             app_state::AppStatePlugin,
             players::PlayersPlugin,
             session::SessionPlugin,
+            standings::StandingsPlugin,
             minigames::MinigamesPlugin,
         ));
     }

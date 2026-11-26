@@ -7,7 +7,7 @@ use bevy::ui_widgets::{Activate, Button};
 use lightyear::prelude::*;
 
 use super::MenuButton;
-use super::widgets::{HINT_COLOR, label, menu_button, player_row, screen, small_button};
+use super::widgets::{HINT_COLOR, ShownRows, label, menu_button, screen, show_rows, small_button};
 use crate::config::minigames::racing::{MAX_LAPS, MIN_LAPS};
 use crate::minigames::Minigame;
 use crate::minigames::racing::race::RaceLaps;
@@ -156,22 +156,15 @@ pub(super) fn update_player_list(
     players: Query<&Player>,
     clients: Query<&LocalId, (With<Client>, With<Connected>)>,
     list: Single<Entity, With<PlayerList>>,
-    mut shown: Local<Vec<(String, u8)>>,
+    mut shown: Local<ShownRows>,
     mut commands: Commands,
 ) {
     let (players, you) = players_and_you(&players, &clients);
-    let rows: Vec<(String, u8)> = players
+    let rows = players
         .iter()
         .map(|player| (player_label(player, you), player.color))
         .collect();
-    if *shown == rows {
-        return;
-    }
-    commands.entity(*list).despawn_children();
-    for (text, color) in &rows {
-        commands.entity(*list).with_child(player_row(text, *color));
-    }
-    *shown = rows;
+    show_rows(*list, rows, &mut shown, &mut commands);
 }
 
 /// Outline your own colour, dim and disable colours other players have.

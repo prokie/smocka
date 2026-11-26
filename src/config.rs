@@ -57,8 +57,10 @@ pub mod session {
 
     /// The fewest players the host can start a minigame with.
     pub const MIN_PLAYERS: usize = 2;
-    /// How long the results of a minigame stay up before everyone goes back to the lobby.
+    /// How long the results of a minigame stay up before the standings.
     pub const RESULTS_DURATION: Duration = Duration::from_secs(5);
+    /// How long the standings stay up before everyone goes back to the lobby.
+    pub const STANDINGS_DURATION: Duration = Duration::from_secs(5);
 }
 
 pub mod display {

@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::app_state::AppState;
 use crate::network::is_host;
 use crate::profile::{LocalProfile, clean_name, name_from_user_data};
+use crate::standings::Points;
 
 /// A person in the session. Spawned by the host for every connected client (including its own)
 /// and replicated to everyone.
@@ -171,6 +172,7 @@ fn spawn_player(
     );
     commands.spawn((
         player,
+        Points::default(),
         // Usually removed when its client disconnects; this also covers the host leaving.
         DespawnOnEnter(AppState::MainMenu),
         Replicate::to_clients(NetworkTarget::All),

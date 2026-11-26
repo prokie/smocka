@@ -3,10 +3,11 @@ use lightyear::prelude::{server::Started, *};
 use serde::{Deserialize, Serialize};
 
 use crate::app_state::AppState;
-use crate::config::session::{MIN_PLAYERS, RESULTS_DURATION};
+use crate::config::session::{MIN_PLAYERS, RESULTS_DURATION, STANDINGS_DURATION};
 use crate::minigames::Minigame;
 use crate::network::is_host;
 use crate::players::Player;
+use crate::standings::{Points, award_points};
 
 /// What the session is doing. A local Bevy sub-state of [`AppState::InSession`] that follows the
 /// host's [`CurrentPhase`].
@@ -20,8 +21,10 @@ pub enum SessionPhase {
     TwoPlayerPong,
     /// Playing the racing minigame.
     Racing,
-    /// Showing how everyone placed in the last minigame, before going back to the lobby.
+    /// Showing how everyone placed in the last minigame.
     Results,
+    /// Showing everyone's points so far, before going back to the lobby.
+    Standings,
 }
 
 impl SessionPhase {
@@ -29,7 +32,7 @@ impl SessionPhase {
     pub fn is_minigame(self) -> bool {
         match self {
             SessionPhase::TwoPlayerPong | SessionPhase::Racing => true,
-            SessionPhase::Lobby | SessionPhase::Results => false,
+            SessionPhase::Lobby | SessionPhase::Results | SessionPhase::Standings => false,
         }
     }
 }
@@ -121,9 +124,12 @@ pub enum MinigameEnded {
     Abandoned,
 }
 
-/// Host only: counts down the results before going back to the lobby.
+/// Host only: how long the current screen between minigames has left, and what comes after it.
 #[derive(Resource, Debug)]
-struct ResultsTimer(Timer);
+struct PhaseTimer {
+    timer: Timer,
+    then: SessionPhase,
+}
 
 /// Must be added after [`AppStatePlugin`](crate::app_state::AppStatePlugin) and before
 /// [`MinigamesPlugin`](crate::minigames::MinigamesPlugin).
@@ -143,13 +149,29 @@ impl Plugin for SessionPlugin {
         );
         app.add_systems(
             OnEnter(SessionPhase::Results),
-            start_results_timer.run_if(is_host),
+            (|mut commands: Commands| {
+                commands.insert_resource(PhaseTimer {
+                    timer: Timer::new(RESULTS_DURATION, TimerMode::Once),
+                    then: SessionPhase::Standings,
+                });
+            })
+            .run_if(is_host),
+        );
+        app.add_systems(
+            OnEnter(SessionPhase::Standings),
+            (|mut commands: Commands| {
+                commands.insert_resource(PhaseTimer {
+                    timer: Timer::new(STANDINGS_DURATION, TimerMode::Once),
+                    then: SessionPhase::Lobby,
+                });
+            })
+            .run_if(is_host),
         );
         app.add_systems(
             Update,
-            return_to_lobby_after_results
+            move_on_when_the_timer_ends
                 .run_if(is_host)
-                .run_if(in_state(SessionPhase::Results)),
+                .run_if(resource_exists::<PhaseTimer>),
         );
     }
 }
@@ -205,6 +227,7 @@ fn spawn_current_phase(_trigger: On<Add<Started>>, mut commands: Commands) {
 fn end_minigame(
     trigger: On<MinigameEnded>,
     mut phase: Single<&mut CurrentPhase>,
+    mut players: Query<(&Player, &mut Points)>,
     mut commands: Commands,
 ) {
     if !phase.0.is_minigame() {
@@ -218,6 +241,7 @@ fn end_minigame(
         MinigameEnded::Won(result) => {
             let order: Vec<String> = result.placements.iter().map(Placement::describe).collect();
             info!("Minigame over: {} ({})", order.join(", "), result.summary);
+            award_points(result, &mut players);
             commands.spawn((
                 result.clone(),
                 DespawnOnExit(SessionPhase::Results),
@@ -233,20 +257,21 @@ fn end_minigame(
     }
 }
 
-fn start_results_timer(mut commands: Commands) {
-    commands.insert_resource(ResultsTimer(Timer::new(RESULTS_DURATION, TimerMode::Once)));
-}
-
-fn return_to_lobby_after_results(
+/// Host only: when the results or standings have been up long enough, move on. A timer left over
+/// from a session that ended on one of those screens is dropped.
+fn move_on_when_the_timer_ends(
     time: Res<Time>,
-    timer: Option<ResMut<ResultsTimer>>,
+    mut timer: ResMut<PhaseTimer>,
     mut phase: Single<&mut CurrentPhase>,
+    mut commands: Commands,
 ) {
-    let Some(mut timer) = timer else {
+    if !matches!(phase.0, SessionPhase::Results | SessionPhase::Standings) {
+        commands.remove_resource::<PhaseTimer>();
         return;
-    };
-    if timer.0.tick(time.delta()).is_finished() {
-        phase.0 = SessionPhase::Lobby;
+    }
+    if timer.timer.tick(time.delta()).is_finished() {
+        phase.0 = timer.then;
+        commands.remove_resource::<PhaseTimer>();
     }
 }
 
@@ -314,5 +339,6 @@ mod tests {
         assert!(SessionPhase::Racing.is_minigame());
         assert!(!SessionPhase::Lobby.is_minigame());
         assert!(!SessionPhase::Results.is_minigame());
+        assert!(!SessionPhase::Standings.is_minigame());
     }
 }

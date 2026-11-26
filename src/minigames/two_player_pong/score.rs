@@ -124,7 +124,7 @@ fn score_goals(
         commands.trigger(match (player_on(scorer), player_on(scorer.opponent())) {
             (Some(winner), Some(loser)) => MinigameEnded::Won(MinigameResult {
                 placements: vec![Placement::new(winner, 1), Placement::new(loser, 2)],
-                summary: format!("{} – {}", score.left, score.right),
+                summary: format!("{} - {}", score.left, score.right),
             }),
             _ => {
                 info!("Abandoning Pong: a player left as the winning goal went in");

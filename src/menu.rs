@@ -4,6 +4,7 @@ mod lobby;
 mod main_menu;
 mod notices;
 mod results;
+mod standings;
 mod widgets;
 
 pub use main_menu::{AddressInput, MenuMessage, NameInput};
@@ -59,6 +60,10 @@ impl Plugin for MenuPlugin {
             OnEnter(SessionPhase::Results),
             results::spawn_results_screen,
         );
+        app.add_systems(
+            OnEnter(SessionPhase::Standings),
+            standings::spawn_standings_screen,
+        );
         app.add_observer(on_menu_button);
         app.add_observer(lobby::on_swatch);
         app.add_observer(notices::notice_player_left);
@@ -81,6 +86,8 @@ impl Plugin for MenuPlugin {
                 )
                     .run_if(in_state(SessionPhase::Lobby)),
                 results::update_results_screen.run_if(in_state(SessionPhase::Results)),
+                standings::update_standings_screen.run_if(in_state(SessionPhase::Standings)),
+                widgets::update_countdowns,
                 notices::expire_notices,
                 close_session.run_if(on_message::<WindowCloseRequested>),
             ),
@@ -120,7 +127,7 @@ fn spawn_connecting_screen(mut commands: Commands) {
     commands.spawn((
         screen(AppState::Connecting),
         children![
-            label("Connecting…", 32.0, Color::WHITE),
+            label("Connecting...", 32.0, Color::WHITE),
             menu_button(MenuButton::Cancel, "Cancel"),
         ],
     ));

@@ -97,7 +97,8 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
 - [x] **Placements in results**: `MinigameResult { placements, summary }`, best first, with
       shared places for ties and a note such as "DNF". Racing places every car (finishers, then
       the rest by progress); Pong places its two players. The results screen lists them.
-- [ ] **Points across games**: a score per `Player`, and a standings screen after each result.
+- [x] **Points across games**: `Points` on each player (`src/standings.rs`), one point per player
+      beaten, ties sharing. A `SessionPhase::Standings` screen follows each result.
 - [ ] **Player limits per minigame**: min and max players on `Minigame`. Pong needs exactly 2.
       Needed by tournaments (below).
 - [ ] **Tournaments for minigames with fewer seats than players.** Pong takes 2 players, so with
@@ -130,3 +131,5 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
       constants in step with the ones in `src/config.rs`.
 - [x] Delete the empty `src/minigames/four_player_pong` module.
 - [x] README: mention `RUST_LOG=info,smocka=debug cargo run` for the `debug!` logs.
+- [ ] Bevy's built-in font only covers ASCII, so names like "Åsa" show boxes for the letters it
+      lacks. Ship a font with wider coverage in `assets/` and use it for all UI text.

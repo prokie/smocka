@@ -1,6 +1,8 @@
 //! Building blocks shared by every menu screen: colours, full-screen layouts, labels, buttons and
 //! text fields, and how buttons look as they're hovered, tabbed to and pressed.
 
+use std::time::Duration;
+
 use bevy::input_focus::tab_navigation::{TabGroup, TabIndex};
 use bevy::input_focus::{InputFocus, InputFocusVisible};
 use bevy::picking::hover::Hovered;
@@ -135,6 +137,69 @@ pub fn player_row(text: &str, color: u8) -> impl Bundle {
     )
 }
 
+/// What a list of [`player_row`]s shows, and which list entity it was built in. Keep one in a
+/// `Local` per list, and pass it to [`show_rows`].
+#[derive(Default)]
+pub struct ShownRows(Option<(Entity, Vec<(String, u8)>)>);
+
+/// Rebuild `list` with one [`player_row`] per `(text, colour)` in `rows`, unless it already shows
+/// them. A screen spawned again gets a new list, which is always filled.
+pub fn show_rows(
+    list: Entity,
+    rows: Vec<(String, u8)>,
+    shown: &mut ShownRows,
+    commands: &mut Commands,
+) {
+    if shown
+        .0
+        .as_ref()
+        .is_some_and(|(shown_list, shown_rows)| *shown_list == list && *shown_rows == rows)
+    {
+        return;
+    }
+    commands.entity(list).despawn_children();
+    for (text, color) in &rows {
+        commands.entity(list).with_child(player_row(text, *color));
+    }
+    shown.0 = Some((list, rows));
+}
+
+/// A line counting down the seconds until the screen moves on: "{prefix} {seconds}…". The host
+/// decides when that happens; this is only this app's estimate, started when the screen appeared.
+#[derive(Component)]
+pub struct Countdown {
+    timer: Timer,
+    prefix: &'static str,
+}
+
+/// A [`Countdown`] from `duration`.
+pub fn countdown(duration: Duration, prefix: &'static str) -> impl Bundle {
+    (
+        Countdown {
+            timer: Timer::new(duration, TimerMode::Once),
+            prefix,
+        },
+        label("", 20.0, HINT_COLOR),
+    )
+}
+
+pub(super) fn update_countdowns(
+    time: Res<Time>,
+    mut countdowns: Query<(&mut Countdown, &mut Text)>,
+) {
+    for (mut countdown, mut text) in &mut countdowns {
+        countdown.timer.tick(time.delta());
+        let shown = format!(
+            "{} {}...",
+            countdown.prefix,
+            countdown.timer.remaining_secs().ceil().max(1.0)
+        );
+        if text.0 != shown {
+            text.0 = shown;
+        }
+    }
+}
+
 type ButtonLook = (
     Entity,
     &'static Hovered,
@@ -159,5 +224,39 @@ pub(super) fn style_buttons(
             (false, false, false) => BUTTON_COLOR,
         };
         background.set_if_neq(BackgroundColor(color));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bevy::prelude::*;
+
+    use super::{ShownRows, show_rows};
+
+    fn fill(world: &mut World, list: Entity, rows: &[&str], shown: &mut ShownRows) {
+        let rows = rows.iter().map(|text| (text.to_string(), 0)).collect();
+        show_rows(list, rows, shown, &mut world.commands());
+        world.flush();
+    }
+
+    fn row_count(world: &World, list: Entity) -> usize {
+        world
+            .get::<Children>(list)
+            .map_or(0, |children| children.len())
+    }
+
+    #[test]
+    fn a_new_list_gets_the_same_rows_again() {
+        let mut world = World::new();
+        let mut shown = ShownRows::default();
+        let first = world.spawn_empty().id();
+        fill(&mut world, first, &["Ada", "Bo"], &mut shown);
+        assert_eq!(row_count(&world, first), 2);
+
+        // The screen goes away and comes back with the same players.
+        world.despawn(first);
+        let second = world.spawn_empty().id();
+        fill(&mut world, second, &["Ada", "Bo"], &mut shown);
+        assert_eq!(row_count(&world, second), 2);
     }
 }

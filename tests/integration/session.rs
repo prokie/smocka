@@ -1,16 +1,18 @@
 //! The host decides the session phase and every peer follows it: the lobby until the host starts,
-//! the minigame, its results, and back to the lobby.
+//! the minigame, its results, the standings, and back to the lobby.
 
 use std::time::Duration;
 
 use bevy::prelude::*;
 use lightyear::prelude::PeerId;
-use smocka::config::session::RESULTS_DURATION;
+use smocka::config::session::{RESULTS_DURATION, STANDINGS_DURATION};
 use smocka::minigames::Minigame;
 use smocka::minigames::two_player_pong::ball::Ball;
 use smocka::minigames::two_player_pong::paddles::Paddle;
 use smocka::minigames::two_player_pong::score::PongRules;
+use smocka::players::Player;
 use smocka::session::{MinigameResult, SessionPhase};
+use smocka::standings::Points;
 
 use crate::common::{
     TestApp, connected_pair, free_addr, pair_in_pong, update_until, update_until_within,
@@ -25,6 +27,21 @@ fn pong_entities(app: &mut TestApp) -> usize {
         .count();
     let balls = world.query_filtered::<(), With<Ball>>().iter(world).count();
     paddles + balls
+}
+
+/// Every player's points as this app sees them, host first: `(total, gained)`.
+fn points(app: &mut TestApp) -> Vec<(u32, u32)> {
+    let world = app.0.world_mut();
+    let mut players: Vec<(u32, Points)> = world
+        .query::<(&Player, &Points)>()
+        .iter(world)
+        .map(|(player, points)| (player.number, *points))
+        .collect();
+    players.sort_by_key(|(number, _)| *number);
+    players
+        .into_iter()
+        .map(|(_, points)| (points.total, points.gained))
+        .collect()
 }
 
 /// The result this app is showing, if any.
@@ -104,7 +121,7 @@ fn a_joiner_cannot_start() {
 }
 
 #[test]
-fn winning_shows_the_result_then_returns_to_the_lobby() {
+fn winning_shows_the_result_then_the_standings_then_returns_to_the_lobby() {
     let (mut host, mut client, _) = connected_pair();
     host.0
         .world_mut()
@@ -131,12 +148,25 @@ fn winning_shows_the_result_then_returns_to_the_lobby() {
         };
         assert!(matches!(winner.player, PeerId::Local(_)), "the host won");
         assert_eq!((winner.place, loser.place), (1, 2));
-        assert_eq!(result.summary, "1 – 0");
+        assert_eq!(result.summary, "1 - 0");
+    }
+
+    // Beating one player is worth one point.
+    update_until_within(
+        &mut [&mut host, &mut client],
+        RESULTS_DURATION + Duration::from_secs(5),
+        |apps| {
+            apps.iter_mut()
+                .all(|app| app.phase() == Some(SessionPhase::Standings))
+        },
+    );
+    for app in [&mut host, &mut client] {
+        assert_eq!(points(app), [(1, 1), (0, 0)]);
     }
 
     update_until_within(
         &mut [&mut host, &mut client],
-        RESULTS_DURATION + Duration::from_secs(5),
+        STANDINGS_DURATION + Duration::from_secs(5),
         |apps| {
             apps.iter_mut()
                 .all(|app| app.phase() == Some(SessionPhase::Lobby) && result(app).is_none())
