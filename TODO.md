@@ -54,7 +54,7 @@ Acceptable for now (see *Later*).
 
 APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.cargo/registry`.
 
-- [ ] **Don't mark unchanged state as changed** (quick win). Replication sends components that
+- [x] **Don't mark unchanged state as changed** (quick win). Replication sends components that
       Bevy change detection marks as changed. `drive_cars` writes `*state = drive(...)` and
       `move_paddles` writes `position.0.y` every tick, even for a parked car or an idle paddle.
       Use `set_if_neq` instead (as `style_buttons` in `src/menu.rs` already does).
@@ -203,4 +203,4 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
 - [x] Track-art generator in the repo: `python3 tools/make_track.py` redraws `track.png`. Keep its
       constants in step with the `TRACK_*` / `GRID_*` ones in `src/config.rs`.
 - [x] Delete the empty `src/minigames/four_player_pong` module.
-- [ ] README: mention `RUST_LOG=info,smocka=debug cargo run` for the `debug!` logs.
+- [x] README: mention `RUST_LOG=info,smocka=debug cargo run` for the `debug!` logs.

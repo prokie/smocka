@@ -110,7 +110,8 @@ fn move_paddles(
     mut paddles: Query<(&mut PaddlePosition, &ActionState<PongInput>), With<Paddle>>,
 ) {
     for (mut position, input) in &mut paddles {
-        position.0.y = step(position.0.y, input.0, time.delta_secs());
+        let y = step(position.0.y, input.0, time.delta_secs());
+        position.set_if_neq(PaddlePosition(Vec2::new(position.0.x, y)));
     }
 }
 

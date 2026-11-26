@@ -52,5 +52,14 @@ cargo test
 cargo doc --no-deps
 ```
 
+To also see the game's `debug!` logs (goals, car spawns and the like):
+
+```sh
+RUST_LOG=info,smocka=debug,wgpu=error,naga=warn cargo run
+```
+
+`RUST_LOG` replaces Bevy's default log filter, so the last two parts keep the graphics libraries
+quiet again.
+
 Integration tests run real host and client apps headlessly over localhost UDP. Add new suites as
 modules in `tests/integration/main.rs`, not as new files under `tests/`.

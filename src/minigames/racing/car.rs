@@ -113,12 +113,13 @@ fn spawn_cars(mut commands: Commands, players: Query<(&Player, &ControlledBy)>) 
 /// Runs on the host for every car and on each client for its own predicted one.
 fn drive_cars(time: Res<Time>, mut cars: Query<(&mut CarState, &ActionState<RacingInput>)>) {
     for (mut state, input) in &mut cars {
-        *state = drive(
+        let next = drive(
             *state,
             input.0,
             surface_at(state.position),
             time.delta_secs(),
         );
+        state.set_if_neq(next);
     }
 }
 
@@ -190,10 +191,13 @@ fn lerp_angle(start: f32, end: f32, t: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use std::f32::consts::{FRAC_PI_2, PI};
+    use std::time::Duration;
 
-    use bevy::math::Vec2;
+    use bevy::ecs::system::RunSystemOnce;
+    use bevy::prelude::*;
+    use lightyear::prelude::input::native::ActionState;
 
-    use super::{CarState, RacingInput, drive, lerp_angle, wrap_angle};
+    use super::{CarState, RacingInput, drive, drive_cars, lerp_angle, wrap_angle};
     use crate::config::minigames::racing::{
         CAR_MAX_X, EDGE_MAX_SPEED, GRASS_MAX_SPEED, MAX_REVERSE_SPEED, MAX_SPEED,
     };
@@ -325,5 +329,31 @@ mod tests {
     fn grass_doesnt_limit_reversing_below_its_top_speed() {
         let state = drive_for(moving(0.0), BRAKE, Surface::Grass, 1.0);
         assert_eq!(state.speed, -MAX_REVERSE_SPEED.min(GRASS_MAX_SPEED));
+    }
+
+    /// Whether one run of `drive_cars` marks a car in `state`, driven with `input`, as changed.
+    fn drive_cars_marks_changed(state: CarState, input: RacingInput) -> bool {
+        let mut world = World::new();
+        let mut time = Time::<()>::default();
+        time.advance_by(Duration::from_secs_f32(DT));
+        world.insert_resource(time);
+        let car = world.spawn((state, ActionState(input))).id();
+        world.clear_trackers();
+        world.run_system_once(drive_cars).unwrap();
+        world
+            .entity(car)
+            .get_ref::<CarState>()
+            .unwrap()
+            .is_changed()
+    }
+
+    #[test]
+    fn a_parked_car_is_not_marked_as_changed() {
+        assert!(!drive_cars_marks_changed(moving(0.0), COAST));
+    }
+
+    #[test]
+    fn a_car_that_moves_is_marked_as_changed() {
+        assert!(drive_cars_marks_changed(moving(0.0), THROTTLE));
     }
 }
