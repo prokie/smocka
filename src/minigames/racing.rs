@@ -2,6 +2,7 @@ pub mod car;
 pub mod progress;
 pub mod race;
 mod racing_input;
+mod skid_marks;
 pub mod track;
 mod visuals;
 

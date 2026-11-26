@@ -5,6 +5,7 @@ use super::RacingInput;
 use super::car::{Car, CarState};
 use super::progress::{RaceProgress, lap_label, position_label, running_order};
 use super::race::{RaceStatus, status_label};
+use super::skid_marks::SkidMarksPlugin;
 use super::track::{CHECKPOINTS, outline};
 use crate::config::display::{VIEW_HEIGHT, VIEW_WIDTH};
 use crate::config::minigames::racing::{
@@ -61,6 +62,7 @@ pub struct RacingVisualsPlugin;
 
 impl Plugin for RacingVisualsPlugin {
     fn build(&self, app: &mut App) {
+        app.add_plugins(SkidMarksPlugin);
         app.init_resource::<TrackGizmos>();
         app.add_systems(
             OnEnter(SessionPhase::Racing),

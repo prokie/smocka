@@ -10,17 +10,12 @@
 - [x] **5. Start and finish** — `RaceStatus` countdown / racing / finishing and the host's
       `RaceDirector` in `race.rs`, places on `RaceProgress`, `FINISH_GRACE`, results with the full
       order, abandon when every car's player has left.
+- [x] **6. Polish** — live race positions ("2nd / 4") from `running_order` in `progress.rs`,
+      handling tuned, flat 1080p art from `tools/make_art.py`, skid marks in `skid_marks.rs`.
+      Sounds moved to *Sound* under *Later*.
 
 Known limitation: with prediction, the joiner's car can jump forward a little when the race starts.
 Acceptable for now (see *Later*).
-
-### 6. Polish
-- [x] HUD: live race positions ("2nd / 4", top right), from `running_order` in `progress.rs`,
-      which also ranks the cars that didn't finish in the results.
-- [ ] Tune the handling in `config::minigames::racing` until driving feels good.
-- [ ] Better art: car, track, kerbs. Optionally skid marks and sounds. The flat 1080p style is
-      in place (placeholders from `tools/make_art.py`); sounds need Bevy's `audio` feature back.
-- [x] README: status line and controls are up to date.
 
 ## Netcode and engine
 
@@ -96,9 +91,11 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
       through its `lightyear_inputs_bei` crate. Matters more with every minigame added.
 - [ ] **Find games on the local network**: the host announces itself (UDP broadcast or mDNS),
       and the menu lists games to click instead of typing an IP address.
-- [ ] **Sound**: Bevy's built-in `audio` feature is enough for bounces, goals and countdown beeps.
-      For engine pitch that follows speed, or separate music/effects volumes, look at
-      `bevy_kira_audio` (check it supports Bevy 0.20 first).
+- [ ] **Sound**, for every minigame at once: add Bevy's `audio` feature back to `Cargo.toml`.
+      Its built-in audio is enough for Pong's bounces and goals and racing's countdown beeps and
+      finish. Racing's engine could follow speed with `AudioSink::set_speed`. For separate
+      music/effects volumes or fades, look at `bevy_kira_audio` (check it supports Bevy 0.20
+      first).
 - [ ] **Car-to-car bumping**: the hard prediction problem. Do it on its own.
 - [ ] **Start on an agreed tick**, so predicted cars don't jump at the start.
 - [ ] **More interesting tracks**: describe the track as data (a centre line plus width) instead of
