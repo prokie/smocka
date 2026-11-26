@@ -5,6 +5,7 @@ pub mod lobby;
 pub mod menu;
 pub mod minigames;
 pub mod network;
+pub mod profile;
 pub mod session;
 
 use bevy::prelude::*;

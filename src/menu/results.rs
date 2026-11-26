@@ -83,21 +83,25 @@ mod tests {
     use crate::lobby::Player;
     use lightyear::prelude::PeerId;
 
-    const HOST: Player = Player {
-        id: PeerId::Local(0),
-        number: 1,
-    };
+    fn host() -> Player {
+        Player {
+            id: PeerId::Local(0),
+            number: 1,
+            name: "Ada".into(),
+            color: 0,
+        }
+    }
 
     #[test]
     fn congratulates_you() {
-        assert_eq!(headline(Some(&HOST), Some(PeerId::Local(0))), "You win!");
+        assert_eq!(headline(Some(&host()), Some(PeerId::Local(0))), "You win!");
     }
 
     #[test]
     fn names_someone_else() {
         assert_eq!(
-            headline(Some(&HOST), Some(PeerId::Netcode(3))),
-            "Player 1 wins!"
+            headline(Some(&host()), Some(PeerId::Netcode(3))),
+            "Ada wins!"
         );
     }
 

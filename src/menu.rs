@@ -3,7 +3,8 @@ mod notices;
 mod results;
 
 use bevy::ecs::error::warn;
-use bevy::input_focus::{AutoFocus, InputFocus};
+use bevy::input_focus::tab_navigation::{TabGroup, TabIndex, TabNavigationPlugin};
+use bevy::input_focus::{AutoFocus, InputFocus, InputFocusVisible};
 use bevy::picking::hover::Hovered;
 use bevy::prelude::*;
 use bevy::text::{EditableText, TextCursorStyle};
@@ -16,6 +17,7 @@ use crate::app_state::{AppState, SessionEndReason};
 use crate::config::network::{HOST_ADDR, SERVER_ADDR, SERVER_PORT, VERSION};
 use crate::minigames::Minigame;
 use crate::network::{HostSession, JoinSession, LeaveSession, close_session};
+use crate::profile::{LocalProfile, MAX_NAME_CHARS, clean_name};
 use crate::session::{SessionPhase, StartMinigame};
 
 const BUTTON_COLOR: Color = Color::srgb(0.15, 0.15, 0.18);
@@ -39,6 +41,16 @@ pub enum MenuButton {
 #[derive(Component)]
 pub struct AddressInput;
 
+/// The text field holding this player's name, and the name it was last known to hold, to tell
+/// when the player edits it.
+#[derive(Component)]
+pub struct NameInput(String);
+
+/// Whether the player typed a new name since it was last saved. A name given with `--name` isn't
+/// typed, so it isn't saved.
+#[derive(Resource, Default)]
+struct NameEdited(bool);
+
 /// The main menu line that explains what went wrong, if anything.
 #[derive(Component)]
 pub struct MenuMessage;
@@ -48,7 +60,15 @@ pub struct MenuPlugin;
 
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
+        // `Tab` / `Shift+Tab` move between fields and buttons. Not part of `DefaultPlugins`.
+        if !app.is_plugin_added::<TabNavigationPlugin>() {
+            app.add_plugins(TabNavigationPlugin);
+        }
+        // Only the real game remembers the player's name; headless tests start with none.
+        app.insert_resource(LocalProfile::load());
+        app.init_resource::<NameEdited>();
         app.add_systems(OnEnter(AppState::MainMenu), spawn_main_menu);
+        app.add_systems(OnExit(AppState::MainMenu), save_profile);
         app.add_systems(OnEnter(AppState::Connecting), spawn_connecting_screen);
         app.add_systems(
             OnEnter(AppState::InSession),
@@ -60,6 +80,7 @@ impl Plugin for MenuPlugin {
             results::spawn_results_screen,
         );
         app.add_observer(on_menu_button);
+        app.add_observer(lobby::on_swatch);
         app.add_observer(notices::notice_player_left);
         app.add_systems(
             Update,
@@ -68,10 +89,16 @@ impl Plugin for MenuPlugin {
                 (
                     join_on_enter.run_if(address_input_focused),
                     show_session_end_reason,
+                    follow_name_input,
                 )
                     .run_if(in_state(AppState::MainMenu)),
                 leave_on_escape.run_if(not(in_state(AppState::MainMenu))),
-                lobby::update_lobby_screen.run_if(in_state(SessionPhase::Lobby)),
+                (
+                    lobby::update_player_list,
+                    lobby::update_swatches,
+                    lobby::update_lobby_hint,
+                )
+                    .run_if(in_state(SessionPhase::Lobby)),
                 results::update_results_screen.run_if(in_state(SessionPhase::Results)),
                 notices::expire_notices,
                 close_session.run_if(on_message::<WindowCloseRequested>),
@@ -83,6 +110,8 @@ impl Plugin for MenuPlugin {
 fn screen<S: States>(state: S) -> impl Bundle {
     (
         DespawnOnExit(state),
+        // `Tab` only moves between focusable entities inside a tab group.
+        TabGroup::new(0),
         Node {
             width: percent(100),
             height: percent(100),
@@ -111,6 +140,8 @@ fn menu_button(action: MenuButton, text: &str) -> impl Bundle {
         action,
         Button,
         Hovered::default(),
+        // Reachable with `Tab`; `Enter` presses the focused button.
+        TabIndex(0),
         Node {
             width: px(200),
             height: px(48),
@@ -124,12 +155,30 @@ fn menu_button(action: MenuButton, text: &str) -> impl Bundle {
     )
 }
 
-fn spawn_main_menu(mut commands: Commands, reason: Res<SessionEndReason>) {
+fn spawn_main_menu(
+    mut commands: Commands,
+    reason: Res<SessionEndReason>,
+    profile: Res<LocalProfile>,
+) {
     commands.spawn((
         screen(AppState::MainMenu),
         children![
             label("SMOCKA", 64.0, Color::WHITE),
             label(format!("Version {VERSION}"), 16.0, HINT_COLOR),
+            (
+                Node {
+                    column_gap: px(12),
+                    align_items: AlignItems::Center,
+                    ..default()
+                },
+                children![
+                    label("Name", 24.0, HINT_COLOR),
+                    (
+                        NameInput(profile.name.clone()),
+                        text_field(profile.name.clone(), MAX_NAME_CHARS, 12.0),
+                    ),
+                ],
+            ),
             menu_button(MenuButton::Host, "Host game"),
             (
                 Node {
@@ -140,27 +189,8 @@ fn spawn_main_menu(mut commands: Commands, reason: Res<SessionEndReason>) {
                 children![
                     (
                         AddressInput,
-                        TextInput,
-                        EditableText {
-                            max_characters: Some(64),
-                            visible_width: Some(14.0),
-                            ..EditableText::new(SERVER_ADDR.to_string())
-                        },
-                        TextFont {
-                            font_size: FontSize::Px(24.0),
-                            ..default()
-                        },
-                        TextLayout::no_wrap(),
-                        TextCursorStyle::default(),
+                        text_field(SERVER_ADDR.to_string(), 64, 14.0),
                         AutoFocus,
-                        Node {
-                            padding: UiRect::axes(px(10), px(10)),
-                            border: px(2).all(),
-                            border_radius: BorderRadius::all(px(6)),
-                            ..default()
-                        },
-                        BorderColor::all(HINT_COLOR),
-                        BackgroundColor(BUTTON_COLOR),
                     ),
                     menu_button(MenuButton::Join, "Join"),
                 ],
@@ -172,6 +202,60 @@ fn spawn_main_menu(mut commands: Commands, reason: Res<SessionEndReason>) {
             ),
         ],
     ));
+}
+
+/// A one-line text field holding `text`, at most `max_characters` long, about `visible_width`
+/// characters wide.
+fn text_field(text: String, max_characters: usize, visible_width: f32) -> impl Bundle {
+    (
+        TextInput,
+        // Clicking only gives keyboard focus to entities with a `TabIndex` (Bevy's
+        // `PointerFocusPlugin`). Without it, a field can only be focused by `AutoFocus`.
+        TabIndex(0),
+        EditableText {
+            max_characters: Some(max_characters),
+            visible_width: Some(visible_width),
+            ..EditableText::new(text)
+        },
+        TextFont {
+            font_size: FontSize::Px(24.0),
+            ..default()
+        },
+        TextLayout::no_wrap(),
+        TextCursorStyle::default(),
+        Node {
+            padding: UiRect::axes(px(10), px(10)),
+            border: px(2).all(),
+            border_radius: BorderRadius::all(px(6)),
+            ..default()
+        },
+        BorderColor::all(HINT_COLOR),
+        BackgroundColor(BUTTON_COLOR),
+    )
+}
+
+/// When the player edits the name field, use the new name for hosting and joining.
+fn follow_name_input(
+    mut field: Single<(&EditableText, &mut NameInput)>,
+    mut profile: ResMut<LocalProfile>,
+    mut edited: ResMut<NameEdited>,
+) {
+    let (text, known) = &mut *field;
+    let typed = text.value().to_string();
+    if known.0 == typed {
+        return;
+    }
+    known.0.clone_from(&typed);
+    profile.name = clean_name(&typed);
+    edited.0 = true;
+}
+
+/// Leaving the main menu (to host or join): remember a newly typed name for next time.
+fn save_profile(profile: Res<LocalProfile>, mut edited: ResMut<NameEdited>) {
+    if edited.0 {
+        profile.save();
+        edited.0 = false;
+    }
 }
 
 fn spawn_connecting_screen(mut commands: Commands) {
@@ -198,15 +282,23 @@ fn spawn_leave_hint(mut commands: Commands) {
 }
 
 type ButtonLook = (
+    Entity,
     &'static Hovered,
     Has<Pressed>,
     Has<InteractionDisabled>,
     &'static mut BackgroundColor,
 );
 
-fn style_buttons(mut buttons: Query<ButtonLook, With<MenuButton>>) {
-    for (hovered, pressed, disabled, mut background) in &mut buttons {
-        let color = match (disabled, pressed, hovered.get()) {
+/// Buttons light up when hovered, or when reached with `Tab` (focus from the keyboard is
+/// "visible"; focus from a click isn't, so a clicked button doesn't stay lit).
+fn style_buttons(
+    mut buttons: Query<ButtonLook, With<MenuButton>>,
+    focus: Res<InputFocus>,
+    focus_visible: Res<InputFocusVisible>,
+) {
+    for (entity, hovered, pressed, disabled, mut background) in &mut buttons {
+        let tabbed_to = focus_visible.0 && focus.get() == Some(entity);
+        let color = match (disabled, pressed, hovered.get() || tabbed_to) {
             (true, _, _) => BUTTON_DISABLED_COLOR,
             (false, true, _) => BUTTON_PRESSED_COLOR,
             (false, false, true) => BUTTON_HOVERED_COLOR,

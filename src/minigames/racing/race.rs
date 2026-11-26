@@ -50,10 +50,10 @@ impl Default for RaceRules {
 }
 
 /// A car that crossed the line on its last lap.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Finisher {
     pub owner: PeerId,
-    pub number: u32,
+    pub name: String,
 }
 
 /// Host only: the race's clocks and finishing order. Exists while racing.
@@ -88,7 +88,7 @@ impl RaceDirector {
         }
         self.finishers.push(Finisher {
             owner: car.owner,
-            number: car.number,
+            name: car.name.clone(),
         });
         self.finishers.len() as u32
     }
@@ -195,13 +195,13 @@ fn end_race(
     if !everyone_finished && !director.grace_is_over() {
         return;
     }
-    let Some(winner) = director.finishers.first().copied() else {
+    let Some(winner) = director.finishers.first().map(|finisher| finisher.owner) else {
         return;
     };
     let unfinished = cars
         .iter()
         .filter(|(_, progress, _)| progress.place.is_none())
-        .map(|(car, progress, state)| (*car, *progress, state.position))
+        .map(|(car, progress, state)| (car.clone(), *progress, state.position))
         .collect();
     let summary = race_summary(&director.finishers, unfinished);
     info!(
@@ -213,10 +213,7 @@ fn end_race(
         }
     );
     director.over = true;
-    commands.trigger(MinigameEnded::Won(MinigameResult {
-        winner: winner.owner,
-        summary,
-    }));
+    commands.trigger(MinigameEnded::Won(MinigameResult { winner, summary }));
 }
 
 /// What the middle of the screen shows during `status`. `just_started` is whether the race began a
@@ -230,7 +227,7 @@ pub fn status_label(status: RaceStatus, just_started: bool) -> String {
     }
 }
 
-/// The final order, e.g. "1st Player 2 · 2nd Player 1 · 3rd Player 3 (DNF)": the finishers in the
+/// The final order, e.g. "1st Ada · 2nd Player 1 · 3rd Bo (DNF)": the finishers in the
 /// order they finished, then the cars that didn't finish, in [`running_order`].
 pub fn race_summary(
     finishers: &[Finisher],
@@ -239,13 +236,17 @@ pub fn race_summary(
     unfinished.sort_by_key(|(_, progress, position)| running_order(*progress, *position));
     finishers
         .iter()
-        .map(|finisher| (finisher.number, true))
-        .chain(unfinished.iter().map(|(car, _, _)| (car.number, false)))
+        .map(|finisher| (finisher.name.as_str(), true))
+        .chain(
+            unfinished
+                .iter()
+                .map(|(car, _, _)| (car.name.as_str(), false)),
+        )
         .enumerate()
-        .map(|(i, (number, finished))| {
+        .map(|(i, (name, finished))| {
             let place = ordinal(i as u32 + 1);
             let dnf = if finished { "" } else { " (DNF)" };
-            format!("{place} Player {number}{dnf}")
+            format!("{place} {name}{dnf}")
         })
         .collect::<Vec<_>>()
         .join(" · ")
@@ -278,7 +279,8 @@ mod tests {
     fn car(number: u32) -> Car {
         Car {
             owner: PeerId::Netcode(number.into()),
-            number,
+            name: format!("Player {number}"),
+            color: 0,
         }
     }
 
@@ -330,7 +332,7 @@ mod tests {
     fn the_summary_lists_finishers_then_the_rest_by_progress() {
         let finishers = [car(2), car(4)].map(|car| Finisher {
             owner: car.owner,
-            number: car.number,
+            name: car.name,
         });
         let behind = RaceProgress {
             next_checkpoint: 2,

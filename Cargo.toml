@@ -21,6 +21,7 @@ lightyear = { version = "0.31.0", features = [
     "netcode",
 ] }
 serde = { version = "1.0.229", features = ["derive"] }
+dirs = "6"
 
 [profile.dev]
 opt-level = 1

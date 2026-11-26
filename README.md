@@ -34,10 +34,14 @@ Download the zip for your system from the
 cargo run
 ```
 
-One player picks **Host game**. The others type the host's address (for example
-`192.168.1.10`, or `192.168.1.10:5000`) and press **Join**. The host listens on UDP port 5000 on
-every interface. Once at least two players are in the lobby, the host picks a minigame. `Esc`
-leaves the session.
+Type your name at the top of the main menu; it's remembered for next time (in `smocka/name.txt`
+in your system's settings folder). One player picks **Host game**. The others type the host's
+address (for example `192.168.1.10`, or `192.168.1.10:5000`) and press **Join**. The host listens
+on UDP port 5000 on every interface.
+
+In the lobby, everyone picks a colour: each colour can belong to only one player, and it's used
+for your car, your Pong paddle and your score. Once at least two players are there, the host
+picks a minigame. `Esc` leaves the session.
 
 To skip the menu while developing:
 
@@ -45,6 +49,7 @@ To skip the menu while developing:
 cargo run -- host                # host straight away
 cargo run -- join                # join a host on this machine
 cargo run -- join 192.168.1.10   # join another machine (port 5000 unless given)
+cargo run -- host --name=Ada     # play as "Ada" this time, without changing the saved name
 ```
 
 To test two players on one machine, `tools/dev.sh` builds once and starts a host on the left half

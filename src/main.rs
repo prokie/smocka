@@ -8,6 +8,7 @@ use bevy::window::{Monitor, PrimaryMonitor, PrimaryWindow, WindowPosition};
 use smocka::config::network::{HOST_ADDR, SERVER_ADDR};
 use smocka::menu::{MenuPlugin, parse_address};
 use smocka::network::{HostSession, JoinSession};
+use smocka::profile::{LocalProfile, clean_name};
 use smocka::{SmockaPlugin, camera, minigames};
 
 /// What to do at startup, from the command line.
@@ -58,6 +59,11 @@ fn main() {
         side,
         secondary: has("--secondary"),
     });
+    // `--name=Ada` plays as "Ada" this time, without changing the saved name.
+    let name = flags
+        .iter()
+        .find_map(|flag| flag.strip_prefix("--name="))
+        .map(clean_name);
     let mut args = positional.into_iter();
     let launch = match args.next().as_deref() {
         Some("host") => Launch::Host,
@@ -84,6 +90,9 @@ fn main() {
         SmockaPlugin,
     ));
 
+    if let Some(name) = name {
+        app.insert_resource(LocalProfile { name });
+    }
     if let Some(half) = half {
         app.insert_resource(half);
         app.add_systems(Update, place_window.run_if(resource_exists::<ScreenHalf>));

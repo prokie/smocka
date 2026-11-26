@@ -10,6 +10,7 @@ use smocka::app_state::{AppState, SessionEndReason};
 use smocka::lobby::{Player, PlayerLeft};
 use smocka::minigames::Minigame;
 use smocka::network::{HostSession, JoinSession, LeaveSession};
+use smocka::profile::LocalProfile;
 use smocka::session::{SessionPhase, StartMinigame};
 
 /// A headless app with the network plugin, plus queries for its connection state.
@@ -43,7 +44,16 @@ impl TestApp {
 
     /// A new app joining the session at `addr`.
     pub fn join(addr: SocketAddr) -> Self {
+        Self::join_as(addr, "")
+    }
+
+    /// A new app joining the session at `addr` with the player name `name`, as if typed in the
+    /// main menu.
+    pub fn join_as(addr: SocketAddr, name: &str) -> Self {
         let mut app = Self::new();
+        app.0
+            .world_mut()
+            .insert_resource(LocalProfile { name: name.into() });
         JoinSession { addr }
             .apply(app.0.world_mut())
             .expect("failed to join session");
@@ -119,6 +129,21 @@ impl TestApp {
     }
 
     /// Number of lobby players this app can see (spawned locally on the host, replicated on clients).
+    /// Every player this app can see, in joining order.
+    pub fn player_list(&mut self) -> Vec<Player> {
+        let world = self.0.world_mut();
+        let mut players: Vec<Player> = world.query::<&Player>().iter(world).cloned().collect();
+        players.sort_by_key(|player| player.number);
+        players
+    }
+
+    /// The player called `name`, as this app sees it.
+    pub fn player_named(&mut self, name: &str) -> Option<Player> {
+        self.player_list()
+            .into_iter()
+            .find(|player| player.name == name)
+    }
+
     pub fn players(&mut self) -> usize {
         self.count::<With<Player>>()
     }

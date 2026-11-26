@@ -23,10 +23,10 @@ if [[ -n "${WAYLAND_DISPLAY:-}" && -n "${DISPLAY:-}" ]]; then
     unset WAYLAND_DISPLAY
 fi
 
-"$game" host --left "${monitor[@]}" &
+"$game" host --left --name=Host "${monitor[@]}" &
 host=$!
 trap 'kill "$host" 2>/dev/null || true' EXIT
 
 # Give the host a moment to start listening before the joiner knocks.
 sleep 1
-"$game" join --right "${monitor[@]}"
+"$game" join --right --name=Joiner "${monitor[@]}"

@@ -274,7 +274,7 @@ fn add_car_sprite(
     };
     commands.entity(trigger.entity).insert((
         Sprite {
-            color: player_color(car.number),
+            color: player_color(car.color),
             custom_size: Some(Vec2::new(CAR_LENGTH, CAR_WIDTH)),
             ..Sprite::from_image(assets.load(CAR_IMAGE))
         },

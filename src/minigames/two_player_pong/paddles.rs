@@ -15,6 +15,8 @@ use crate::session::SessionPhase;
 pub struct Paddle {
     pub owner: PeerId,
     pub side: Side,
+    /// The owner's [`Player::color`], an index for [`player_color`](crate::lobby::player_color).
+    pub color: u8,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
@@ -84,13 +86,18 @@ fn spawn_paddles(mut commands: Commands, players: Query<(&Player, &ControlledBy)
     let [(left, left_link), (right, right_link), ..] = players[..] else {
         return;
     };
-    spawn_paddle(&mut commands, left.id, left_link.owner, Side::Left);
-    spawn_paddle(&mut commands, right.id, right_link.owner, Side::Right);
+    spawn_paddle(&mut commands, left, left_link.owner, Side::Left);
+    spawn_paddle(&mut commands, right, right_link.owner, Side::Right);
 }
 
-fn spawn_paddle(commands: &mut Commands, owner: PeerId, link: Entity, side: Side) {
+fn spawn_paddle(commands: &mut Commands, player: &Player, link: Entity, side: Side) {
+    let owner = player.id;
     commands.spawn((
-        Paddle { owner, side },
+        Paddle {
+            owner,
+            side,
+            color: player.color,
+        },
         DespawnOnExit(SessionPhase::TwoPlayerPong),
         PaddlePosition(Vec2::new(side.x_pos(), 0.0)),
         Replicate::to_clients(NetworkTarget::All),

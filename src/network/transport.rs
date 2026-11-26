@@ -1,8 +1,9 @@
 use crate::app_state::{AppState, SessionEndReason};
 use crate::config::network::{PRIVATE_KEY, PROTOCOL_ID};
+use crate::profile::{LocalProfile, name_to_user_data};
 use bevy::ecs::resource::IsResource;
 use bevy::prelude::*;
-use lightyear::netcode::{Key, NetcodeClient, NetcodeServer};
+use lightyear::netcode::{ConnectToken, Key, NetcodeClient, NetcodeServer};
 use lightyear::prelude::{
     client::{self},
     server::{self, ServerUdpIo, Start, Started, Stop},
@@ -89,20 +90,27 @@ impl Command for JoinSession {
         let addr = self.addr;
         let client_id = new_client_id();
 
-        let auth = Authentication::Manual {
-            server_addr: addr,
-            client_id,
-            private_key: Key::from(PRIVATE_KEY),
-            protocol_id: PROTOCOL_ID,
-        };
-
-        let netcode = match NetcodeClient::new(auth, client::NetcodeConfig::default()) {
+        // The player's name travels in the token's user data, so the host knows it on connect.
+        let name = world
+            .get_resource::<LocalProfile>()
+            .map(|profile| profile.name.clone())
+            .unwrap_or_default();
+        let config = client::NetcodeConfig::default();
+        let token = ConnectToken::build(addr, PROTOCOL_ID, client_id, Key::from(PRIVATE_KEY))
+            .timeout_seconds(config.client_timeout_secs)
+            .expire_seconds(config.token_expire_secs)
+            .user_data(name_to_user_data(&name))
+            .generate();
+        let netcode = match token
+            .map_err(BevyError::from)
+            .and_then(|token| Ok(NetcodeClient::new(Authentication::Token(token), config)?))
+        {
             Ok(netcode) => netcode,
             Err(error) => {
                 if let Some(mut reason) = world.get_resource_mut::<SessionEndReason>() {
                     reason.0 = Some(format!("Couldn't set up a connection to {addr}."));
                 }
-                return Err(error.into());
+                return Err(error);
             }
         };
 

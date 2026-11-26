@@ -7,10 +7,11 @@ use crate::config::display::{ART_SCALE, VIEW_HEIGHT, VIEW_WIDTH};
 use crate::config::minigames::two_player_pong::{
     BALL_SIZE, PADDLE_HEIGHT, PADDLE_WIDTH, SCORE_FONT_SIZE, WALL_THICKNESS,
 };
+use crate::lobby::player_color;
 use crate::session::SessionPhase;
 
 const ARENA_IMAGE: &str = "minigames/two_player_pong/arena.png";
-/// Drawn in white/grey and tinted per side with [`Side::color`].
+/// Drawn in white/grey and tinted with its player's colour.
 const PADDLE_IMAGE: &str = "minigames/two_player_pong/paddle.png";
 const BALL_IMAGE: &str = "minigames/two_player_pong/ball.png";
 
@@ -49,15 +50,6 @@ impl Plugin for PongVisualsPlugin {
     }
 }
 
-impl Side {
-    pub fn color(self) -> Color {
-        match self {
-            Side::Left => Color::srgb(0.35, 0.65, 1.0),
-            Side::Right => Color::srgb(1.0, 0.4, 0.4),
-        }
-    }
-}
-
 fn spawn_arena(assets: Res<AssetServer>, mut commands: Commands) {
     commands.spawn((
         Arena,
@@ -81,7 +73,7 @@ fn add_paddle_sprite(
     };
     commands.entity(trigger.entity).insert((
         Sprite {
-            color: paddle.side.color(),
+            color: player_color(paddle.color),
             custom_size: Some(Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT)),
             ..Sprite::from_image(assets.load(PADDLE_IMAGE))
         },
@@ -125,18 +117,27 @@ fn spawn_score_text(mut commands: Commands) {
                 font_size: FontSize::Px(SCORE_FONT_SIZE * ART_SCALE),
                 ..default()
             },
-            TextColor(side.color()),
+            // Takes the colour of this side's player once their paddle has arrived.
+            TextColor(Color::WHITE),
             Transform::from_xyz(side.x_pos().signum() * SCORE_X_OFFSET, SCORE_Y, SCORE_Z)
                 .with_scale(Vec3::splat(1.0 / ART_SCALE)),
         ));
     }
 }
 
-fn update_score_text(score: Single<&PongScore>, mut texts: Query<(&ScoreText, &mut Text2d)>) {
-    for (ScoreText(side), mut text) in &mut texts {
+/// Show the latest [`PongScore`], each side in its player's colour.
+fn update_score_text(
+    score: Single<&PongScore>,
+    paddles: Query<&Paddle>,
+    mut texts: Query<(&ScoreText, &mut Text2d, &mut TextColor)>,
+) {
+    for (ScoreText(side), mut text, mut color) in &mut texts {
         let shown = score.of(*side).to_string();
         if text.0 != shown {
             text.0 = shown;
+        }
+        if let Some(paddle) = paddles.iter().find(|paddle| paddle.side == *side) {
+            color.set_if_neq(TextColor(player_color(paddle.color)));
         }
     }
 }

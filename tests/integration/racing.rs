@@ -300,3 +300,15 @@ fn the_race_ends_when_the_only_other_player_leaves_after_you_finish() {
     });
     assert!(hosts(result(&mut host).unwrap().winner));
 }
+
+#[test]
+fn cars_carry_their_drivers_name_and_colour() {
+    let (_host, mut client) = race_pair();
+    let players = client.player_list();
+    let world = client.0.world_mut();
+    let cars: Vec<Car> = world.query::<&Car>().iter(world).cloned().collect();
+    for player in players {
+        let car = cars.iter().find(|car| car.owner == player.id).unwrap();
+        assert_eq!((&car.name, car.color), (&player.name, player.color));
+    }
+}

@@ -115,17 +115,12 @@ fn count_laps(
         let mut next = progress.advance(checkpoint_at(state.position));
         if next.laps != progress.laps {
             debug!(
-                "Player {} ({:?}) completed lap {}/{LAPS}",
-                car.number, car.owner, next.laps
+                "{} ({:?}) completed lap {}/{LAPS}",
+                car.name, car.owner, next.laps
             );
             if next.laps >= LAPS {
                 let place = director.finish(car);
-                info!(
-                    "Player {} ({:?}) finished {}",
-                    car.number,
-                    car.owner,
-                    ordinal(place)
-                );
+                info!("{} ({:?}) finished {}", car.name, car.owner, ordinal(place));
                 next.place = Some(place);
             }
         }

@@ -19,12 +19,14 @@ use crate::lobby::Player;
 use crate::network::is_host;
 use crate::session::SessionPhase;
 
-/// Who drives this car. Set once at spawn.
-#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+/// Who drives this car. Set once at spawn, copied from the driver's [`Player`] so the car keeps
+/// them even if the player leaves mid-race.
+#[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Car {
     pub owner: PeerId,
-    /// The driver's [`Player::number`], for [`player_color`](crate::lobby::player_color).
-    pub number: u32,
+    pub name: String,
+    /// The driver's [`Player::color`], an index for [`player_color`](crate::lobby::player_color).
+    pub color: u8,
 }
 
 /// Predicted for the driver and interpolated for everyone else. Everything [`drive`] reads or
@@ -97,7 +99,8 @@ fn spawn_cars(mut commands: Commands, players: Query<(&Player, &ControlledBy)>) 
         commands.spawn((
             Car {
                 owner: player.id,
-                number: player.number,
+                name: player.name.clone(),
+                color: player.color,
             },
             CarState::parked(grid_position(slot), START_HEADING),
             RaceProgress::on_grid(),
