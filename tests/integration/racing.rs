@@ -269,7 +269,11 @@ fn the_first_car_over_the_line_wins_on_every_peer() {
         let result = result(app).unwrap();
         assert!(hosts(result.placements[0].player), "{result:?}");
         assert_eq!(order(&result), ["1st Player 1", "2nd Player 2"]);
-        assert_eq!(result.summary, "Every car finished");
+        // Both drove one lap, from the same start: the host crossed first.
+        assert!(
+            result.summary.starts_with("Fastest lap: Player 1, "),
+            "{result:?}"
+        );
     }
 }
 

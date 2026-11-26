@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use super::RacingSystems;
 use super::car::{Car, CarState};
-use super::race::RaceDirector;
+use super::race::{RaceDirector, lap_time_label};
 use super::track::{CHECKPOINTS, checkpoint_at};
 use crate::config::minigames::racing::LAPS;
 use crate::network::is_host;
@@ -135,9 +135,13 @@ fn count_laps(
             _ => {}
         }
         if next.laps != progress.laps {
+            let lap_time = director.complete_lap(car);
             debug!(
-                "{} ({:?}) completed lap {}/{LAPS}",
-                car.name, car.owner, next.laps
+                "{} ({:?}) completed lap {}/{LAPS} in {}",
+                car.name,
+                car.owner,
+                next.laps,
+                lap_time_label(lap_time)
             );
             if next.laps >= LAPS {
                 let place = director.finish(car);

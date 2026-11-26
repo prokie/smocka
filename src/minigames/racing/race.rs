@@ -1,6 +1,7 @@
 //! The race as a whole: the countdown, the finishing order, and when the race ends. The host
 //! decides all of it; clients see the replicated [`RaceStatus`] and each car's [`RaceProgress`].
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use bevy::prelude::*;
@@ -49,10 +50,23 @@ impl Default for RaceRules {
     }
 }
 
-/// Host only: the race's clocks and finishing order. Exists while racing.
+/// The quickest lap anyone drove in a race.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FastestLap {
+    pub name: String,
+    pub time: Duration,
+}
+
+/// Host only: the race's clocks, lap times and finishing order. Exists while racing.
 #[derive(Resource, Debug)]
 pub struct RaceDirector {
     countdown: Timer,
+    /// Time since the race was set up, countdown included. Lap times are measured on it.
+    clock: Duration,
+    /// When each car last crossed the line. A car not in it is on its first lap, which started
+    /// when the countdown ended.
+    lap_started: HashMap<PeerId, Duration>,
+    fastest_lap: Option<FastestLap>,
     finish_grace: Duration,
     /// Started by the first finish.
     grace: Option<Timer>,
@@ -67,11 +81,36 @@ impl RaceDirector {
     fn new(rules: &RaceRules) -> Self {
         Self {
             countdown: Timer::new(rules.countdown, TimerMode::Once),
+            clock: Duration::ZERO,
+            lap_started: HashMap::new(),
+            fastest_lap: None,
             finish_grace: rules.finish_grace,
             grace: None,
             finishers: Vec::new(),
             over: false,
         }
+    }
+
+    /// Record that `car` just crossed the line to complete a lap, and return how long the lap
+    /// took. The first lap is timed from the end of the countdown, so it includes the run-up from
+    /// the grid.
+    pub fn complete_lap(&mut self, car: &Car) -> Duration {
+        let started = self
+            .lap_started
+            .insert(car.owner, self.clock)
+            .unwrap_or(self.countdown.duration());
+        let time = self.clock.saturating_sub(started);
+        if self
+            .fastest_lap
+            .as_ref()
+            .is_none_or(|fastest| time < fastest.time)
+        {
+            self.fastest_lap = Some(FastestLap {
+                name: car.name.clone(),
+                time,
+            });
+        }
+        time
     }
 
     /// Record `car` as finished and return its place, counting from 1. The first finish starts
@@ -86,6 +125,7 @@ impl RaceDirector {
 
     /// Advance the clocks by `delta` and return the status they give.
     fn tick(&mut self, delta: Duration) -> RaceStatus {
+        self.clock += delta;
         self.countdown.tick(delta);
         if !self.countdown.is_finished() {
             return RaceStatus::Countdown(whole_seconds(self.countdown.remaining()));
@@ -195,16 +235,19 @@ fn end_race(
         .map(|(car, progress, state)| (car.clone(), *progress, state.position))
         .collect();
     let placements = race_placements(&director.finishers, unfinished);
-    let summary = if everyone_finished {
-        "Every car finished"
-    } else {
-        "Time ran out for the rest"
-    };
-    info!("Race over: {summary}");
+    let summary = race_summary(director.fastest_lap.as_ref());
+    info!(
+        "Race over ({}). {summary}",
+        if everyone_finished {
+            "every car finished"
+        } else {
+            "time ran out after the first finish"
+        }
+    );
     director.over = true;
     commands.trigger(MinigameEnded::Won(MinigameResult {
         placements,
-        summary: summary.into(),
+        summary,
     }));
 }
 
@@ -216,6 +259,26 @@ pub fn status_label(status: RaceStatus, just_started: bool) -> String {
         RaceStatus::Racing if just_started => "GO!".into(),
         RaceStatus::Racing => String::new(),
         RaceStatus::Finishing(seconds) => format!("Race ends in {seconds}"),
+    }
+}
+
+/// The results screen's line under the headline, e.g. "Fastest lap: Ada, 7.42 s".
+pub fn race_summary(fastest_lap: Option<&FastestLap>) -> String {
+    match fastest_lap {
+        Some(lap) => format!("Fastest lap: {}, {}", lap.name, lap_time_label(lap.time)),
+        None => String::new(),
+    }
+}
+
+/// A lap time to the hundredth of a second: "7.42 s", or "1:02.35" from a minute up.
+pub fn lap_time_label(time: Duration) -> String {
+    let hundredths = (time.as_millis() + 5) / 10;
+    let (minutes, seconds, hundredths) =
+        (hundredths / 6000, hundredths / 100 % 60, hundredths % 100);
+    if minutes == 0 {
+        format!("{seconds}.{hundredths:02} s")
+    } else {
+        format!("{minutes}:{seconds:02}.{hundredths:02}")
     }
 }
 
@@ -248,7 +311,10 @@ mod tests {
     use bevy::math::Vec2;
     use lightyear::prelude::PeerId;
 
-    use super::{Car, RaceDirector, RaceRules, RaceStatus, race_placements, status_label};
+    use super::{
+        Car, FastestLap, RaceDirector, RaceRules, RaceStatus, lap_time_label, race_placements,
+        race_summary, status_label,
+    };
     use crate::minigames::racing::progress::RaceProgress;
 
     fn car(number: u32) -> Car {
@@ -294,6 +360,54 @@ mod tests {
         assert!(!director.grace_is_over());
         director.tick(Duration::from_secs(6));
         assert!(director.grace_is_over());
+    }
+
+    #[test]
+    fn times_laps_and_keeps_the_fastest() {
+        let mut director = RaceDirector::new(&rules(3, 10));
+        director.tick(Duration::from_secs(3));
+        // First laps are timed from the end of the countdown.
+        director.tick(Duration::from_secs(9));
+        assert_eq!(director.complete_lap(&car(1)), Duration::from_secs(9));
+        director.tick(Duration::from_secs(1));
+        assert_eq!(director.complete_lap(&car(2)), Duration::from_secs(10));
+        // Later laps from the car's last crossing.
+        director.tick(Duration::from_secs(7));
+        assert_eq!(director.complete_lap(&car(1)), Duration::from_secs(8));
+        director.tick(Duration::from_secs(1));
+        assert_eq!(director.complete_lap(&car(2)), Duration::from_secs(8));
+        // A tie keeps the first to set it.
+        assert_eq!(
+            director.fastest_lap,
+            Some(FastestLap {
+                name: "Player 1".into(),
+                time: Duration::from_secs(8),
+            })
+        );
+    }
+
+    #[test]
+    fn the_summary_names_the_fastest_lap() {
+        let lap = FastestLap {
+            name: "Ada".into(),
+            time: Duration::from_millis(7_423),
+        };
+        assert_eq!(race_summary(Some(&lap)), "Fastest lap: Ada, 7.42 s");
+        assert_eq!(race_summary(None), "");
+    }
+
+    #[test]
+    fn lap_times() {
+        let shown: Vec<String> = [0, 7_423, 7_425, 59_994, 59_996, 62_350]
+            .into_iter()
+            .map(|ms| lap_time_label(Duration::from_millis(ms)))
+            .collect();
+        assert_eq!(
+            shown,
+            [
+                "0.00 s", "7.42 s", "7.43 s", "59.99 s", "1:00.00", "1:02.35"
+            ]
+        );
     }
 
     #[test]
