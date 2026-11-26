@@ -18,8 +18,8 @@ Acceptable for now (see *Later*).
 - [x] HUD: live race positions ("2nd / 4", top right), from `running_order` in `progress.rs`,
       which also ranks the cars that didn't finish in the results.
 - [ ] Tune the handling in `config::minigames::racing` until driving feels good.
-- [ ] Better art: car, track, kerbs. Optionally skid marks and sounds. Waits on the art-style
-      decision (*Netcode and engine*), and sounds need Bevy's `audio` feature back.
+- [ ] Better art: car, track, kerbs. Optionally skid marks and sounds. The flat 1080p style is
+      in place (placeholders from `tools/make_art.py`); sounds need Bevy's `audio` feature back.
 - [x] README: status line and controls are up to date.
 
 ## Netcode and engine
@@ -57,40 +57,16 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
       "file_watcher"]` (add `"audio"` back with sound) skips the 3D renderer and cuts clean build
       time and binary size. Keep `file_watcher`: it's what makes edited PNGs reload in a running
       game.
-- [ ] **Art style: stylized flat HD at 1080p (leaning towards).** Between pixel art and 4K:
-      clean shapes, bold outlines, solid colours and simple shading, a toy-box board-game look
-      in the style of *Pummel Party*. It's quick to make for many minigames, rotates smoothly
-      (cars), and matches a possible low-poly 3D minigame later. Do it early: it touches every
-      sprite, and that grows with each minigame. The world stays 640×360 units, so gameplay
-      constants don't change.
-  - **Textures at 3× (1920×1080 for a full screen), not 6×.** A 4K screen upscales them 2×,
-    which is fine for flat art. A 720p screen downscales them 1.5×, which linear filtering
-    handles without mipmaps, so the KTX2 / asset-processor pipeline isn't needed. A quarter of
-    4K's memory and download size.
-  - `ImagePlugin::default_nearest()` → `default_linear()` in `src/main.rs`. A minigame that
-    wants pixel art can still load its images with nearest filtering. In Bevy 0.20 that's
-    `asset_server.load_builder().with_settings(|s: &mut ImageLoaderSettings| s.sampler =
-    ImageSampler::nearest()).load(path)` (`load_with_settings` is the older API).
-  - Give every sprite a `custom_size` in world units from the existing constants (arena,
-    paddle, ball, car, track), so texture size no longer matters. Worth doing whichever style
-    wins.
-  - Simple shapes can skip image files: `Mesh2d` with a `ColorMaterial` gives crisp, resizable
-    cars, paddles and track pieces. Their edges are smoothed by the camera's MSAA (on by
-    default, 4 samples).
-  - Redraw the placeholders at 3×: a scale factor and smoothed edges in `tools/make_track.py`,
-    and new car, paddle and ball sprites.
-  - Check Pong's score (`Text2d`) stays sharp when scaled.
-  - Update the README's *Art* section (it says one world unit is one pixel).
-  - **If 4K textures are ever wanted:** downscaling them more than 2× shimmers without mipmaps.
-    Bevy 0.20's asset processor can make them (`compressed_image_saver` in `bevy_image`, with a
-    `generate_mipmaps` setting, writing compressed KTX2). It needs the `asset_processor` and
-    `compressed_image_saver` features (and a C++ compiler) to build, and `ktx2` to load.
-  - **Alternative, staying with pixel art:** 640×360 divides 4K, 1080p and 720p exactly, so it's
-    already sharp at those sizes. The rough edge is windowed mode, where `ScalingMode::AutoMin`
-    scales by fractional amounts and rotating cars shimmer: snap the zoom to whole multiples, or
-    render to a 640×360 texture and scale that up. A 3D minigame would then need a matching
-    retro look (rendered at low resolution too). Avoid strict pixel art in 2D next to smooth,
-    modern 3D.
+- [x] **Art style: stylized flat HD at 1080p.** Textures at `ART_SCALE` (3) pixels per world
+      unit with linear filtering, every sprite sized in world units with `custom_size`, Pong's
+      score drawn 3× bigger and scaled down so it stays sharp. Placeholders redrawn by
+      `tools/make_art.py`. No mipmaps needed at 3×.
+  - [ ] If 4K textures are ever wanted: downscaling them more than 2× shimmers without mipmaps.
+        Bevy 0.20's asset processor can make them (`compressed_image_saver` in `bevy_image`, with
+        a `generate_mipmaps` setting, writing compressed KTX2). It needs the `asset_processor`
+        and `compressed_image_saver` features (and a C++ compiler) to build, and `ktx2` to load.
+  - [ ] Simple shapes could skip image files: `Mesh2d` with a `ColorMaterial` gives crisp,
+        resizable shapes, with edges smoothed by the camera's MSAA (on by default, 4 samples).
 - [ ] **Let each minigame own its camera.** Today one `Camera2d` is spawned at startup
       (`src/camera/main_camera.rs`) and shared by the menus and every minigame. A 3D minigame
       would need its own `Camera3d` and lights, and a minigame might want its own zoom. Plan: the
@@ -158,7 +134,7 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
 
 ## Loose ends
 
-- [x] Track-art generator in the repo: `python3 tools/make_track.py` redraws `track.png`. Keep its
-      constants in step with the `TRACK_*` / `GRID_*` ones in `src/config.rs`.
+- [x] Art generator in the repo: `python3 tools/make_art.py` redraws every placeholder. Keep its
+      constants in step with the ones in `src/config.rs`.
 - [x] Delete the empty `src/minigames/four_player_pong` module.
 - [x] README: mention `RUST_LOG=info,smocka=debug cargo run` for the `debug!` logs.

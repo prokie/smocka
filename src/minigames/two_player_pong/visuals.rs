@@ -3,8 +3,10 @@ use bevy::prelude::*;
 use super::ball::{Ball, BallPosition};
 use super::paddles::{Paddle, PaddlePosition, Side};
 use super::score::PongScore;
-use crate::config::display::VIEW_HEIGHT;
-use crate::config::minigames::two_player_pong::{SCORE_FONT_SIZE, WALL_THICKNESS};
+use crate::config::display::{ART_SCALE, VIEW_HEIGHT, VIEW_WIDTH};
+use crate::config::minigames::two_player_pong::{
+    BALL_SIZE, PADDLE_HEIGHT, PADDLE_WIDTH, SCORE_FONT_SIZE, WALL_THICKNESS,
+};
 use crate::session::SessionPhase;
 
 const ARENA_IMAGE: &str = "minigames/two_player_pong/arena.png";
@@ -60,7 +62,10 @@ fn spawn_arena(assets: Res<AssetServer>, mut commands: Commands) {
     commands.spawn((
         Arena,
         DespawnOnExit(SessionPhase::TwoPlayerPong),
-        Sprite::from_image(assets.load(ARENA_IMAGE)),
+        Sprite {
+            custom_size: Some(Vec2::new(VIEW_WIDTH, VIEW_HEIGHT)),
+            ..Sprite::from_image(assets.load(ARENA_IMAGE))
+        },
         Transform::from_xyz(0.0, 0.0, ARENA_Z),
     ));
 }
@@ -77,6 +82,7 @@ fn add_paddle_sprite(
     commands.entity(trigger.entity).insert((
         Sprite {
             color: paddle.side.color(),
+            custom_size: Some(Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT)),
             ..Sprite::from_image(assets.load(PADDLE_IMAGE))
         },
         Transform::from_xyz(paddle.side.x_pos(), 0.0, PADDLE_Z),
@@ -92,7 +98,10 @@ fn sync_paddle_transform(mut paddles: Query<(&PaddlePosition, &mut Transform), W
 
 fn add_ball_sprite(trigger: On<Add<Ball>>, assets: Res<AssetServer>, mut commands: Commands) {
     commands.entity(trigger.entity).insert((
-        Sprite::from_image(assets.load(BALL_IMAGE)),
+        Sprite {
+            custom_size: Some(Vec2::splat(BALL_SIZE)),
+            ..Sprite::from_image(assets.load(BALL_IMAGE))
+        },
         Transform::from_xyz(0.0, 0.0, BALL_Z),
     ));
 }
@@ -110,12 +119,15 @@ fn spawn_score_text(mut commands: Commands) {
             ScoreText(side),
             DespawnOnExit(SessionPhase::TwoPlayerPong),
             Text2d::new("0"),
+            // Text2d is drawn at the window's scale factor, not the camera's zoom, so draw it
+            // ART_SCALE times bigger and shrink it back down, or it blurs when the camera zooms in.
             TextFont {
-                font_size: FontSize::Px(SCORE_FONT_SIZE),
+                font_size: FontSize::Px(SCORE_FONT_SIZE * ART_SCALE),
                 ..default()
             },
             TextColor(side.color()),
-            Transform::from_xyz(side.x_pos().signum() * SCORE_X_OFFSET, SCORE_Y, SCORE_Z),
+            Transform::from_xyz(side.x_pos().signum() * SCORE_X_OFFSET, SCORE_Y, SCORE_Z)
+                .with_scale(Vec3::splat(1.0 / ART_SCALE)),
         ));
     }
 }

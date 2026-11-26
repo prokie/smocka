@@ -6,14 +6,17 @@ use super::car::{Car, CarState};
 use super::progress::{RaceProgress, lap_label, position_label, running_order};
 use super::race::{RaceStatus, status_label};
 use super::track::{CHECKPOINTS, outline};
-use crate::config::minigames::racing::{START_LINE_X, TRACK_INNER_RADIUS, TRACK_OUTER_RADIUS};
+use crate::config::display::{VIEW_HEIGHT, VIEW_WIDTH};
+use crate::config::minigames::racing::{
+    CAR_LENGTH, CAR_WIDTH, START_LINE_X, TRACK_INNER_RADIUS, TRACK_OUTER_RADIUS,
+};
 use crate::lobby::player_color;
 use crate::session::SessionPhase;
 
 /// Points right. Drawn in white/grey and tinted per player.
 const CAR_IMAGE: &str = "minigames/racing/car.png";
 
-/// 640×360, drawn to match the shape in [`track`](super::track).
+/// Covers the whole screen, drawn to match the shape in [`track`](super::track).
 const TRACK_IMAGE: &str = "minigames/racing/track.png";
 
 /// Draw order: higher values are drawn on top.
@@ -92,7 +95,10 @@ fn spawn_track(assets: Res<AssetServer>, mut commands: Commands) {
     commands.spawn((
         TrackSprite,
         DespawnOnExit(SessionPhase::Racing),
-        Sprite::from_image(assets.load(TRACK_IMAGE)),
+        Sprite {
+            custom_size: Some(Vec2::new(VIEW_WIDTH, VIEW_HEIGHT)),
+            ..Sprite::from_image(assets.load(TRACK_IMAGE))
+        },
         Transform::from_xyz(0.0, 0.0, TRACK_Z),
     ));
 }
@@ -267,6 +273,7 @@ fn add_car_sprite(
     commands.entity(trigger.entity).insert((
         Sprite {
             color: player_color(car.number),
+            custom_size: Some(Vec2::new(CAR_LENGTH, CAR_WIDTH)),
             ..Sprite::from_image(assets.load(CAR_IMAGE))
         },
         Transform::from_xyz(0.0, 0.0, CAR_Z),

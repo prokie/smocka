@@ -47,6 +47,12 @@ cargo run -- join                # join a host on this machine
 cargo run -- join 192.168.1.10   # join another machine (port 5000 unless given)
 ```
 
+To test two players on one machine, `tools/dev.sh` builds once and starts a host on the left half
+of the secondary monitor and a joiner on the right (`SMOCKA_MONITOR=primary tools/dev.sh` for
+the primary one); closing the joiner closes both. The halves come from `--left` / `--right`, plus
+`--secondary`, which also work on their own. Wayland doesn't let apps place their windows,
+so the script runs the game on X11 (XWayland) there.
+
 ## Controls
 
 - **Pong:** `W` / `↑` up, `S` / `↓` down.
@@ -55,10 +61,19 @@ cargo run -- join 192.168.1.10   # join another machine (port 5000 unless given)
 
 ## Art
 
-Sprites live in `assets/minigames/<minigame>/` on a 640×360 virtual screen (one world unit is one
-pixel). Overwrite a PNG with the same name and size to replace it. Draw player-coloured parts in
-white or grey: the game tints them. The racing track's art must match the shape set in
-`config::minigames::racing` (`TRACK_*` constants); press `F3` in a race to check.
+The art is flat and stylized (solid colours, bold outlines), drawn for a 1080p screen: 3 texture
+pixels per world unit of the 640×360 virtual screen (`ART_SCALE` in `src/config.rs`). Every
+sprite is given its size in world units, so an image's resolution never changes gameplay; 4K
+screens scale it up and smaller ones down, with smooth filtering.
+
+Sprites live in `assets/minigames/<minigame>/`. To replace one, overwrite the PNG with the same
+name, at 3× its size in world units (e.g. a 16×10 car is 48×30 pixels; a full-screen background is
+1920×1080), keeping the same proportions. Draw player-coloured parts in white or grey: the game
+tints them.
+
+The placeholders come from `python3 tools/make_art.py`. The racing track's art must match the
+shape set in `config::minigames::racing` (`TRACK_*` constants), as must the copy of those
+constants in the script; press `F3` in a race to check.
 
 ## Development
 

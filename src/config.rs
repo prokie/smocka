@@ -62,13 +62,17 @@ pub mod session {
 }
 
 pub mod display {
-    /// Width of the virtual screen in world units (one unit = one art pixel).
-    ///
-    /// 640×360 scales by whole numbers to 720p (2×), 1080p (3×), 1440p (4×) and 4K (6×),
-    /// which keeps pixel art crisp.
+    /// Width of the virtual screen in world units. The camera scales it to fit the window, and
+    /// all gameplay sizes and speeds are in these units.
     pub const VIEW_WIDTH: f32 = 640.0;
     /// Height of the virtual screen in world units. See [`VIEW_WIDTH`].
     pub const VIEW_HEIGHT: f32 = 360.0;
+
+    /// Texture pixels per world unit: art is drawn for a 1080p screen (3 × 640×360), and every
+    /// sprite is given its size in world units, so the art's resolution never affects gameplay.
+    /// A 4K screen scales the art up 2× and a 720p one down 1.5×, both fine with linear filtering
+    /// and no mipmaps.
+    pub const ART_SCALE: f32 = 3.0;
 }
 
 pub mod minigames {
@@ -80,9 +84,9 @@ pub mod minigames {
 
         /// Horizontal distance from the arena centre to each paddle, in world units.
         pub const PADDLE_X_OFFSET: f32 = 296.0;
-        /// Paddle width in world units. Keep `paddle.png` the same width.
+        /// Paddle width in world units. Draw `paddle.png` with the same proportions.
         pub const PADDLE_WIDTH: f32 = 8.0;
-        /// Paddle height in world units. Keep `paddle.png` the same height.
+        /// Paddle height in world units. Draw `paddle.png` with the same proportions.
         pub const PADDLE_HEIGHT: f32 = 48.0;
         /// Paddle speed in world units per second.
         pub const PADDLE_SPEED: f32 = 300.0;
@@ -90,7 +94,7 @@ pub mod minigames {
         /// Keeps the paddle inside the walls at the top and bottom of the arena.
         pub const PADDLE_MAX_Y: f32 = VIEW_HEIGHT / 2.0 - WALL_THICKNESS - PADDLE_HEIGHT / 2.0;
 
-        /// Ball width and height in world units. Keep `ball.png` the same size.
+        /// Ball width and height in world units. Draw `ball.png` square.
         pub const BALL_SIZE: f32 = 8.0;
         /// Ball speed along each axis when it is served, in world units per second.
         /// Keep `x` positive: serves flip it to aim at the side being served to.
@@ -128,9 +132,9 @@ pub mod minigames {
 
         use crate::config::display::{VIEW_HEIGHT, VIEW_WIDTH};
 
-        /// Car length (nose to tail) in world units. Keep `car.png` the same width.
+        /// Car length (nose to tail) in world units. Draw `car.png` with the same proportions.
         pub const CAR_LENGTH: f32 = 16.0;
-        /// Car width in world units. Keep `car.png` the same height.
+        /// Car width in world units. Draw `car.png` with the same proportions.
         pub const CAR_WIDTH: f32 = 10.0;
 
         /// Top speed going forwards.
