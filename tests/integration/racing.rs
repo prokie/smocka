@@ -1,10 +1,12 @@
-//! Racing: every player gets a car, and each player's driving shows up on every peer.
+//! Racing: every player gets a car, each player's driving shows up on every peer, and the host
+//! counts laps.
 
 use bevy::prelude::*;
 use lightyear::prelude::PeerId;
 use smocka::minigames::Minigame;
 use smocka::minigames::racing::car::{Car, CarState};
-use smocka::minigames::racing::track::{Surface, surface_at};
+use smocka::minigames::racing::progress::RaceProgress;
+use smocka::minigames::racing::track::{CHECKPOINTS, Surface, surface_at};
 use smocka::session::SessionPhase;
 
 use crate::common::{TestApp, connected_pair, update_until};
@@ -17,6 +19,27 @@ fn car(app: &mut TestApp, is_driver: impl Fn(PeerId) -> bool) -> Option<CarState
         .iter(app.0.world())
         .find(|(car, _)| is_driver(car.owner))
         .map(|(_, state)| *state)
+}
+
+/// The progress of the car whose driver matches `is_driver`, if this app has it yet.
+fn progress(app: &mut TestApp, is_driver: impl Fn(PeerId) -> bool) -> Option<RaceProgress> {
+    app.0
+        .world_mut()
+        .query::<(&Car, &RaceProgress)>()
+        .iter(app.0.world())
+        .find(|(car, _)| is_driver(car.owner))
+        .map(|(_, progress)| *progress)
+}
+
+/// Host only: park the car whose driver matches `is_driver` at `position`.
+fn teleport(app: &mut TestApp, is_driver: impl Fn(PeerId) -> bool, position: Vec2) {
+    let world = app.0.world_mut();
+    let mut cars = world.query::<(&Car, &mut CarState)>();
+    for (car, mut state) in cars.iter_mut(world) {
+        if is_driver(car.owner) {
+            *state = CarState::parked(position, state.heading);
+        }
+    }
 }
 
 /// How many cars this app can see.
@@ -114,4 +137,37 @@ fn cars_are_removed_when_the_race_ends() {
     update_until(&mut [&mut host, &mut client], |apps| {
         apps.iter_mut().all(|app| cars(app) == 0)
     });
+}
+
+#[test]
+fn every_car_starts_with_no_laps_on_every_peer() {
+    let (mut host, mut client) = race_pair();
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut().all(|app| {
+            progress(app, hosts) == Some(RaceProgress::on_grid())
+                && progress(app, joiners) == Some(RaceProgress::on_grid())
+        })
+    });
+}
+
+#[test]
+fn the_host_counts_a_lap_and_every_peer_sees_it() {
+    let (mut host, mut client) = race_pair();
+
+    // Take the host's car round the checkpoints in order, ending on the line.
+    for checkpoint in [1, 2, 3, 0] {
+        teleport(&mut host, hosts, CHECKPOINTS[checkpoint].center());
+        update_until(&mut [&mut host, &mut client], |apps| {
+            progress(apps[0], hosts).is_some_and(|progress| {
+                progress.next_checkpoint == (checkpoint + 1) % CHECKPOINTS.len()
+            })
+        });
+    }
+
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut()
+            .all(|app| progress(app, hosts).is_some_and(|progress| progress.laps == 1))
+    });
+    // The joiner's car stayed on the grid.
+    assert_eq!(progress(&mut host, joiners), Some(RaceProgress::on_grid()));
 }

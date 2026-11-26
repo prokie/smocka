@@ -5,27 +5,8 @@
 - [x] **1. Pick the minigame** — `Minigame` enum, one lobby button per game, `SessionPhase::Racing`.
 - [x] **2. Drivable cars** — `Car` / `CarState` (predicted + interpolated), `RacingInput`, `drive()`.
 - [x] **3. Track** — oval in `track.rs`, `surface_at()`, grass slowdown, grid, `track.png`, `F3` gizmos.
-
-### 4. Checkpoints and laps (host)
-Goal: the game knows which lap each car is on.
-
-- [ ] `track.rs`: an ordered list of checkpoints across the road (e.g. start line, right bend, top
-      straight, left bend), with checkpoint 0 as the start/finish line, plus
-      `checkpoint_at(pos) -> Option<usize>`.
-- [ ] `LAPS` (3) in `config::minigames::racing`.
-- [ ] `RaceProgress { next_checkpoint, laps }` on each car: replicated, **not** predicted.
-- [ ] Host system in a new `RacingSystems::Checkpoints` set, after `Drive`: reaching
-      `next_checkpoint` moves on to the next one; reaching 0 after all the others counts a lap.
-- [ ] HUD: "Lap 2/3" for your own car.
-- [ ] `debug!` each lap: who, and which lap.
-- [ ] Show the checkpoints in the `F3` gizmos.
-- [ ] Tests: unit tests that driving the checkpoints in order counts a lap, and skipping one or
-      going backwards doesn't.
-
-Watch out for:
-- Cars start **behind** the start line, so crossing it the first time must not count as a lap.
-- Checkpoints must be thicker than a car moves in one tick (`MAX_SPEED / TICK_RATE` ≈ 1.6
-  units). 16 or more is safe.
+- [x] **4. Checkpoints and laps** — `CHECKPOINTS` / `checkpoint_at()` in `track.rs`, `RaceProgress` counted
+      by the host in `progress.rs`, "Lap 2/3" HUD, checkpoints in the `F3` gizmos.
 
 ### 5. Start and finish
 Goal: a whole race from countdown to results.

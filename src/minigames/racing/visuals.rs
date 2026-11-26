@@ -1,7 +1,10 @@
 use bevy::prelude::*;
+use lightyear::prelude::input::native::InputMarker;
 
+use super::RacingInput;
 use super::car::{Car, CarState};
-use super::track::outline;
+use super::progress::{RaceProgress, lap_label};
+use super::track::{CHECKPOINTS, outline};
 use crate::config::minigames::racing::{START_LINE_X, TRACK_INNER_RADIUS, TRACK_OUTER_RADIUS};
 use crate::lobby::player_color;
 use crate::session::SessionPhase;
@@ -20,9 +23,18 @@ const CAR_Z: f32 = 1.0;
 const TRACK_GIZMOS_KEY: KeyCode = KeyCode::F3;
 const ROAD_EDGE_GIZMO_COLOR: Color = Color::srgb(1.0, 0.9, 0.2);
 const START_LINE_GIZMO_COLOR: Color = Color::srgb(1.0, 0.3, 1.0);
+const CHECKPOINT_GIZMO_COLOR: Color = Color::srgb(0.3, 0.9, 1.0);
+
+/// Lap counter in the top-left corner, in screen pixels.
+const LAP_TEXT_SIZE: f32 = 28.0;
+const LAP_TEXT_MARGIN: f32 = 16.0;
 
 #[derive(Component)]
 pub struct TrackSprite;
+
+/// Shows the lap this player's car is on.
+#[derive(Component)]
+pub struct LapText;
 
 /// Whether to draw the track's road edges and start line over the art, to check the two line up.
 #[derive(Resource, Debug, Default)]
@@ -34,13 +46,14 @@ pub struct RacingVisualsPlugin;
 impl Plugin for RacingVisualsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<TrackGizmos>();
-        app.add_systems(OnEnter(SessionPhase::Racing), spawn_track);
+        app.add_systems(OnEnter(SessionPhase::Racing), (spawn_track, spawn_lap_text));
         app.add_observer(add_car_sprite);
         app.add_systems(
             Update,
             (
                 toggle_track_gizmos,
                 draw_track_gizmos.run_if(|show: Res<TrackGizmos>| show.0),
+                update_lap_text,
             )
                 .chain()
                 .run_if(in_state(SessionPhase::Racing)),
@@ -61,6 +74,39 @@ fn spawn_track(assets: Res<AssetServer>, mut commands: Commands) {
     ));
 }
 
+fn spawn_lap_text(mut commands: Commands) {
+    commands.spawn((
+        LapText,
+        DespawnOnExit(SessionPhase::Racing),
+        Text::new(""),
+        TextFont {
+            font_size: FontSize::Px(LAP_TEXT_SIZE),
+            ..default()
+        },
+        TextColor(Color::WHITE),
+        Node {
+            position_type: PositionType::Absolute,
+            top: px(LAP_TEXT_MARGIN),
+            left: px(LAP_TEXT_MARGIN),
+            ..default()
+        },
+    ));
+}
+
+/// Show the lap of this player's own car: the one that takes this machine's input.
+fn update_lap_text(
+    own_car: Query<&RaceProgress, With<InputMarker<RacingInput>>>,
+    mut text: Single<&mut Text, With<LapText>>,
+) {
+    let shown = own_car
+        .single()
+        .map(|progress| lap_label(progress.laps))
+        .unwrap_or_default();
+    if text.0 != shown {
+        text.0 = shown;
+    }
+}
+
 fn toggle_track_gizmos(keys: Res<ButtonInput<KeyCode>>, mut show: ResMut<TrackGizmos>) {
     if keys.just_pressed(TRACK_GIZMOS_KEY) {
         show.0 = !show.0;
@@ -77,6 +123,13 @@ fn draw_track_gizmos(mut gizmos: Gizmos) {
         Vec2::new(START_LINE_X, -TRACK_OUTER_RADIUS),
         START_LINE_GIZMO_COLOR,
     );
+    for checkpoint in CHECKPOINTS {
+        gizmos.rect_2d(
+            Isometry2d::from_translation(checkpoint.center()),
+            checkpoint.size(),
+            CHECKPOINT_GIZMO_COLOR,
+        );
+    }
 }
 
 fn add_car_sprite(

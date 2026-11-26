@@ -6,6 +6,7 @@ use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use super::RacingSystems;
+use super::progress::RaceProgress;
 use super::racing_input::RacingInput;
 use super::track::{START_HEADING, Surface, grid_position, surface_at};
 use crate::config::minigames::racing::{
@@ -98,6 +99,7 @@ fn spawn_cars(mut commands: Commands, players: Query<(&Player, &ControlledBy)>) 
                 number: player.number,
             },
             CarState::parked(grid_position(slot), START_HEADING),
+            RaceProgress::on_grid(),
             DespawnOnExit(SessionPhase::Racing),
             Replicate::to_clients(NetworkTarget::All),
             PredictionTarget::to_clients(NetworkTarget::Single(player.id)),

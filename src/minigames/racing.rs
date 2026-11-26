@@ -1,4 +1,5 @@
 pub mod car;
+pub mod progress;
 mod racing_input;
 pub mod track;
 mod visuals;
@@ -13,6 +14,8 @@ use bevy::prelude::*;
 pub enum RacingSystems {
     /// Move the cars from this tick's input.
     Drive,
+    /// Host only: count checkpoints and laps from where the cars ended up.
+    Checkpoints,
 }
 
 /// Registers racing's replicated components, input and game logic.
@@ -20,9 +23,16 @@ pub struct RacingPlugin;
 
 impl Plugin for RacingPlugin {
     fn build(&self, app: &mut App) {
-        app.configure_sets(FixedUpdate, RacingSystems::Drive);
+        app.configure_sets(
+            FixedUpdate,
+            (RacingSystems::Drive, RacingSystems::Checkpoints).chain(),
+        );
 
         // Order matters: replicated types must be registered in the same order everywhere.
-        app.add_plugins((car::CarPlugin, racing_input::RacingInputPlugin));
+        app.add_plugins((
+            car::CarPlugin,
+            racing_input::RacingInputPlugin,
+            progress::ProgressPlugin,
+        ));
     }
 }

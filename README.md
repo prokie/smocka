@@ -3,7 +3,7 @@
 A multiplayer party game in the style of *Pummel Party*, built with [Bevy](https://bevyengine.org/) and [Lightyear](https://github.com/cBournhonesque/lightyear). Players gather in a shared session and play a series of short minigames against each other.
 
 > **Status:** early development. Two minigames: two-player Pong (first to 5 goals) and Racing
-> (drivable cars on an oval track, no laps or finish yet).
+> (drivable cars on an oval track with lap counting, no finish yet).
 
 ## Requirements
 

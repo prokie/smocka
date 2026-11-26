@@ -150,5 +150,12 @@ pub mod minigames {
         pub const GRID_ROW_SPACING: f32 = 24.0;
         /// Distance of each of the grid's two lanes from the middle of the road.
         pub const GRID_LANE_OFFSET: f32 = 14.0;
+
+        /// Laps in a race.
+        pub const LAPS: u32 = 3;
+        /// How far each checkpoint reaches along the track. A car must be seen inside it on some
+        /// tick, so keep it well above how far a car moves in one tick (`MAX_SPEED / TICK_RATE`);
+        /// `track.rs` checks this when it compiles.
+        pub const CHECKPOINT_DEPTH: f32 = 16.0;
     }
 }
