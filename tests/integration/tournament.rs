@@ -103,31 +103,75 @@ fn three_players_play_a_tournament_to_one_result() {
     }
 }
 
-#[test]
-fn a_player_leaving_mid_match_ends_the_tournament() {
-    let (mut host, mut first, mut second) = trio();
+/// Start a tournament, wait until its first match is on, and pick the joiner to leave: one of
+/// the two playing (at least one of them is a joiner). Returns `(leaving, staying)`.
+fn leave_mid_match(host: &mut TestApp, first: TestApp, second: TestApp) -> (TestApp, TestApp) {
+    let (mut first, mut second) = (first, second);
     host.start_minigame(Minigame::TwoPlayerPong);
-    update_until(&mut [&mut host, &mut first, &mut second], |apps| {
+    update_until(&mut [host, &mut first, &mut second], |apps| {
         apps.iter_mut().all(|app| {
             app.phase() == Some(SessionPhase::TwoPlayerPong)
                 && paddles(app) == 2
                 && has_tournament(app)
         })
     });
-
-    // At least one of the two playing is a joiner: they leave.
-    let playing = playing(&mut host);
-    let first_plays = playing.contains(&first.own_player_number().unwrap());
-    let (mut leaving, mut staying) = if first_plays {
+    let playing = playing(host);
+    if playing.contains(&first.own_player_number().unwrap()) {
         (first, second)
     } else {
         (second, first)
-    };
-    leaving.disconnect();
+    }
+}
 
+#[test]
+fn a_player_leaving_mid_match_loses_it_by_walkover() {
+    let (mut host, first, second) = trio();
+    let (mut leaving, mut staying) = leave_mid_match(&mut host, first, second);
+    let left = leaving.own_player_number().unwrap();
+    leaving.disconnect();
+    // Once the host has seen them go (and so walked them over), make the final quick. Any
+    // sooner, and the semi-final could end with them winning it.
     update_until(&mut [&mut host, &mut staying], |apps| {
-        apps.iter_mut().all(|app| {
-            app.phase() == Some(SessionPhase::Lobby) && paddles(app) == 0 && !has_tournament(app)
-        })
+        apps[0].players() == 2
     });
+    host.0
+        .world_mut()
+        .insert_resource(PongRules { goals_to_win: 1 });
+
+    // With three players the first match is a semi-final, so the one who left comes 3rd.
+    update_until_within(
+        &mut [&mut host, &mut staying],
+        Duration::from_secs(30),
+        |apps| {
+            apps.iter_mut().all(|app| {
+                app.phase() == Some(SessionPhase::Results)
+                    && result(app).is_some_and(|result| result.placements.len() == 3)
+            })
+        },
+    );
+    for app in [&mut host, &mut staying] {
+        let result = result(app).unwrap();
+        let shown: Vec<(u32, &str)> = result
+            .placements
+            .iter()
+            .map(|placement| (placement.place, placement.note.as_str()))
+            .collect();
+        assert_eq!(shown, [(1, ""), (2, ""), (3, "left")], "{result:?}");
+        assert_eq!(result.placements[2].name, format!("Player {left}"));
+    }
+}
+
+#[test]
+fn a_tournament_with_fewer_than_two_players_left_is_abandoned() {
+    let (mut host, first, second) = trio();
+    let (mut leaving, mut also_leaving) = leave_mid_match(&mut host, first, second);
+    leaving.disconnect();
+    also_leaving.disconnect();
+
+    update_until(&mut [&mut host], |apps| {
+        apps[0].phase() == Some(SessionPhase::Lobby)
+            && paddles(apps[0]) == 0
+            && !has_tournament(apps[0])
+    });
+    assert!(result(&mut host).is_none());
 }

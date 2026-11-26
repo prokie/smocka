@@ -131,8 +131,9 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
     - [x] 4. Watching: "Watching: Ada vs Bo (semi-final)" along the bottom for players not in
           the match (`menu/watching.rs`), and every round of the bracket on the next-match screen
           (`Bracket::overview`).
-    - [ ] 5. Walkovers: a player who leaves mid-tournament loses their match; abandon only with
-          fewer than two players left.
+    - [x] 5. Walkovers: a player who leaves loses their current or coming match at once
+          (`walk_over_leavers` on `PlayerLeft`), a later one when it comes up
+          (`Tournament::walk_over`); placed "(left)"; abandoned only with fewer than two players.
 - [ ] **Spectating when knocked out** (or waiting for your next match). With matches one after
       another, it's the normal view plus a "Watching: Player 2 vs Player 4" label and the
       bracket. With matches at the same time, spectators pick which match to watch (a key to

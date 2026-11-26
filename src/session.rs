@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use crate::app_state::AppState;
 use crate::config::session::{MIN_PLAYERS, RESULTS_DURATION, STANDINGS_DURATION};
 use crate::minigames::Minigame;
-use crate::network::is_host;
-use crate::players::Player;
+use crate::network::{Hosting, is_host};
+use crate::players::{Player, PlayerLeft};
 use crate::standings::{Points, award_points};
 use crate::tournament::{Tournament, TournamentRules, TournamentStep, needs_tournament, seed};
 
@@ -148,9 +148,11 @@ pub enum MinigameEnded {
 }
 
 /// Host only: how long the current screen between minigames has left, and what comes after it.
+/// Only counts while the phase is still `during`: a walkover can end a tournament mid-countdown.
 #[derive(Resource, Debug)]
 struct PhaseTimer {
     timer: Timer,
+    during: SessionPhase,
     then: SessionPhase,
 }
 
@@ -167,6 +169,7 @@ impl Plugin for SessionPlugin {
 
         app.add_observer(spawn_current_phase);
         app.add_observer(end_minigame);
+        app.add_observer(walk_over_leavers);
         app.add_systems(
             PreUpdate,
             follow_phase.run_if(in_state(AppState::InSession)),
@@ -176,6 +179,7 @@ impl Plugin for SessionPlugin {
             (|mut commands: Commands| {
                 commands.insert_resource(PhaseTimer {
                     timer: Timer::new(RESULTS_DURATION, TimerMode::Once),
+                    during: SessionPhase::Results,
                     then: SessionPhase::Standings,
                 });
             })
@@ -190,6 +194,7 @@ impl Plugin for SessionPlugin {
             (|mut commands: Commands| {
                 commands.insert_resource(PhaseTimer {
                     timer: Timer::new(STANDINGS_DURATION, TimerMode::Once),
+                    during: SessionPhase::Standings,
                     then: SessionPhase::Lobby,
                 });
             })
@@ -326,57 +331,156 @@ fn end_minigame(
     if !phase.0.is_minigame() {
         return;
     }
-    match trigger.event() {
-        MinigameEnded::Won(result) if result.winners().next().is_none() => {
+    let present: Vec<PeerId> = players.iter().map(|(player, _)| player.id).collect();
+    let tournament = tournament.map(Single::into_inner);
+    match (trigger.event(), tournament) {
+        (MinigameEnded::Won(result), _) if result.winners().next().is_none() => {
             error!("Minigame ended without a winner: {result:?}");
             phase.0 = SessionPhase::Lobby;
         }
-        MinigameEnded::Won(result) => {
-            let result = match tournament.map(|tournament| tournament.into_inner()) {
-                None => result.clone(),
-                Some(mut tournament) => match tournament.record(result) {
-                    Ok(TournamentStep::NextMatch(next)) => {
-                        info!(
-                            "Tournament match over ({}). {}",
-                            tournament.last_match,
-                            tournament.bracket.describe()
-                        );
-                        participants.0 = next.to_vec();
-                        phase.0 = SessionPhase::NextMatch;
-                        return;
-                    }
-                    Ok(TournamentStep::Over(result)) => {
-                        info!("Tournament over. {}", tournament.bracket.describe());
-                        result
-                    }
-                    Err(why) => {
-                        error!("Abandoning the tournament: {why}");
-                        phase.0 = SessionPhase::Lobby;
-                        return;
-                    }
-                },
-            };
-            let result = &result;
-            let order: Vec<String> = result.placements.iter().map(Placement::describe).collect();
-            info!("Minigame over: {} ({})", order.join(", "), result.summary);
-            award_points(result, &mut players);
-            commands.spawn((
-                result.clone(),
-                DespawnOnExit(SessionPhase::Results),
-                DespawnOnEnter(AppState::MainMenu),
-                Replicate::to_clients(NetworkTarget::All),
-            ));
-            phase.0 = SessionPhase::Results;
+        (MinigameEnded::Won(result), None) => {
+            show_result(result, &mut phase, &mut players, &mut commands);
         }
-        MinigameEnded::Abandoned => {
-            if tournament.is_some() {
-                info!("Minigame abandoned, and with it the tournament");
-            } else {
-                info!("Minigame abandoned");
+        (MinigameEnded::Won(result), Some(mut tournament)) => {
+            let step = tournament.record(result, &present);
+            follow_tournament(
+                step,
+                &tournament,
+                &mut phase,
+                &mut participants,
+                &mut players,
+                &mut commands,
+            );
+        }
+        (MinigameEnded::Abandoned, None) => {
+            info!("Minigame abandoned");
+            phase.0 = SessionPhase::Lobby;
+        }
+        (MinigameEnded::Abandoned, Some(mut tournament)) => {
+            // A match usually stops because a player left: they lose it by walkover.
+            if present.len() < 2 {
+                info!("Abandoning the tournament: fewer than two players are left");
+                phase.0 = SessionPhase::Lobby;
+                return;
             }
+            if participants.0.iter().all(|player| present.contains(player)) {
+                info!(
+                    "Tournament match abandoned with both its players here: ending the tournament"
+                );
+                phase.0 = SessionPhase::Lobby;
+                return;
+            }
+            let step = tournament.walk_over(&present);
+            follow_tournament(
+                step,
+                &tournament,
+                &mut phase,
+                &mut participants,
+                &mut players,
+                &mut commands,
+            );
+        }
+    }
+}
+
+/// Host only: when a player in the current or coming tournament match leaves, they lose it by
+/// walkover straight away, rather than when the minigame notices. A player waiting for a later
+/// match loses that one when it comes up. With fewer than two players left, the tournament ends.
+fn walk_over_leavers(
+    trigger: On<PlayerLeft>,
+    hosting: Hosting,
+    session: Single<(&mut CurrentPhase, &mut Participants)>,
+    tournament: Option<Single<&mut Tournament>>,
+    mut players: Query<(&Player, &mut Points)>,
+    mut commands: Commands,
+) {
+    let (Some(tournament), true) = (tournament, hosting.is_hosting()) else {
+        return;
+    };
+    let mut tournament = tournament.into_inner();
+    let (mut phase, mut participants) = session.into_inner();
+    let PlayerLeft(leaver) = trigger.event();
+    let in_play = phase.0 == SessionPhase::NextMatch || phase.0 == tournament.game.phase();
+    if !in_play || !participants.contains(leaver.id) {
+        return;
+    }
+    // Their player is still being removed, so leave them out by hand.
+    let present: Vec<PeerId> = players
+        .iter()
+        .map(|(player, _)| player.id)
+        .filter(|id| *id != leaver.id)
+        .collect();
+    if present.len() < 2 {
+        info!(
+            "Abandoning the tournament: {} left, and fewer than two players are left",
+            leaver.name()
+        );
+        phase.0 = SessionPhase::Lobby;
+        return;
+    }
+    info!(
+        "{} ({:?}) left mid-tournament: they lose their match by walkover",
+        leaver.name(),
+        leaver.id
+    );
+    let step = tournament.walk_over(&present);
+    follow_tournament(
+        step,
+        &tournament,
+        &mut phase,
+        &mut participants,
+        &mut players,
+        &mut commands,
+    );
+}
+
+/// Host only: play the tournament's next match, or show its result.
+fn follow_tournament(
+    step: Result<TournamentStep, String>,
+    tournament: &Tournament,
+    phase: &mut CurrentPhase,
+    participants: &mut Participants,
+    players: &mut Query<(&Player, &mut Points)>,
+    commands: &mut Commands,
+) {
+    match step {
+        Ok(TournamentStep::NextMatch(next)) => {
+            info!(
+                "Tournament goes on ({}). {}",
+                tournament.last_match,
+                tournament.bracket.describe()
+            );
+            participants.0 = next.to_vec();
+            phase.0 = SessionPhase::NextMatch;
+        }
+        Ok(TournamentStep::Over(result)) => {
+            info!("Tournament over. {}", tournament.bracket.describe());
+            show_result(&result, phase, players, commands);
+        }
+        Err(why) => {
+            error!("Abandoning the tournament: {why}");
             phase.0 = SessionPhase::Lobby;
         }
     }
+}
+
+/// Host only: award `result`'s points and show it.
+fn show_result(
+    result: &MinigameResult,
+    phase: &mut CurrentPhase,
+    players: &mut Query<(&Player, &mut Points)>,
+    commands: &mut Commands,
+) {
+    let order: Vec<String> = result.placements.iter().map(Placement::describe).collect();
+    info!("Minigame over: {} ({})", order.join(", "), result.summary);
+    award_points(result, players);
+    commands.spawn((
+        result.clone(),
+        DespawnOnExit(SessionPhase::Results),
+        DespawnOnEnter(AppState::MainMenu),
+        Replicate::to_clients(NetworkTarget::All),
+    ));
+    phase.0 = SessionPhase::Results;
 }
 
 /// Host only: give the players a moment to see who's up, then start the tournament's next match.
@@ -393,22 +497,20 @@ fn start_next_match_timer(
     };
     commands.insert_resource(PhaseTimer {
         timer: Timer::new(rules.next_match, TimerMode::Once),
+        during: SessionPhase::NextMatch,
         then: tournament.game.phase(),
     });
 }
 
-/// Host only: when a screen between minigames has been up long enough, move on. A timer left over
-/// from a session that ended on one of those screens is dropped.
+/// Host only: when a screen between minigames has been up long enough, move on. A timer whose
+/// phase is over (left early, or from a session that ended on that screen) is dropped.
 fn move_on_when_the_timer_ends(
     time: Res<Time>,
     mut timer: ResMut<PhaseTimer>,
     mut phase: Single<&mut CurrentPhase>,
     mut commands: Commands,
 ) {
-    if !matches!(
-        phase.0,
-        SessionPhase::NextMatch | SessionPhase::Results | SessionPhase::Standings
-    ) {
+    if phase.0 != timer.during {
         commands.remove_resource::<PhaseTimer>();
         return;
     }
