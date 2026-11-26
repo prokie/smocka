@@ -1,6 +1,9 @@
 //! Lap counting and finishing. The host alone decides it, from where each car is after driving;
 //! clients see the replicated result.
 
+use std::cmp::Reverse;
+
+use bevy::math::FloatOrd;
 use bevy::prelude::*;
 use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -60,6 +63,22 @@ impl RaceProgress {
     }
 }
 
+/// Sort key for the running order: lower is further ahead. Finished cars come first, by place;
+/// the rest by how many checkpoints they've passed, then by how close they are to the next one.
+pub fn running_order(progress: RaceProgress, position: Vec2) -> (u32, Reverse<u32>, FloatOrd) {
+    let next = CHECKPOINTS[progress.next_checkpoint].center();
+    (
+        progress.place.unwrap_or(u32::MAX),
+        Reverse(progress.checkpoints_passed()),
+        FloatOrd(position.distance(next)),
+    )
+}
+
+/// What the position display shows for a car in `position` (from 1) of `cars`.
+pub fn position_label(position: usize, cars: usize) -> String {
+    format!("{} / {cars}", ordinal(position as u32))
+}
+
 /// What the lap counter shows for a car with `progress`.
 pub fn lap_label(progress: RaceProgress) -> String {
     match progress.place {
@@ -116,8 +135,11 @@ fn count_laps(
 
 #[cfg(test)]
 mod tests {
-    use super::{RaceProgress, lap_label};
+    use bevy::math::Vec2;
+
+    use super::{RaceProgress, lap_label, position_label, running_order};
     use crate::config::minigames::racing::LAPS;
+    use crate::minigames::racing::track::CHECKPOINTS;
 
     /// `progress` after reaching each of `checkpoints` in turn.
     fn reach(progress: RaceProgress, checkpoints: &[usize]) -> RaceProgress {
@@ -192,6 +214,31 @@ mod tests {
             place: Some(1),
         };
         assert_eq!(reach(finished, &[1, 2, 3, 0]), finished);
+    }
+
+    #[test]
+    fn the_running_order_ranks_places_then_checkpoints_then_distance() {
+        let at_next = |progress: RaceProgress| CHECKPOINTS[progress.next_checkpoint].center();
+        let grid = RaceProgress::on_grid();
+        let one_ahead = reach(grid, &[1]);
+        let finished = RaceProgress {
+            place: Some(2),
+            ..reach(grid, &[1, 2, 3, 0])
+        };
+        let near = running_order(grid, at_next(grid));
+        let far = running_order(grid, at_next(grid) + Vec2::new(-50.0, 0.0));
+
+        assert!(near < far, "closer to the next checkpoint is ahead");
+        assert!(
+            running_order(one_ahead, Vec2::ZERO) < near,
+            "more checkpoints is ahead"
+        );
+        assert!(running_order(finished, Vec2::ZERO) < running_order(one_ahead, Vec2::ZERO));
+    }
+
+    #[test]
+    fn the_position_label_shows_place_and_field() {
+        assert_eq!(position_label(2, 4), "2nd / 4");
     }
 
     #[test]

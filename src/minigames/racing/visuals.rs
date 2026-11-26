@@ -3,7 +3,7 @@ use lightyear::prelude::input::native::InputMarker;
 
 use super::RacingInput;
 use super::car::{Car, CarState};
-use super::progress::{RaceProgress, lap_label};
+use super::progress::{RaceProgress, lap_label, position_label, running_order};
 use super::race::{RaceStatus, status_label};
 use super::track::{CHECKPOINTS, outline};
 use crate::config::minigames::racing::{START_LINE_X, TRACK_INNER_RADIUS, TRACK_OUTER_RADIUS};
@@ -41,6 +41,10 @@ pub struct TrackSprite;
 #[derive(Component)]
 pub struct LapText;
 
+/// Shows where this player's car is in the running order, e.g. "2nd / 4".
+#[derive(Component)]
+pub struct PositionText;
+
 /// Shows the countdown, "GO!", and how long until the race ends.
 #[derive(Component)]
 pub struct StatusText;
@@ -57,7 +61,12 @@ impl Plugin for RacingVisualsPlugin {
         app.init_resource::<TrackGizmos>();
         app.add_systems(
             OnEnter(SessionPhase::Racing),
-            (spawn_track, spawn_lap_text, spawn_status_text),
+            (
+                spawn_track,
+                spawn_lap_text,
+                spawn_position_text,
+                spawn_status_text,
+            ),
         );
         app.add_observer(add_car_sprite);
         app.add_systems(
@@ -66,6 +75,7 @@ impl Plugin for RacingVisualsPlugin {
                 toggle_track_gizmos,
                 draw_track_gizmos.run_if(|show: Res<TrackGizmos>| show.0),
                 update_lap_text,
+                update_position_text,
                 update_status_text,
             )
                 .chain()
@@ -115,6 +125,59 @@ fn update_lap_text(
         .single()
         .map(|progress| lap_label(*progress))
         .unwrap_or_default();
+    if text.0 != shown {
+        text.0 = shown;
+    }
+}
+
+fn spawn_position_text(mut commands: Commands) {
+    commands.spawn((
+        PositionText,
+        DespawnOnExit(SessionPhase::Racing),
+        Text::new(""),
+        TextFont {
+            font_size: FontSize::Px(LAP_TEXT_SIZE),
+            ..default()
+        },
+        TextColor(Color::WHITE),
+        Node {
+            position_type: PositionType::Absolute,
+            top: px(LAP_TEXT_MARGIN),
+            right: px(LAP_TEXT_MARGIN),
+            ..default()
+        },
+    ));
+}
+
+/// Each car's progress and state, and whether it's this player's own.
+type CarStandings = (
+    &'static RaceProgress,
+    &'static CarState,
+    Has<InputMarker<RacingInput>>,
+);
+
+/// Show where this player's car is in the running order. Worked out here from the replicated
+/// progress and the positions this app sees, so it can be a moment off for close cars. Empty
+/// once the car has finished (the lap counter shows its place) or if this player has no car.
+fn update_position_text(
+    cars: Query<CarStandings, With<Car>>,
+    mut text: Single<&mut Text, With<PositionText>>,
+) {
+    let own = cars
+        .iter()
+        .find(|(_, _, own)| *own)
+        .filter(|(progress, _, _)| progress.place.is_none())
+        .map(|(progress, state, _)| running_order(*progress, state.position));
+    let shown = match own {
+        Some(own) => {
+            let ahead = cars
+                .iter()
+                .filter(|(progress, state, _)| running_order(**progress, state.position) < own)
+                .count();
+            position_label(ahead + 1, cars.iter().len())
+        }
+        None => String::new(),
+    };
     if text.0 != shown {
         text.0 = shown;
     }

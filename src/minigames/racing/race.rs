@@ -1,7 +1,6 @@
 //! The race as a whole: the countdown, the finishing order, and when the race ends. The host
 //! decides all of it; clients see the replicated [`RaceStatus`] and each car's [`RaceProgress`].
 
-use std::cmp::Reverse;
 use std::time::Duration;
 
 use bevy::prelude::*;
@@ -9,8 +8,8 @@ use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use super::RacingSystems;
-use super::car::Car;
-use super::progress::RaceProgress;
+use super::car::{Car, CarState};
+use super::progress::{RaceProgress, running_order};
 use crate::config::minigames::racing::{COUNTDOWN, FINISH_GRACE};
 use crate::network::is_host;
 use crate::session::{MinigameEnded, MinigameResult, SessionPhase};
@@ -180,7 +179,7 @@ fn run_race_clock(
 /// first finish runs out. If every car has gone, abandon it.
 fn end_race(
     mut director: ResMut<RaceDirector>,
-    cars: Query<(&Car, &RaceProgress)>,
+    cars: Query<(&Car, &RaceProgress, &CarState)>,
     mut commands: Commands,
 ) {
     if director.over {
@@ -192,7 +191,7 @@ fn end_race(
         commands.trigger(MinigameEnded::Abandoned);
         return;
     }
-    let everyone_finished = cars.iter().all(|(_, progress)| progress.place.is_some());
+    let everyone_finished = cars.iter().all(|(_, progress, _)| progress.place.is_some());
     if !everyone_finished && !director.grace_is_over() {
         return;
     }
@@ -201,8 +200,8 @@ fn end_race(
     };
     let unfinished = cars
         .iter()
-        .filter(|(_, progress)| progress.place.is_none())
-        .map(|(car, progress)| (*car, *progress))
+        .filter(|(_, progress, _)| progress.place.is_none())
+        .map(|(car, progress, state)| (*car, *progress, state.position))
         .collect();
     let summary = race_summary(&director.finishers, unfinished);
     info!(
@@ -232,13 +231,16 @@ pub fn status_label(status: RaceStatus, just_started: bool) -> String {
 }
 
 /// The final order, e.g. "1st Player 2 · 2nd Player 1 · 3rd Player 3 (DNF)": the finishers in the
-/// order they finished, then the cars that didn't finish, furthest round first.
-pub fn race_summary(finishers: &[Finisher], mut unfinished: Vec<(Car, RaceProgress)>) -> String {
-    unfinished.sort_by_key(|(_, progress)| Reverse(progress.checkpoints_passed()));
+/// order they finished, then the cars that didn't finish, in [`running_order`].
+pub fn race_summary(
+    finishers: &[Finisher],
+    mut unfinished: Vec<(Car, RaceProgress, Vec2)>,
+) -> String {
+    unfinished.sort_by_key(|(_, progress, position)| running_order(*progress, *position));
     finishers
         .iter()
         .map(|finisher| (finisher.number, true))
-        .chain(unfinished.iter().map(|(car, _)| (car.number, false)))
+        .chain(unfinished.iter().map(|(car, _, _)| (car.number, false)))
         .enumerate()
         .map(|(i, (number, finished))| {
             let place = ordinal(i as u32 + 1);
@@ -265,6 +267,7 @@ pub fn ordinal(n: u32) -> String {
 mod tests {
     use std::time::Duration;
 
+    use bevy::math::Vec2;
     use lightyear::prelude::PeerId;
 
     use super::{
@@ -339,7 +342,10 @@ mod tests {
             laps: 1,
             place: None,
         };
-        let summary = race_summary(&finishers, vec![(car(1), behind), (car(3), further)]);
+        let summary = race_summary(
+            &finishers,
+            vec![(car(1), behind, Vec2::ZERO), (car(3), further, Vec2::ZERO)],
+        );
         assert_eq!(
             summary,
             "1st Player 2 · 2nd Player 4 · 3rd Player 3 (DNF) · 4th Player 1 (DNF)"

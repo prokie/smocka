@@ -15,10 +15,12 @@ Known limitation: with prediction, the joiner's car can jump forward a little wh
 Acceptable for now (see *Later*).
 
 ### 6. Polish
-- [ ] HUD: live race positions (1st, 2nd…).
+- [x] HUD: live race positions ("2nd / 4", top right), from `running_order` in `progress.rs`,
+      which also ranks the cars that didn't finish in the results.
 - [ ] Tune the handling in `config::minigames::racing` until driving feels good.
-- [ ] Better art: car, track, kerbs. Optionally skid marks and sounds.
-- [ ] README: update the status line and controls.
+- [ ] Better art: car, track, kerbs. Optionally skid marks and sounds. Waits on the art-style
+      decision (*Netcode and engine*), and sounds need Bevy's `audio` feature back.
+- [x] README: status line and controls are up to date.
 
 ## Netcode and engine
 
