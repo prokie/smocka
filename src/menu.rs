@@ -17,6 +17,7 @@ use bevy::window::WindowCloseRequested;
 use crate::app_state::AppState;
 use crate::config::network::HOST_ADDR;
 use crate::minigames::Minigame;
+use crate::minigames::racing::race::ChangeLaps;
 use crate::network::{HostSession, LeaveSession, close_session};
 use crate::profile::LocalProfile;
 use crate::session::{SessionPhase, StartMinigame};
@@ -30,6 +31,8 @@ pub enum MenuButton {
     Quit,
     Cancel,
     Start(Minigame),
+    /// Change how many laps the next race has by this many.
+    ChangeLaps(i32),
 }
 
 /// All local UI. Needs a renderer, so headless tests leave it out.
@@ -74,6 +77,7 @@ impl Plugin for MenuPlugin {
                     lobby::update_player_list,
                     lobby::update_swatches,
                     lobby::update_lobby_hint,
+                    lobby::update_lap_picker,
                 )
                     .run_if(in_state(SessionPhase::Lobby)),
                 results::update_results_screen.run_if(in_state(SessionPhase::Results)),
@@ -108,6 +112,7 @@ fn on_menu_button(
         }
         MenuButton::Cancel => commands.queue(LeaveSession),
         MenuButton::Start(game) => commands.queue(StartMinigame(*game)),
+        MenuButton::ChangeLaps(change) => commands.queue(ChangeLaps(*change)),
     }
 }
 

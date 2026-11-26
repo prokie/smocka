@@ -9,7 +9,7 @@ use smocka::config::minigames::racing::LAPS;
 use smocka::minigames::Minigame;
 use smocka::minigames::racing::car::{Car, CarState};
 use smocka::minigames::racing::progress::RaceProgress;
-use smocka::minigames::racing::race::{RaceRules, RaceStatus};
+use smocka::minigames::racing::race::{RaceLaps, RaceRules, RaceStatus};
 use smocka::minigames::racing::track::{CHECKPOINTS, Surface, surface_at};
 use smocka::session::{MinigameResult, SessionPhase};
 
@@ -70,6 +70,16 @@ fn status(app: &mut TestApp) -> Option<RaceStatus> {
         .iter(app.0.world())
         .next()
         .copied()
+}
+
+/// How many laps this app has been told the race has, if it knows yet.
+fn race_laps(app: &mut TestApp) -> Option<u32> {
+    app.0
+        .world_mut()
+        .query::<&RaceLaps>()
+        .iter(app.0.world())
+        .next()
+        .map(|laps| laps.0)
 }
 
 /// The result this app is showing, if any.
@@ -282,6 +292,7 @@ fn the_race_ends_a_while_after_the_first_finish() {
     let (mut host, mut client) = race_pair_with(RaceRules {
         countdown: Duration::ZERO,
         finish_grace: Duration::from_secs(1),
+        ..default()
     });
 
     finish(&mut host, joiners);
@@ -324,4 +335,28 @@ fn cars_carry_their_drivers_name_and_colour() {
         let car = cars.iter().find(|car| car.owner == player.id).unwrap();
         assert_eq!((&car.name, car.color), (&player.name, player.color));
     }
+}
+
+#[test]
+fn the_host_picks_how_many_laps_the_race_has() {
+    let (mut host, mut client) = race_pair_with(RaceRules {
+        countdown: Duration::ZERO,
+        laps: 1,
+        ..default()
+    });
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut().all(|app| race_laps(app) == Some(1))
+    });
+
+    // One lap: round every checkpoint in order, ending on the line.
+    for checkpoint in [1, 2, 3, 0] {
+        teleport(&mut host, hosts, CHECKPOINTS[checkpoint].center());
+        update_until(&mut [&mut host, &mut client], |apps| {
+            progress(apps[0], hosts).is_some_and(|progress| {
+                progress.next_checkpoint == (checkpoint + 1) % CHECKPOINTS.len()
+            })
+        });
+    }
+    let progress = progress(&mut host, hosts).unwrap();
+    assert_eq!((progress.laps, progress.place), (1, Some(1)));
 }

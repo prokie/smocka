@@ -4,7 +4,7 @@ use lightyear::prelude::input::native::InputMarker;
 use super::RacingInput;
 use super::car::{Car, CarState};
 use super::progress::{RaceProgress, lap_label, position_label, running_order};
-use super::race::{RaceStatus, status_label};
+use super::race::{RaceLaps, RaceStatus, status_label};
 use super::skid_marks::SkidMarksPlugin;
 use super::track::{CHECKPOINTS, outline};
 use crate::camera::gameplay_camera_2d;
@@ -136,15 +136,17 @@ fn spawn_lap_text(mut commands: Commands) {
     ));
 }
 
-/// Show the lap of this player's own car: the one that takes this machine's input.
+/// Show the lap of this player's own car: the one that takes this machine's input. Empty until
+/// the host's [`RaceLaps`] arrives.
 fn update_lap_text(
     own_car: Query<&RaceProgress, With<InputMarker<RacingInput>>>,
+    laps: Option<Single<&RaceLaps>>,
     mut text: Single<&mut Text, With<LapText>>,
 ) {
-    let shown = own_car
-        .single()
-        .map(|progress| lap_label(*progress))
-        .unwrap_or_default();
+    let shown = match (own_car.single(), laps) {
+        (Ok(progress), Some(laps)) => lap_label(*progress, laps.0),
+        _ => String::new(),
+    };
     if text.0 != shown {
         // On every peer, so a joiner's log shows what it saw of its own car's laps.
         if !shown.is_empty() {

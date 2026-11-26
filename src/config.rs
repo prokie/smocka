@@ -190,8 +190,12 @@ pub mod minigames {
         /// Distance of each of the grid's two lanes from the middle of the road.
         pub const GRID_LANE_OFFSET: f32 = 14.0;
 
-        /// Laps in a race.
+        /// Laps in a race, unless the host picks another number in the lobby.
         pub const LAPS: u32 = 3;
+        /// The fewest laps the host can pick.
+        pub const MIN_LAPS: u32 = 1;
+        /// The most laps the host can pick.
+        pub const MAX_LAPS: u32 = 10;
         /// How long the cars wait on the grid before the start, unless
         /// [`RaceRules`](crate::minigames::racing::race::RaceRules) says otherwise.
         pub const COUNTDOWN: Duration = Duration::from_secs(3);

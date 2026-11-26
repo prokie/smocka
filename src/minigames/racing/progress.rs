@@ -13,7 +13,6 @@ use super::RacingSystems;
 use super::car::{Car, CarState};
 use super::race::{RaceDirector, lap_time_label};
 use super::track::{CHECKPOINTS, checkpoint_at};
-use crate::config::minigames::racing::LAPS;
 use crate::network::is_host;
 use crate::session::SessionPhase;
 use crate::session::ordinal;
@@ -81,11 +80,11 @@ pub fn position_label(position: usize, cars: usize) -> String {
     format!("{} / {cars}", ordinal(position as u32))
 }
 
-/// What the lap counter shows for a car with `progress`.
-pub fn lap_label(progress: RaceProgress) -> String {
+/// What the lap counter shows for a car with `progress`, in a race of `laps` laps.
+pub fn lap_label(progress: RaceProgress, laps: u32) -> String {
     match progress.place {
         Some(place) => format!("Finished {}", ordinal(place)),
-        None => format!("Lap {}/{LAPS}", (progress.laps + 1).min(LAPS)),
+        None => format!("Lap {}/{laps}", (progress.laps + 1).min(laps)),
     }
 }
 
@@ -137,13 +136,14 @@ fn count_laps(
         if next.laps != progress.laps {
             let lap_time = director.complete_lap(car);
             debug!(
-                "{} ({:?}) completed lap {}/{LAPS} in {}",
+                "{} ({:?}) completed lap {}/{} in {}",
                 car.name,
                 car.owner,
                 next.laps,
+                director.laps(),
                 lap_time_label(lap_time)
             );
-            if next.laps >= LAPS {
+            if next.laps >= director.laps() {
                 let place = director.finish(car);
                 info!("{} ({:?}) finished {}", car.name, car.owner, ordinal(place));
                 next.place = Some(place);
@@ -158,8 +158,9 @@ mod tests {
     use bevy::math::Vec2;
 
     use super::{RaceProgress, lap_label, position_label, running_order};
-    use crate::config::minigames::racing::LAPS;
     use crate::minigames::racing::track::CHECKPOINTS;
+
+    const LAPS: u32 = 3;
 
     /// `progress` after reaching each of `checkpoints` in turn.
     fn reach(progress: RaceProgress, checkpoints: &[usize]) -> RaceProgress {
@@ -217,13 +218,14 @@ mod tests {
             laps,
             ..RaceProgress::on_grid()
         };
-        assert_eq!(lap_label(on_lap(0)), format!("Lap 1/{LAPS}"));
-        assert_eq!(lap_label(on_lap(LAPS - 1)), format!("Lap {LAPS}/{LAPS}"));
+        assert_eq!(lap_label(on_lap(0), LAPS), "Lap 1/3");
+        assert_eq!(lap_label(on_lap(LAPS - 1), LAPS), "Lap 3/3");
+        assert_eq!(lap_label(on_lap(0), 1), "Lap 1/1");
         let finished = RaceProgress {
             place: Some(2),
             ..on_lap(LAPS)
         };
-        assert_eq!(lap_label(finished), "Finished 2nd");
+        assert_eq!(lap_label(finished, LAPS), "Finished 2nd");
     }
 
     #[test]

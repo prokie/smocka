@@ -54,6 +54,15 @@ pub fn label(text: impl Into<String>, size: f32, color: Color) -> impl Bundle {
 
 /// A button reading `text` that does `action` when activated.
 pub fn menu_button(action: MenuButton, text: &str) -> impl Bundle {
+    button(action, text, 200.0)
+}
+
+/// A square [`menu_button`] for a single character, such as "+".
+pub fn small_button(action: MenuButton, text: &str) -> impl Bundle {
+    button(action, text, 48.0)
+}
+
+fn button(action: MenuButton, text: &str, width: f32) -> impl Bundle {
     (
         action,
         Button,
@@ -61,7 +70,7 @@ pub fn menu_button(action: MenuButton, text: &str) -> impl Bundle {
         // Reachable with `Tab`; `Enter` presses the focused button.
         TabIndex(0),
         Node {
-            width: px(200),
+            width: px(width),
             height: px(48),
             justify_content: JustifyContent::Center,
             align_items: AlignItems::Center,
