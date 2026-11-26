@@ -14,13 +14,23 @@ pub fn bounce_off_walls(mut position: Vec2, mut velocity: Vec2) -> (Vec2, Vec2) 
     (position, velocity)
 }
 
-/// The ball must overlap the paddle and move towards the edge it guards. The direction check stops
-/// a ball from being caught again on the next tick, and lets one behind the paddle pass through.
-pub fn hits_paddle(ball: Vec2, velocity: Vec2, paddle: Vec2) -> bool {
+/// Whether the ball, which was at `previous` when this tick began and is now at `ball`, hits the
+/// paddle's front face. It must overlap the paddle, move towards the edge the paddle guards, and
+/// have been fully in front of the face when the tick began.
+///
+/// That last check means a ball that already got past the face goes on into the goal, even when
+/// the paddle moves into it from above or below: a paddle can't hit with its ends or its back.
+/// The direction check stops a ball that just bounced from being caught again.
+pub fn hits_paddle(previous: Vec2, ball: Vec2, velocity: Vec2, paddle: Vec2) -> bool {
     let ball_box = Aabb2d::new(ball, Vec2::splat(BALL_SIZE / 2.0));
     let paddle_box = Aabb2d::new(paddle, Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT) / 2.0);
     let moving_towards_its_edge = velocity.x * paddle.x > 0.0;
-    moving_towards_its_edge && ball_box.intersects(&paddle_box)
+    // From the paddle towards the middle of the arena: +1 for the left paddle.
+    let inwards = -paddle.x.signum();
+    let face = paddle.x + inwards * PADDLE_WIDTH / 2.0;
+    let leading_edge_before = previous.x - inwards * BALL_SIZE / 2.0;
+    let was_in_front = (leading_edge_before - face) * inwards >= 0.0;
+    moving_towards_its_edge && was_in_front && ball_box.intersects(&paddle_box)
 }
 
 /// Same speed, aimed by where it hit: the centre sends it straight across, the ends at up to
@@ -71,16 +81,31 @@ mod tests {
         );
     }
 
+    /// A step of 2 units to the left, for a ball arriving at the left paddle.
+    const STEP_LEFT: Vec2 = Vec2::new(-2.0, 0.0);
+
+    /// `ball` reached this tick, moving left from 2 units to its right.
+    fn arriving_at(ball: Vec2) -> (Vec2, Vec2) {
+        (ball - STEP_LEFT, ball)
+    }
+
     #[test]
     fn ball_touching_the_paddle_face_hits_it() {
         // Ball just touching the right-hand face of the left paddle, moving left.
-        let ball = LEFT_PADDLE + Vec2::new((PADDLE_WIDTH + BALL_SIZE) / 2.0, 0.0);
-        assert!(hits_paddle(ball, Vec2::new(-100.0, 0.0), LEFT_PADDLE));
+        let (previous, ball) =
+            arriving_at(LEFT_PADDLE + Vec2::new((PADDLE_WIDTH + BALL_SIZE) / 2.0, 0.0));
+        assert!(hits_paddle(
+            previous,
+            ball,
+            Vec2::new(-100.0, 0.0),
+            LEFT_PADDLE
+        ));
     }
 
     #[test]
     fn ball_moving_away_does_not_hit() {
         assert!(!hits_paddle(
+            LEFT_PADDLE + Vec2::new(10.0, 0.0),
             LEFT_PADDLE,
             Vec2::new(100.0, 0.0),
             LEFT_PADDLE
@@ -89,8 +114,39 @@ mod tests {
 
     #[test]
     fn ball_above_the_paddle_misses() {
-        let ball = LEFT_PADDLE + Vec2::new(0.0, PADDLE_HEIGHT / 2.0 + BALL_SIZE);
-        assert!(!hits_paddle(ball, Vec2::new(-100.0, 0.0), LEFT_PADDLE));
+        let (previous, ball) =
+            arriving_at(LEFT_PADDLE + Vec2::new(0.0, PADDLE_HEIGHT / 2.0 + BALL_SIZE));
+        assert!(!hits_paddle(
+            previous,
+            ball,
+            Vec2::new(-100.0, 0.0),
+            LEFT_PADDLE
+        ));
+    }
+
+    #[test]
+    fn a_ball_already_past_the_face_is_not_hit_by_the_paddle_moving_into_it() {
+        // Level with the middle of the paddle, and the one at its back.
+        for x in [0.0, -(PADDLE_WIDTH + BALL_SIZE) / 2.0 + 1.0] {
+            let ball = LEFT_PADDLE + Vec2::new(x, 0.0);
+            assert!(
+                !hits_paddle(ball - STEP_LEFT, ball, Vec2::new(-100.0, 0.0), LEFT_PADDLE),
+                "ball {x} from the paddle's centre"
+            );
+        }
+    }
+
+    #[test]
+    fn the_right_paddle_cant_hit_from_behind_either() {
+        let right_paddle = -LEFT_PADDLE;
+        let ball = right_paddle;
+        let previous = ball - Vec2::new(2.0, 0.0);
+        assert!(!hits_paddle(
+            previous,
+            ball,
+            Vec2::new(100.0, 0.0),
+            right_paddle
+        ));
     }
 
     /// Where the ball is when it touches the left paddle's face, `y` above the paddle's centre.
@@ -153,13 +209,17 @@ mod tests {
     #[test]
     fn works_for_the_right_paddle_too() {
         let right_paddle = -LEFT_PADDLE;
+        let face = right_paddle - Vec2::new((PADDLE_WIDTH + BALL_SIZE) / 2.0, 0.0);
+        let previous = face - Vec2::new(2.0, 0.0);
         assert!(hits_paddle(
-            right_paddle,
+            previous,
+            face,
             Vec2::new(100.0, 0.0),
             right_paddle
         ));
         assert!(!hits_paddle(
-            right_paddle,
+            previous,
+            face,
             Vec2::new(-100.0, 0.0),
             right_paddle
         ));

@@ -94,11 +94,12 @@ fn step_ball(
     paddles: impl IntoIterator<Item = Vec2>,
     dt: f32,
 ) -> (Vec2, Vec2) {
+    let previous = position;
     let (position, mut velocity) = bounce_off_walls(position + velocity * dt, velocity);
 
     if let Some(paddle) = paddles
         .into_iter()
-        .find(|&paddle| hits_paddle(position, velocity, paddle))
+        .find(|&paddle| hits_paddle(previous, position, velocity, paddle))
     {
         velocity = bounce_off_paddle(position, velocity, paddle);
         velocity = (velocity * BALL_HIT_SPEEDUP).clamp_length_max(BALL_MAX_SPEED);
@@ -111,8 +112,9 @@ fn step_ball(
 mod tests {
     use super::{serve_velocity, step_ball};
     use crate::config::minigames::two_player_pong::{
-        BALL_HIT_SPEEDUP, BALL_MAX_SPEED, BALL_MAX_Y, PADDLE_X_OFFSET,
+        BALL_HIT_SPEEDUP, BALL_MAX_SPEED, BALL_MAX_Y, GOAL_X, PADDLE_HEIGHT, PADDLE_X_OFFSET,
     };
+    use crate::config::network::TICK_RATE;
     use crate::minigames::two_player_pong::paddles::Side;
     use bevy::math::Vec2;
 
@@ -167,6 +169,23 @@ mod tests {
         let start = Vec2::new(-PADDLE_X_OFFSET + 10.0, 0.0);
         let (_, velocity) = step_ball(start, Vec2::new(-100.0, 20.0), [paddle], 0.1);
         assert_eq!(velocity, Vec2::new(-100.0, 20.0));
+    }
+
+    #[test]
+    fn a_paddle_moved_into_a_ball_that_got_past_it_lets_it_through() {
+        // The ball goes past the top end of the left paddle, then the paddle moves up into it.
+        let dt = 1.0 / TICK_RATE as f32;
+        let velocity = Vec2::new(-BALL_MAX_SPEED, 0.0);
+        let mut ball = Vec2::new(-PADDLE_X_OFFSET + 40.0, PADDLE_HEIGHT);
+        let mut ball_velocity = velocity;
+        let mut paddle = Vec2::new(-PADDLE_X_OFFSET, 0.0);
+        while ball.x > -GOAL_X {
+            if ball.x < -PADDLE_X_OFFSET {
+                paddle.y = ball.y;
+            }
+            (ball, ball_velocity) = step_ball(ball, ball_velocity, [paddle], dt);
+            assert_eq!(ball_velocity, velocity, "bounced back at {ball}");
+        }
     }
 
     #[test]
