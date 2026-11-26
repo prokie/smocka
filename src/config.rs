@@ -187,6 +187,9 @@ pub mod minigames {
         /// `x` of the start line, on the bottom straight. Cars race anticlockwise, so they cross it
         /// heading right.
         pub const START_LINE_X: f32 = 0.0;
+        /// Cars the starting grid has room for (and `track.png` draws), so the most players a race
+        /// can have.
+        pub const GRID_SLOTS: usize = 8;
         /// Distance between rows of the starting grid, and from the start line to the front row.
         pub const GRID_ROW_SPACING: f32 = 24.0;
         /// Distance of each of the grid's two lanes from the middle of the road.

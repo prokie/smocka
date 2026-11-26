@@ -217,9 +217,10 @@ pub(super) fn update_lobby_hint(
         hint.0 = shown.to_string();
     }
     for (button, action, disabled) in &buttons {
-        if !matches!(action, MenuButton::Start(_)) {
+        let MenuButton::Start(game) = action else {
             continue;
-        }
+        };
+        let startable = players.iter().len() >= game.min_players();
         match (startable, disabled) {
             (true, true) => {
                 commands.entity(button).remove::<InteractionDisabled>();

@@ -8,7 +8,7 @@ use super::pong_input::PongInput;
 use crate::config::minigames::two_player_pong::{PADDLE_MAX_Y, PADDLE_SPEED, PADDLE_X_OFFSET};
 use crate::network::is_host;
 use crate::players::Player;
-use crate::session::SessionPhase;
+use crate::session::{Participants, SessionPhase};
 
 /// Which player controls this paddle. Set once at spawn.
 #[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
@@ -79,11 +79,24 @@ impl Side {
     }
 }
 
-/// The two lowest-numbered players get a paddle; everyone else watches.
-fn spawn_paddles(mut commands: Commands, players: Query<(&Player, &ControlledBy)>) {
-    let mut players: Vec<_> = players.iter().collect();
-    players.sort_by_key(|(player, _)| player.number);
-    let [(left, left_link), (right, right_link), ..] = players[..] else {
+/// The two [`Participants`] get a paddle, left then right; everyone else watches. If one has left
+/// already, Pong is abandoned for lack of paddles.
+fn spawn_paddles(
+    mut commands: Commands,
+    participants: Single<&Participants>,
+    players: Query<(&Player, &ControlledBy)>,
+) {
+    let seated: Vec<_> = participants
+        .0
+        .iter()
+        .filter_map(|id| players.iter().find(|(player, _)| player.id == *id))
+        .collect();
+    let [(left, left_link), (right, right_link)] = seated[..] else {
+        info!(
+            "Pong needs 2 players, but {} of its {} participants are here",
+            seated.len(),
+            participants.0.len()
+        );
         return;
     };
     spawn_paddle(&mut commands, left, left_link.owner, Side::Left);

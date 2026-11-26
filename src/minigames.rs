@@ -3,6 +3,7 @@ pub mod two_player_pong;
 
 use bevy::prelude::*;
 
+use crate::config::minigames::racing::GRID_SLOTS;
 use crate::session::SessionPhase;
 
 /// A minigame the host can start from the lobby.
@@ -23,6 +24,21 @@ impl Minigame {
         match self {
             Minigame::TwoPlayerPong => SessionPhase::TwoPlayerPong,
             Minigame::Racing => SessionPhase::Racing,
+        }
+    }
+
+    /// The fewest players this minigame can be started with.
+    pub fn min_players(self) -> usize {
+        match self {
+            Minigame::TwoPlayerPong | Minigame::Racing => 2,
+        }
+    }
+
+    /// The most players who can play it at once. With more in the session, the rest watch.
+    pub fn max_players(self) -> usize {
+        match self {
+            Minigame::TwoPlayerPong => 2,
+            Minigame::Racing => GRID_SLOTS,
         }
     }
 
@@ -64,6 +80,14 @@ mod tests {
     fn every_minigame_is_played_in_a_minigame_phase() {
         for game in Minigame::ALL {
             assert!(game.phase().is_minigame(), "{game:?}");
+        }
+    }
+
+    #[test]
+    fn every_minigame_seats_at_least_its_minimum() {
+        for game in Minigame::ALL {
+            assert!(game.min_players() >= 2, "{game:?}");
+            assert!(game.max_players() >= game.min_players(), "{game:?}");
         }
     }
 

@@ -11,7 +11,7 @@ use smocka::minigames::two_player_pong::ball::Ball;
 use smocka::minigames::two_player_pong::paddles::Paddle;
 use smocka::minigames::two_player_pong::score::PongRules;
 use smocka::players::Player;
-use smocka::session::{MinigameResult, SessionPhase};
+use smocka::session::{MinigameResult, Participants, SessionPhase};
 use smocka::standings::Points;
 
 use crate::common::{
@@ -41,6 +41,21 @@ fn points(app: &mut TestApp) -> Vec<(u32, u32)> {
     players
         .into_iter()
         .map(|(_, points)| (points.total, points.gained))
+        .collect()
+}
+
+/// Who this app has been told plays the current minigame, as player numbers.
+fn participants(app: &mut TestApp) -> Vec<u32> {
+    let world = app.0.world_mut();
+    let Some(participants) = world.query::<&Participants>().iter(world).next().cloned() else {
+        return Vec::new();
+    };
+    let players: Vec<Player> = world.query::<&Player>().iter(world).cloned().collect();
+    participants
+        .0
+        .iter()
+        .filter_map(|id| players.iter().find(|player| player.id == *id))
+        .map(|player| player.number)
         .collect()
 }
 
@@ -204,7 +219,10 @@ fn a_paddle_player_leaving_ends_pong_even_with_a_spectator_left() {
             .all(|app| app.phase() == Some(SessionPhase::TwoPlayerPong) && pong_entities(app) == 3)
     });
 
-    // The second player has the right paddle; the third only watches.
+    // The first two players have the paddles; the third only watches, and everyone knows it.
+    for app in [&mut host, &mut player, &mut spectator] {
+        assert_eq!(participants(app), [1, 2]);
+    }
     player.disconnect();
 
     update_until(&mut [&mut host, &mut player, &mut spectator], |apps| {

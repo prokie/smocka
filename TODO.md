@@ -99,8 +99,8 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
       the rest by progress); Pong places its two players. The results screen lists them.
 - [x] **Points across games**: `Points` on each player (`src/standings.rs`), one point per player
       beaten, ties sharing. A `SessionPhase::Standings` screen follows each result.
-- [ ] **Player limits per minigame**: min and max players on `Minigame`. Pong needs exactly 2.
-      Needed by tournaments (below).
+- [x] **Player limits per minigame**: `Minigame::min_players` / `max_players` (Pong 2, racing up
+      to `GRID_SLOTS`). The lobby enables each start button on its own minimum.
 - [ ] **Tournaments for minigames with fewer seats than players.** Pong takes 2 players, so with
       more in the session, play a knockout bracket instead of leaving the rest to watch. Today
       `spawn_paddles` just picks the two lowest-numbered players.
@@ -119,6 +119,19 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
   - Someone who leaves mid-tournament loses their match by walkover and their opponent advances.
     Only abandon if fewer than two players are left.
   - Log the bracket and each match's result with `info!`.
+  - Steps:
+    - [x] 1. The session picks the players: the host sets the replicated `Participants` when it
+          starts a minigame (`pick_participants`), and Pong and racing seat exactly those.
+    - [x] 2. Bracket logic as plain data: `src/tournament.rs` (`Bracket`: seeding, byes,
+          `record_winner`, `placements`, `describe`), unit tested.
+    - [ ] 3. Run a tournament when a minigame has fewer seats than players: matches one after
+          another with a short "next match" phase between, each match's `MinigameEnded::Won`
+          recorded in the bracket instead of ending the minigame, and the bracket's placements as
+          the result. Decide the seeding (random, or by points).
+    - [ ] 4. Watching: a "Watching: Ada vs Bo" label for players not in the match, and the bracket
+          on the next-match screen (replicate the `Bracket`).
+    - [ ] 5. Walkovers: a player who leaves mid-tournament loses their match; abandon only with
+          fewer than two players left.
 - [ ] **Spectating when knocked out** (or waiting for your next match). With matches one after
       another, it's the normal view plus a "Watching: Player 2 vs Player 4" label and the
       bracket. With matches at the same time, spectators pick which match to watch (a key to

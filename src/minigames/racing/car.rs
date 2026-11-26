@@ -17,7 +17,7 @@ use crate::config::minigames::racing::{
 };
 use crate::network::is_host;
 use crate::players::Player;
-use crate::session::SessionPhase;
+use crate::session::{Participants, SessionPhase};
 
 /// Who drives this car. Set once at spawn, copied from the driver's [`Player`] so the car keeps
 /// them even if the player leaves mid-race.
@@ -84,9 +84,17 @@ impl Plugin for CarPlugin {
     }
 }
 
-fn spawn_cars(mut commands: Commands, players: Query<(&Player, &ControlledBy)>) {
-    let mut players: Vec<_> = players.iter().collect();
-    players.sort_by_key(|(player, _)| player.number);
+/// One car per [`Participants`] player still here, on the grid in their order.
+fn spawn_cars(
+    mut commands: Commands,
+    participants: Single<&Participants>,
+    players: Query<(&Player, &ControlledBy)>,
+) {
+    let players: Vec<_> = participants
+        .0
+        .iter()
+        .filter_map(|id| players.iter().find(|(player, _)| player.id == *id))
+        .collect();
     let count = players.len();
     debug!(
         "Spawning {count} cars: {:?}",

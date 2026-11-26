@@ -8,6 +8,7 @@ pub mod players;
 pub mod profile;
 pub mod session;
 pub mod standings;
+pub mod tournament;
 
 use bevy::prelude::*;
 

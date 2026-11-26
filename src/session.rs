@@ -44,6 +44,20 @@ impl SessionPhase {
 #[derive(Component, Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 pub struct CurrentPhase(pub SessionPhase);
 
+/// Who plays the current minigame, in seat order: Pong's left then right paddle, racing's grid
+/// slots. Chosen by the host when it starts a minigame, kept next to the [`CurrentPhase`] and
+/// replicated, so every peer knows who plays and who watches. Minigames seat exactly these
+/// players rather than picking their own.
+#[derive(Component, Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+pub struct Participants(pub Vec<PeerId>);
+
+impl Participants {
+    /// Whether `player` plays the current minigame.
+    pub fn contains(&self, player: PeerId) -> bool {
+        self.0.contains(&player)
+    }
+}
+
 /// How the last minigame went, shown during [`SessionPhase::Results`]. Spawned by the host and
 /// replicated to everyone; removed when the results end.
 #[derive(Component, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -139,6 +153,7 @@ impl Plugin for SessionPlugin {
     fn build(&self, app: &mut App) {
         app.add_sub_state::<SessionPhase>();
         app.component::<CurrentPhase>().replicate();
+        app.component::<Participants>().replicate();
         app.component::<MinigameResult>().replicate();
 
         app.add_observer(spawn_current_phase);
@@ -176,8 +191,9 @@ impl Plugin for SessionPlugin {
     }
 }
 
-/// Command: the host starts a [`Minigame`] from the lobby. Refused unless hosting, in the lobby,
-/// with at least [`MIN_PLAYERS`] players.
+/// Command: the host starts a [`Minigame`] from the lobby, with the [`Participants`] chosen by
+/// [`pick_participants`]. Refused unless hosting, in the lobby, with at least
+/// [`Minigame::min_players`] players.
 #[derive(Debug, Clone, Copy)]
 pub struct StartMinigame(pub Minigame);
 
@@ -189,25 +205,52 @@ impl Command for StartMinigame {
             warn!("Only the host can start a minigame");
             return;
         }
-        let players = world
-            .query_filtered::<(), With<Player>>()
-            .iter(world)
-            .count();
-        let Ok(mut phase) = world.query::<&mut CurrentPhase>().single_mut(world) else {
+        let StartMinigame(game) = self;
+        let players: Vec<Player> = world.query::<&Player>().iter(world).cloned().collect();
+        let Ok((mut phase, mut participants)) = world
+            .query::<(&mut CurrentPhase, &mut Participants)>()
+            .single_mut(world)
+        else {
             return;
         };
         if phase.0 != SessionPhase::Lobby {
             warn!("Can't start a minigame outside the lobby");
             return;
         }
-        if !can_start(players) {
-            warn!("Need at least {MIN_PLAYERS} players to start, have {players}");
+        if players.len() < game.min_players() {
+            warn!(
+                "{game:?} needs at least {} players, have {}",
+                game.min_players(),
+                players.len()
+            );
             return;
         }
-        let StartMinigame(game) = self;
+        participants.0 = pick_participants(game, &players);
+        let names: Vec<&str> = participants
+            .0
+            .iter()
+            .filter_map(|id| players.iter().find(|player| player.id == *id))
+            .map(Player::name)
+            .collect();
+        info!(
+            "Starting {game:?}: {} play, {} watch",
+            names.join(", "),
+            players.len() - names.len()
+        );
         phase.0 = game.phase();
-        info!("Starting {game:?} with {players} players");
     }
+}
+
+/// Who plays `game` out of `players`: the lowest-numbered (earliest to join), up to
+/// [`Minigame::max_players`].
+pub fn pick_participants(game: Minigame, players: &[Player]) -> Vec<PeerId> {
+    let mut players: Vec<&Player> = players.iter().collect();
+    players.sort_by_key(|player| player.number);
+    players
+        .into_iter()
+        .take(game.max_players())
+        .map(|player| player.id)
+        .collect()
 }
 
 /// Whether the host may start a minigame with `players` players.
@@ -219,6 +262,7 @@ fn spawn_current_phase(_trigger: On<Add<Started>>, mut commands: Commands) {
     commands.spawn((
         Name::from("CurrentPhase"),
         CurrentPhase(SessionPhase::Lobby),
+        Participants::default(),
         DespawnOnEnter(AppState::MainMenu),
         Replicate::to_clients(NetworkTarget::All),
     ));
@@ -293,7 +337,9 @@ fn follow_phase(
 
 #[cfg(test)]
 mod tests {
-    use super::{Placement, SessionPhase, can_start, ordinal};
+    use super::{Placement, SessionPhase, can_start, ordinal, pick_participants};
+    use crate::minigames::Minigame;
+    use crate::players::Player;
     use lightyear::prelude::PeerId;
 
     #[test]
@@ -302,6 +348,27 @@ mod tests {
         assert!(!can_start(1));
         assert!(can_start(2));
         assert!(can_start(5));
+    }
+
+    #[test]
+    fn the_earliest_players_play_up_to_the_seats() {
+        let players: Vec<Player> = [3, 1, 4, 2]
+            .into_iter()
+            .map(|number| Player {
+                id: PeerId::Netcode(number.into()),
+                number,
+                name: format!("Player {number}"),
+                color: 0,
+            })
+            .collect();
+        assert_eq!(
+            pick_participants(Minigame::TwoPlayerPong, &players),
+            [1, 2].map(PeerId::Netcode)
+        );
+        assert_eq!(
+            pick_participants(Minigame::Racing, &players),
+            [1, 2, 3, 4].map(PeerId::Netcode)
+        );
     }
 
     #[test]

@@ -133,7 +133,8 @@ mod tests {
         BOTTOM_STRAIGHT_Y, CHECKPOINTS, Surface, checkpoint_at, grid_position, outline, surface_at,
     };
     use crate::config::minigames::racing::{
-        CAR_LENGTH, START_LINE_X, TRACK_HALF_LENGTH, TRACK_INNER_RADIUS, TRACK_OUTER_RADIUS,
+        CAR_LENGTH, GRID_SLOTS, START_LINE_X, TRACK_HALF_LENGTH, TRACK_INNER_RADIUS,
+        TRACK_OUTER_RADIUS,
     };
 
     #[test]
@@ -173,7 +174,7 @@ mod tests {
 
     #[test]
     fn every_grid_slot_is_on_the_bottom_straight_behind_the_line() {
-        let slots: Vec<Vec2> = (0..8).map(grid_position).collect();
+        let slots: Vec<Vec2> = (0..GRID_SLOTS).map(grid_position).collect();
         for (i, slot) in slots.iter().enumerate() {
             assert_eq!(surface_at(*slot), Surface::Road, "slot {i}");
             assert!(slot.x < START_LINE_X, "slot {i}");
