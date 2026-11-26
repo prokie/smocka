@@ -82,6 +82,11 @@ fn result(app: &mut TestApp) -> Option<MinigameResult> {
         .cloned()
 }
 
+/// The result's order, as "1st Player 1", "2nd Player 2 (DNF)", ….
+fn order(result: &MinigameResult) -> Vec<String> {
+    result.placements.iter().map(|p| p.describe()).collect()
+}
+
 /// How many cars this app can see.
 fn cars(app: &mut TestApp) -> usize {
     app.0
@@ -262,8 +267,9 @@ fn the_first_car_over_the_line_wins_on_every_peer() {
     });
     for app in [&mut host, &mut client] {
         let result = result(app).unwrap();
-        assert!(hosts(result.winner), "{result:?}");
-        assert_eq!(result.summary, "1st Player 1 · 2nd Player 2");
+        assert!(hosts(result.placements[0].player), "{result:?}");
+        assert_eq!(order(&result), ["1st Player 1", "2nd Player 2"]);
+        assert_eq!(result.summary, "Every car finished");
     }
 }
 
@@ -281,8 +287,8 @@ fn the_race_ends_a_while_after_the_first_finish() {
             .all(|app| app.phase() == Some(SessionPhase::Results) && result(app).is_some())
     });
     let result = result(&mut client).unwrap();
-    assert!(joiners(result.winner), "{result:?}");
-    assert_eq!(result.summary, "1st Player 2 · 2nd Player 1 (DNF)");
+    assert!(joiners(result.placements[0].player), "{result:?}");
+    assert_eq!(order(&result), ["1st Player 2", "2nd Player 1 (DNF)"]);
 }
 
 #[test]
@@ -298,7 +304,10 @@ fn the_race_ends_when_the_only_other_player_leaves_after_you_finish() {
     update_until(&mut [&mut host, &mut client], |apps| {
         apps[0].phase() == Some(SessionPhase::Results)
     });
-    assert!(hosts(result(&mut host).unwrap().winner));
+    // The joiner's car left with them, so only the host is placed.
+    let result = result(&mut host).unwrap();
+    assert!(hosts(result.placements[0].player), "{result:?}");
+    assert_eq!(order(&result), ["1st Player 1"]);
 }
 
 #[test]

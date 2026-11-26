@@ -10,6 +10,7 @@ use bevy::ui::{InteractionDisabled, Pressed};
 use bevy::ui_widgets::{Button, TextInput};
 
 use super::MenuButton;
+use crate::players::player_color;
 
 pub const BUTTON_COLOR: Color = Color::srgb(0.15, 0.15, 0.18);
 pub const BUTTON_HOVERED_COLOR: Color = Color::srgb(0.25, 0.25, 0.3);
@@ -17,6 +18,9 @@ pub const BUTTON_PRESSED_COLOR: Color = Color::srgb(0.35, 0.55, 0.85);
 pub const BUTTON_DISABLED_COLOR: Color = Color::srgb(0.1, 0.1, 0.1);
 pub const ERROR_COLOR: Color = Color::srgb(1.0, 0.45, 0.45);
 pub const HINT_COLOR: Color = Color::srgb(0.7, 0.7, 0.75);
+
+/// Size of the colour square next to each player's name.
+const ROW_SWATCH_SIZE: f32 = 18.0;
 
 /// A full-window column, centred, that is despawned when `state` is left.
 pub fn screen<S: States>(state: S) -> impl Bundle {
@@ -96,6 +100,29 @@ pub fn text_field(text: String, max_characters: usize, visible_width: f32) -> im
         },
         BorderColor::all(HINT_COLOR),
         BackgroundColor(BUTTON_COLOR),
+    )
+}
+
+/// A player's row: a square of their colour, then their name.
+pub fn player_row(text: &str, color: u8) -> impl Bundle {
+    (
+        Node {
+            column_gap: px(10),
+            align_items: AlignItems::Center,
+            ..default()
+        },
+        children![
+            (
+                Node {
+                    width: px(ROW_SWATCH_SIZE),
+                    height: px(ROW_SWATCH_SIZE),
+                    border_radius: BorderRadius::all(px(4)),
+                    ..default()
+                },
+                BackgroundColor(player_color(color)),
+            ),
+            label(text.to_string(), 24.0, Color::WHITE),
+        ],
     )
 }
 

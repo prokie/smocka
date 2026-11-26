@@ -146,6 +146,10 @@ fn update_lap_text(
         .map(|progress| lap_label(*progress))
         .unwrap_or_default();
     if text.0 != shown {
+        // On every peer, so a joiner's log shows what it saw of its own car's laps.
+        if !shown.is_empty() {
+            debug!("Your lap counter: {shown}");
+        }
         text.0 = shown;
     }
 }

@@ -126,7 +126,11 @@ fn winning_shows_the_result_then_returns_to_the_lobby() {
     );
     for app in [&mut host, &mut client] {
         let result = result(app).unwrap();
-        assert!(matches!(result.winner, PeerId::Local(_)), "the host won");
+        let [winner, loser] = &result.placements[..] else {
+            panic!("both players are placed: {result:?}");
+        };
+        assert!(matches!(winner.player, PeerId::Local(_)), "the host won");
+        assert_eq!((winner.place, loser.place), (1, 2));
         assert_eq!(result.summary, "1 – 0");
     }
 

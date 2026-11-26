@@ -3,6 +3,7 @@
 
 use std::cmp::Reverse;
 
+use bevy::ecs::entity::EntityHashMap;
 use bevy::math::FloatOrd;
 use bevy::prelude::*;
 use lightyear::prelude::*;
@@ -10,11 +11,12 @@ use serde::{Deserialize, Serialize};
 
 use super::RacingSystems;
 use super::car::{Car, CarState};
-use super::race::{RaceDirector, ordinal};
+use super::race::RaceDirector;
 use super::track::{CHECKPOINTS, checkpoint_at};
 use crate::config::minigames::racing::LAPS;
 use crate::network::is_host;
 use crate::session::SessionPhase;
+use crate::session::ordinal;
 
 /// How far round the track a car has got. Replicated, not predicted: it only changes on the host.
 #[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -106,13 +108,32 @@ impl Plugin for ProgressPlugin {
 }
 
 /// Host only: move each car's progress on if it has reached its next checkpoint, and give it the
-/// next place when it completes its last lap.
+/// next place when it completes its last lap. `inside` remembers the checkpoint each car was in on
+/// the last tick, so entering one is logged once rather than every tick spent in it.
 fn count_laps(
-    mut cars: Query<(&Car, &CarState, &mut RaceProgress)>,
+    mut cars: Query<(Entity, &Car, &CarState, &mut RaceProgress)>,
     mut director: ResMut<RaceDirector>,
+    mut inside: Local<EntityHashMap<Option<usize>>>,
 ) {
-    for (car, state, mut progress) in &mut cars {
-        let mut next = progress.advance(checkpoint_at(state.position));
+    inside.retain(|entity, _| cars.contains(*entity));
+    for (entity, car, state, mut progress) in &mut cars {
+        let checkpoint = checkpoint_at(state.position);
+        let entered = inside.insert(entity, checkpoint) != Some(checkpoint);
+        let mut next = progress.advance(checkpoint);
+        match checkpoint {
+            Some(reached) if entered && next != *progress => debug!(
+                "{} ({:?}) reached checkpoint {reached} on lap {}",
+                car.name,
+                car.owner,
+                progress.laps + 1
+            ),
+            Some(reached) if entered && progress.place.is_none() => debug!(
+                "{} ({:?}) entered checkpoint {reached} out of order: needs checkpoint {} \
+                 first, so this doesn't count",
+                car.name, car.owner, progress.next_checkpoint
+            ),
+            _ => {}
+        }
         if next.laps != progress.laps {
             debug!(
                 "{} ({:?}) completed lap {}/{LAPS}",

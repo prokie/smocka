@@ -7,7 +7,7 @@ use bevy::ui_widgets::{Activate, Button};
 use lightyear::prelude::*;
 
 use super::MenuButton;
-use super::widgets::{HINT_COLOR, label, menu_button, screen};
+use super::widgets::{HINT_COLOR, label, menu_button, player_row, screen};
 use crate::minigames::Minigame;
 use crate::network::Hosting;
 use crate::players::{
@@ -17,8 +17,6 @@ use crate::session::{SessionPhase, can_start};
 
 /// Size of the colour swatches you click to pick a colour, in screen pixels.
 const SWATCH_SIZE: f32 = 36.0;
-/// Size of the colour square next to each player's name.
-const ROW_SWATCH_SIZE: f32 = 18.0;
 /// A colour someone else has is drawn this transparent.
 const TAKEN_ALPHA: f32 = 0.2;
 
@@ -208,29 +206,6 @@ type SwatchLook = (
     &'static mut BorderColor,
     Entity,
 );
-
-/// A player's row: a square of their colour, then their name.
-fn player_row(text: &str, color: u8) -> impl Bundle {
-    (
-        Node {
-            column_gap: px(10),
-            align_items: AlignItems::Center,
-            ..default()
-        },
-        children![
-            (
-                Node {
-                    width: px(ROW_SWATCH_SIZE),
-                    height: px(ROW_SWATCH_SIZE),
-                    border_radius: BorderRadius::all(px(4)),
-                    ..default()
-                },
-                BackgroundColor(player_color(color)),
-            ),
-            label(text.to_string(), 24.0, Color::WHITE),
-        ],
-    )
-}
 
 /// A player's name, marking the host and `you`.
 pub fn player_label(player: &Player, you: Option<PeerId>) -> String {

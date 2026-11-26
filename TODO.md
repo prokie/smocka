@@ -62,11 +62,6 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
         and `compressed_image_saver` features (and a C++ compiler) to build, and `ktx2` to load.
   - [ ] Simple shapes could skip image files: `Mesh2d` with a `ColorMaterial` gives crisp,
         resizable shapes, with edges smoothed by the camera's MSAA (on by default, 4 samples).
-- [x] **Let each minigame own its camera.** `src/camera.rs`: one `UiCamera` (order 1, no world
-      render layers) draws all UI at screen resolution and clears the window only when no
-      minigame is drawing. Each minigame spawns its own camera with `gameplay_camera_2d` on
-      `OnEnter`, despawned with `DespawnOnExit`. A 3D minigame spawns a `Camera3d` (and lights)
-      with the `GameplayCamera` marker instead.
 
 ## Playing with friends
 
@@ -99,8 +94,9 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
 - [ ] **Start on an agreed tick**, so predicted cars don't jump at the start.
 - [ ] **More interesting tracks**: describe the track as data (a centre line plus width) instead of
       an oval.
-- [ ] **Placements in results**: turn `MinigameResult { winner, summary }` into a full finishing
-      order.
+- [x] **Placements in results**: `MinigameResult { placements, summary }`, best first, with
+      shared places for ties and a note such as "DNF". Racing places every car (finishers, then
+      the rest by progress); Pong places its two players. The results screen lists them.
 - [ ] **Points across games**: a score per `Player`, and a standings screen after each result.
 - [ ] **Player limits per minigame**: min and max players on `Minigame`. Pong needs exactly 2.
       Needed by tournaments (below).

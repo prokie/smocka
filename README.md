@@ -56,7 +56,9 @@ To test two players on one machine, `tools/dev.sh` builds once and starts a host
 of the secondary monitor and a joiner on the right (`SMOCKA_MONITOR=primary tools/dev.sh` for
 the primary one); closing the joiner closes both. The halves come from `--left` / `--right`, plus
 `--secondary`, which also work on their own. Wayland doesn't let apps place their windows,
-so the script runs the game on X11 (XWayland) there.
+so the script runs the game on X11 (XWayland) there. It shows the game's debug logs from both
+players (unless `RUST_LOG` is set), each line marked `[host]` or `[join]`, and keeps each
+player's log in `logs/host.log` and `logs/join.log` until the next run.
 
 ## Controls
 

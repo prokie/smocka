@@ -7,7 +7,8 @@ use super::ball::{BallPosition, BallVelocity, serve_velocity};
 use super::paddles::{Paddle, Side};
 use crate::config::minigames::two_player_pong::{GOAL_X, GOALS_TO_WIN};
 use crate::network::is_host;
-use crate::session::{MinigameEnded, MinigameResult, SessionPhase};
+use crate::players::Player;
+use crate::session::{MinigameEnded, MinigameResult, Placement, SessionPhase};
 
 /// Host only: how a game of Pong is won.
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,6 +96,7 @@ fn score_goals(
     mut balls: Query<(&mut BallPosition, &mut BallVelocity)>,
     mut score: Single<&mut PongScore>,
     paddles: Query<&Paddle>,
+    players: Query<&Player>,
     rules: Res<PongRules>,
     mut commands: Commands,
 ) {
@@ -115,13 +117,19 @@ fn score_goals(
             velocity.0 = serve_velocity(scorer.opponent());
             continue;
         }
-        let winner = paddles.iter().find(|paddle| paddle.side == scorer);
-        commands.trigger(match winner {
-            Some(winner) => MinigameEnded::Won(MinigameResult {
-                winner: winner.owner,
+        let player_on = |side| {
+            let paddle = paddles.iter().find(|paddle| paddle.side == side)?;
+            players.iter().find(|player| player.id == paddle.owner)
+        };
+        commands.trigger(match (player_on(scorer), player_on(scorer.opponent())) {
+            (Some(winner), Some(loser)) => MinigameEnded::Won(MinigameResult {
+                placements: vec![Placement::new(winner, 1), Placement::new(loser, 2)],
                 summary: format!("{} – {}", score.left, score.right),
             }),
-            None => MinigameEnded::Abandoned,
+            _ => {
+                info!("Abandoning Pong: a player left as the winning goal went in");
+                MinigameEnded::Abandoned
+            }
         });
     }
 }

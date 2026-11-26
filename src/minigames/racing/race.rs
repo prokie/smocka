@@ -12,7 +12,7 @@ use super::car::{Car, CarState};
 use super::progress::{RaceProgress, running_order};
 use crate::config::minigames::racing::{COUNTDOWN, FINISH_GRACE};
 use crate::network::is_host;
-use crate::session::{MinigameEnded, MinigameResult, SessionPhase};
+use crate::session::{MinigameEnded, MinigameResult, Placement, SessionPhase};
 
 /// Where the race is. One replicated entity per race, spawned by the host.
 #[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -49,13 +49,6 @@ impl Default for RaceRules {
     }
 }
 
-/// A car that crossed the line on its last lap.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Finisher {
-    pub owner: PeerId,
-    pub name: String,
-}
-
 /// Host only: the race's clocks and finishing order. Exists while racing.
 #[derive(Resource, Debug)]
 pub struct RaceDirector {
@@ -63,8 +56,9 @@ pub struct RaceDirector {
     finish_grace: Duration,
     /// Started by the first finish.
     grace: Option<Timer>,
-    /// In finishing order. Players who leave after finishing stay in it.
-    finishers: Vec<Finisher>,
+    /// The cars that crossed the line on their last lap, in finishing order. Players who leave
+    /// after finishing stay in it.
+    finishers: Vec<Car>,
     /// Set once the race has handed control back to the session, so it only does that once.
     over: bool,
 }
@@ -86,10 +80,7 @@ impl RaceDirector {
         if self.grace.is_none() {
             self.grace = Some(Timer::new(self.finish_grace, TimerMode::Once));
         }
-        self.finishers.push(Finisher {
-            owner: car.owner,
-            name: car.name.clone(),
-        });
+        self.finishers.push(car.clone());
         self.finishers.len() as u32
     }
 
@@ -195,25 +186,26 @@ fn end_race(
     if !everyone_finished && !director.grace_is_over() {
         return;
     }
-    let Some(winner) = director.finishers.first().map(|finisher| finisher.owner) else {
+    if director.finishers.is_empty() {
         return;
-    };
+    }
     let unfinished = cars
         .iter()
         .filter(|(_, progress, _)| progress.place.is_none())
         .map(|(car, progress, state)| (car.clone(), *progress, state.position))
         .collect();
-    let summary = race_summary(&director.finishers, unfinished);
-    info!(
-        "Race over ({}): {summary}",
-        if everyone_finished {
-            "every car finished"
-        } else {
-            "time ran out after the first finish"
-        }
-    );
+    let placements = race_placements(&director.finishers, unfinished);
+    let summary = if everyone_finished {
+        "Every car finished"
+    } else {
+        "Time ran out for the rest"
+    };
+    info!("Race over: {summary}");
     director.over = true;
-    commands.trigger(MinigameEnded::Won(MinigameResult { winner, summary }));
+    commands.trigger(MinigameEnded::Won(MinigameResult {
+        placements,
+        summary: summary.into(),
+    }));
 }
 
 /// What the middle of the screen shows during `status`. `just_started` is whether the race began a
@@ -227,41 +219,26 @@ pub fn status_label(status: RaceStatus, just_started: bool) -> String {
     }
 }
 
-/// The final order, e.g. "1st Ada · 2nd Player 1 · 3rd Bo (DNF)": the finishers in the
-/// order they finished, then the cars that didn't finish, in [`running_order`].
-pub fn race_summary(
-    finishers: &[Finisher],
+/// The final order: the finishers in the order they finished, then the cars that didn't finish
+/// (marked "DNF"), in [`running_order`].
+pub fn race_placements(
+    finishers: &[Car],
     mut unfinished: Vec<(Car, RaceProgress, Vec2)>,
-) -> String {
+) -> Vec<Placement> {
     unfinished.sort_by_key(|(_, progress, position)| running_order(*progress, *position));
     finishers
         .iter()
-        .map(|finisher| (finisher.name.as_str(), true))
-        .chain(
-            unfinished
-                .iter()
-                .map(|(car, _, _)| (car.name.as_str(), false)),
-        )
-        .enumerate()
-        .map(|(i, (name, finished))| {
-            let place = ordinal(i as u32 + 1);
-            let dnf = if finished { "" } else { " (DNF)" };
-            format!("{place} {name}{dnf}")
+        .map(|car| (car, ""))
+        .chain(unfinished.iter().map(|(car, _, _)| (car, "DNF")))
+        .zip(1..)
+        .map(|((car, note), place)| Placement {
+            player: car.owner,
+            name: car.name.clone(),
+            color: car.color,
+            place,
+            note: note.into(),
         })
-        .collect::<Vec<_>>()
-        .join(" · ")
-}
-
-/// `1st`, `2nd`, `3rd`, `4th`, …, `11th`, `12th`, `13th`, `21st`, …
-pub fn ordinal(n: u32) -> String {
-    let suffix = match (n % 10, n % 100) {
-        (_, 11..=13) => "th",
-        (1, _) => "st",
-        (2, _) => "nd",
-        (3, _) => "rd",
-        _ => "th",
-    };
-    format!("{n}{suffix}")
+        .collect()
 }
 
 #[cfg(test)]
@@ -271,9 +248,7 @@ mod tests {
     use bevy::math::Vec2;
     use lightyear::prelude::PeerId;
 
-    use super::{
-        Car, Finisher, RaceDirector, RaceRules, RaceStatus, ordinal, race_summary, status_label,
-    };
+    use super::{Car, RaceDirector, RaceRules, RaceStatus, race_placements, status_label};
     use crate::minigames::racing::progress::RaceProgress;
 
     fn car(number: u32) -> Car {
@@ -329,11 +304,8 @@ mod tests {
     }
 
     #[test]
-    fn the_summary_lists_finishers_then_the_rest_by_progress() {
-        let finishers = [car(2), car(4)].map(|car| Finisher {
-            owner: car.owner,
-            name: car.name,
-        });
+    fn placements_list_finishers_then_the_rest_by_progress() {
+        let finishers = [car(2), car(4)];
         let behind = RaceProgress {
             next_checkpoint: 2,
             laps: 1,
@@ -344,14 +316,21 @@ mod tests {
             laps: 1,
             place: None,
         };
-        let summary = race_summary(
+        let placements = race_placements(
             &finishers,
             vec![(car(1), behind, Vec2::ZERO), (car(3), further, Vec2::ZERO)],
         );
+        let shown: Vec<String> = placements.iter().map(|p| p.describe()).collect();
         assert_eq!(
-            summary,
-            "1st Player 2 · 2nd Player 4 · 3rd Player 3 (DNF) · 4th Player 1 (DNF)"
+            shown,
+            [
+                "1st Player 2",
+                "2nd Player 4",
+                "3rd Player 3 (DNF)",
+                "4th Player 1 (DNF)"
+            ]
         );
+        assert_eq!(placements[0].player, car(2).owner);
     }
 
     #[test]
@@ -363,21 +342,6 @@ mod tests {
         assert_eq!(
             status_label(RaceStatus::Finishing(7), false),
             "Race ends in 7"
-        );
-    }
-
-    #[test]
-    fn ordinals() {
-        let shown: Vec<String> = [1, 2, 3, 4, 11, 12, 13, 21, 22, 101, 111]
-            .into_iter()
-            .map(ordinal)
-            .collect();
-        assert_eq!(
-            shown,
-            [
-                "1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "22nd", "101st",
-                "111th"
-            ]
         );
     }
 }
