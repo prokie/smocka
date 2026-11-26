@@ -7,7 +7,6 @@ edition = "2024"
 bevy = { version = "0.20.1", default-features = false, features = [
     "2d",
     "ui",
-    "file_watcher",
 ] }
 rand = "0.10.4"
 lightyear = { version = "0.31.0", features = [
@@ -35,7 +34,7 @@ opt-level = 3
 lto = "fat"
 codegen-units = 1
 strip = true
-
+panic = "abort"
 
 [[bin]]
 name = "smocka"
