@@ -9,7 +9,7 @@ use smocka::config::minigames::racing::LAPS;
 use smocka::minigames::Minigame;
 use smocka::minigames::racing::car::{Car, CarState};
 use smocka::minigames::racing::progress::RaceProgress;
-use smocka::minigames::racing::race::{RaceLaps, RaceRules, RaceStatus};
+use smocka::minigames::racing::race::{ChangeLaps, RaceLaps, RaceRules, RaceStatus};
 use smocka::minigames::racing::track::{CHECKPOINTS, Surface, surface_at};
 use smocka::session::{MinigameResult, SessionPhase};
 
@@ -359,4 +359,19 @@ fn the_host_picks_how_many_laps_the_race_has() {
     }
     let progress = progress(&mut host, hosts).unwrap();
     assert_eq!((progress.laps, progress.place), (1, Some(1)));
+}
+
+#[test]
+fn joiners_see_the_hosts_lap_pick_in_the_lobby() {
+    let (mut host, mut client, _) = connected_pair();
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps[0].players() == 2 && race_laps(apps[1]) == Some(LAPS)
+    });
+
+    host.0.world_mut().commands().queue(ChangeLaps(2));
+    host.0.world_mut().flush();
+    update_until(&mut [&mut host, &mut client], |apps| {
+        race_laps(apps[1]) == Some(LAPS + 2)
+    });
+    assert_eq!(client.phase(), Some(SessionPhase::Lobby));
 }

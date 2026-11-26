@@ -5,12 +5,13 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use bevy::prelude::*;
-use lightyear::prelude::*;
+use lightyear::prelude::{server::Started, *};
 use serde::{Deserialize, Serialize};
 
 use super::RacingSystems;
 use super::car::{Car, CarState};
 use super::progress::{RaceProgress, running_order};
+use crate::app_state::AppState;
 use crate::config::minigames::racing::{COUNTDOWN, FINISH_GRACE, LAPS, MAX_LAPS, MIN_LAPS};
 use crate::network::is_host;
 use crate::session::{MinigameEnded, MinigameResult, Placement, SessionPhase};
@@ -53,8 +54,8 @@ impl Default for RaceRules {
     }
 }
 
-/// How many laps this race has. Spawned by the host next to the [`RaceStatus`] and replicated,
-/// so every peer's lap counter knows.
+/// How many laps races have: the host's [`RaceRules::laps`], so joiners see it in the lobby and
+/// in their lap counter. One per session, spawned by the host and replicated.
 #[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RaceLaps(pub u32);
 
@@ -197,6 +198,8 @@ impl Plugin for RacePlugin {
     fn build(&self, app: &mut App) {
         app.component::<RaceStatus>().replicate();
         app.component::<RaceLaps>().replicate();
+        app.add_observer(spawn_race_laps);
+        app.add_systems(Update, publish_race_laps.run_if(is_host));
         app.init_resource::<RaceRules>();
 
         app.add_systems(OnEnter(SessionPhase::Racing), start_race.run_if(is_host));
@@ -216,6 +219,21 @@ impl Plugin for RacePlugin {
     }
 }
 
+/// Host only: when the session starts, spawn the [`RaceLaps`] everyone sees.
+fn spawn_race_laps(_trigger: On<Add<Started>>, rules: Res<RaceRules>, mut commands: Commands) {
+    commands.spawn((
+        Name::from("RaceLaps"),
+        RaceLaps(rules.laps),
+        DespawnOnEnter(AppState::MainMenu),
+        Replicate::to_clients(NetworkTarget::All),
+    ));
+}
+
+/// Host only: keep [`RaceLaps`] up to date with the host's pick.
+fn publish_race_laps(rules: Res<RaceRules>, mut laps: Single<&mut RaceLaps>) {
+    laps.set_if_neq(RaceLaps(rules.laps));
+}
+
 /// Host only: when the race starts, spawn its status and start the countdown.
 fn start_race(rules: Res<RaceRules>, mut commands: Commands) {
     info!(
@@ -225,7 +243,6 @@ fn start_race(rules: Res<RaceRules>, mut commands: Commands) {
     );
     commands.spawn((
         RaceStatus::Countdown(whole_seconds(rules.countdown)),
-        RaceLaps(rules.laps),
         DespawnOnExit(SessionPhase::Racing),
         Replicate::to_clients(NetworkTarget::All),
     ));

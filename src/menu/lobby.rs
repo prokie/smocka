@@ -10,7 +10,7 @@ use super::MenuButton;
 use super::widgets::{HINT_COLOR, label, menu_button, player_row, screen, small_button};
 use crate::config::minigames::racing::{MAX_LAPS, MIN_LAPS};
 use crate::minigames::Minigame;
-use crate::minigames::racing::race::RaceRules;
+use crate::minigames::racing::race::RaceLaps;
 use crate::network::Hosting;
 use crate::players::{
     PLAYER_COLORS, PickColor, Player, color_is_free, local_peer_id, player_color,
@@ -73,29 +73,40 @@ pub(super) fn spawn_lobby_screen(hosting: Hosting, mut commands: Commands) {
                 InteractionDisabled,
             ));
         }
-        commands.entity(root).with_child((
+    }
+    // Everyone sees the host's pick; only the host gets "-" and "+".
+    let laps = commands
+        .spawn((
             Node {
                 column_gap: px(12),
                 align_items: AlignItems::Center,
                 ..default()
             },
-            children![
-                label("Racing laps", 20.0, HINT_COLOR),
-                small_button(MenuButton::ChangeLaps(-1), "-"),
-                (
-                    LapsText,
-                    label("", 24.0, Color::WHITE),
-                    Node {
-                        min_width: px(30),
-                        justify_content: JustifyContent::Center,
-                        ..default()
-                    },
-                    TextLayout::justify(Justify::Center),
-                ),
-                small_button(MenuButton::ChangeLaps(1), "+"),
-            ],
-        ));
+            children![label("Racing laps", 20.0, HINT_COLOR)],
+        ))
+        .id();
+    let laps_text = commands
+        .spawn((
+            LapsText,
+            label("", 24.0, Color::WHITE),
+            Node {
+                min_width: px(30),
+                justify_content: JustifyContent::Center,
+                ..default()
+            },
+            TextLayout::justify(Justify::Center),
+        ))
+        .id();
+    if hosting.is_hosting() {
+        commands
+            .entity(laps)
+            .with_child(small_button(MenuButton::ChangeLaps(-1), "-"))
+            .add_child(laps_text)
+            .with_child(small_button(MenuButton::ChangeLaps(1), "+"));
+    } else {
+        commands.entity(laps).add_child(laps_text);
     }
+    commands.entity(root).add_child(laps);
     commands
         .entity(root)
         .with_child((LobbyHint, label("", 20.0, HINT_COLOR)));
@@ -228,17 +239,19 @@ pub(super) fn update_lobby_hint(
     }
 }
 
-/// Host only: show the picked number of laps, and disable "-" and "+" at the limits.
+/// Show the host's pick of laps (to everyone, from the replicated [`RaceLaps`]), and on the host
+/// disable "-" and "+" at the limits.
 pub(super) fn update_lap_picker(
-    rules: Res<RaceRules>,
-    text: Option<Single<&mut Text, With<LapsText>>>,
+    laps: Option<Single<&RaceLaps>>,
+    mut text: Single<&mut Text, With<LapsText>>,
     buttons: Query<(Entity, &MenuButton, Has<InteractionDisabled>)>,
     mut commands: Commands,
 ) {
-    let Some(mut text) = text else {
+    // A joiner may see the lobby a moment before the host's pick arrives.
+    let Some(laps) = laps.map(|laps| laps.0) else {
         return;
     };
-    let shown = rules.laps.to_string();
+    let shown = laps.to_string();
     if text.0 != shown {
         text.0 = shown;
     }
@@ -246,8 +259,7 @@ pub(super) fn update_lap_picker(
         let MenuButton::ChangeLaps(change) = action else {
             continue;
         };
-        let at_limit =
-            (*change < 0 && rules.laps <= MIN_LAPS) || (*change > 0 && rules.laps >= MAX_LAPS);
+        let at_limit = (*change < 0 && laps <= MIN_LAPS) || (*change > 0 && laps >= MAX_LAPS);
         match (at_limit, disabled) {
             (true, false) => {
                 commands.entity(button).insert(InteractionDisabled);
