@@ -7,9 +7,9 @@ use bevy::prelude::*;
 use lightyear::prelude::*;
 use smocka::SmockaPlugin;
 use smocka::app_state::{AppState, SessionEndReason};
-use smocka::lobby::{Player, PlayerLeft};
 use smocka::minigames::Minigame;
 use smocka::network::{HostSession, JoinSession, LeaveSession};
+use smocka::players::{Player, PlayerLeft};
 use smocka::profile::LocalProfile;
 use smocka::session::{SessionPhase, StartMinigame};
 

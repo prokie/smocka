@@ -15,8 +15,8 @@ use crate::config::minigames::racing::{
     FULL_STEER_SPEED, GRASS_DECELERATION, MAX_REVERSE_SPEED, MAX_SPEED, REVERSE_ACCELERATION,
     TURN_RATE,
 };
-use crate::lobby::Player;
 use crate::network::is_host;
+use crate::players::Player;
 use crate::session::SessionPhase;
 
 /// Who drives this car. Set once at spawn, copied from the driver's [`Player`] so the car keeps
@@ -25,7 +25,7 @@ use crate::session::SessionPhase;
 pub struct Car {
     pub owner: PeerId,
     pub name: String,
-    /// The driver's [`Player::color`], an index for [`player_color`](crate::lobby::player_color).
+    /// The driver's [`Player::color`], an index for [`player_color`](crate::players::player_color).
     pub color: u8,
 }
 

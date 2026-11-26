@@ -11,7 +11,7 @@ use crate::config::display::{VIEW_HEIGHT, VIEW_WIDTH};
 use crate::config::minigames::racing::{
     CAR_LENGTH, CAR_WIDTH, START_LINE_X, TRACK_INNER_RADIUS, TRACK_OUTER_RADIUS,
 };
-use crate::lobby::player_color;
+use crate::players::player_color;
 use crate::session::SessionPhase;
 
 /// Points right. Drawn in white/grey and tinted per player.

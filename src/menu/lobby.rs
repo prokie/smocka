@@ -8,9 +8,11 @@ use lightyear::prelude::*;
 
 use super::MenuButton;
 use super::widgets::{HINT_COLOR, label, menu_button, screen};
-use crate::lobby::{PLAYER_COLORS, PickColor, Player, color_is_free, local_peer_id, player_color};
 use crate::minigames::Minigame;
 use crate::network::Hosting;
+use crate::players::{
+    PLAYER_COLORS, PickColor, Player, color_is_free, local_peer_id, player_color,
+};
 use crate::session::{SessionPhase, can_start};
 
 /// Size of the colour swatches you click to pick a colour, in screen pixels.
@@ -253,7 +255,7 @@ pub fn lobby_hint(hosting: bool, startable: bool) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{lobby_hint, player_label};
-    use crate::lobby::Player;
+    use crate::players::Player;
     use lightyear::prelude::PeerId;
 
     fn player(id: PeerId, number: u32, name: &str) -> Player {

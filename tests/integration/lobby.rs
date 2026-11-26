@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use bevy::prelude::Command;
 use smocka::app_state::AppState;
-use smocka::lobby::PickColor;
+use smocka::players::PickColor;
 use smocka::profile::LocalProfile;
 
 use crate::common::{TestApp, connected_pair, free_addr, update_until, update_until_within};

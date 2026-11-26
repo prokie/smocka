@@ -7,7 +7,7 @@ use crate::config::display::{ART_SCALE, VIEW_HEIGHT, VIEW_WIDTH};
 use crate::config::minigames::two_player_pong::{
     BALL_SIZE, PADDLE_HEIGHT, PADDLE_WIDTH, SCORE_FONT_SIZE, WALL_THICKNESS,
 };
-use crate::lobby::player_color;
+use crate::players::player_color;
 use crate::session::SessionPhase;
 
 const ARENA_IMAGE: &str = "minigames/two_player_pong/arena.png";

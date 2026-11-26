@@ -1,10 +1,10 @@
 pub mod app_state;
 pub mod camera;
 pub mod config;
-pub mod lobby;
 pub mod menu;
 pub mod minigames;
 pub mod network;
+pub mod players;
 pub mod profile;
 pub mod session;
 
@@ -18,7 +18,7 @@ impl Plugin for SmockaPlugin {
         app.add_plugins((
             network::NetworkPlugin,
             app_state::AppStatePlugin,
-            lobby::LobbyPlugin,
+            players::PlayersPlugin,
             session::SessionPlugin,
             minigames::MinigamesPlugin,
         ));

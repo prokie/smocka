@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::app_state::AppState;
 use crate::config::session::{MIN_PLAYERS, RESULTS_DURATION};
-use crate::lobby::Player;
 use crate::minigames::Minigame;
 use crate::network::is_host;
+use crate::players::Player;
 
 /// What the session is doing. A local Bevy sub-state of [`AppState::InSession`] that follows the
 /// host's [`CurrentPhase`].

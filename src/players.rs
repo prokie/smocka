@@ -1,3 +1,5 @@
+//! The players in a session: who joined, their names and colours, and who left.
+
 use bevy::prelude::*;
 use lightyear::netcode::TokenUserData;
 use lightyear::prelude::{server::ClientOf, *};
@@ -102,9 +104,9 @@ impl Default for NextPlayerNumber {
 }
 
 /// Must be added after [`NetworkPlugin`](crate::network::NetworkPlugin): it registers replicated components.
-pub struct LobbyPlugin;
+pub struct PlayersPlugin;
 
-impl Plugin for LobbyPlugin {
+impl Plugin for PlayersPlugin {
     fn build(&self, app: &mut App) {
         app.component::<Player>().replicate();
         app.add_channel::<ProfileChannel>(ChannelSettings {

@@ -4,7 +4,7 @@ use bevy::prelude::*;
 
 use super::widgets::label;
 use crate::app_state::AppState;
-use crate::lobby::PlayerLeft;
+use crate::players::PlayerLeft;
 
 pub const NOTICE_DURATION: Duration = Duration::from_secs(4);
 const NOTICE_BACKGROUND: Color = Color::srgba(0.1, 0.1, 0.12, 0.85);

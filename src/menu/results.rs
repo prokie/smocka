@@ -3,7 +3,7 @@ use lightyear::prelude::*;
 
 use super::widgets::{HINT_COLOR, label, screen};
 use crate::config::session::RESULTS_DURATION;
-use crate::lobby::{Player, local_peer_id};
+use crate::players::{Player, local_peer_id};
 use crate::session::{MinigameResult, SessionPhase};
 
 /// The headline: who won.
@@ -80,7 +80,7 @@ pub fn headline(winner: Option<&Player>, you: Option<PeerId>) -> String {
 #[cfg(test)]
 mod tests {
     use super::headline;
-    use crate::lobby::Player;
+    use crate::players::Player;
     use lightyear::prelude::PeerId;
 
     fn host() -> Player {

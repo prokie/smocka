@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use super::PongSystems;
 use super::pong_input::PongInput;
 use crate::config::minigames::two_player_pong::{PADDLE_MAX_Y, PADDLE_SPEED, PADDLE_X_OFFSET};
-use crate::lobby::Player;
 use crate::network::is_host;
+use crate::players::Player;
 use crate::session::SessionPhase;
 
 /// Which player controls this paddle. Set once at spawn.
@@ -15,7 +15,7 @@ use crate::session::SessionPhase;
 pub struct Paddle {
     pub owner: PeerId,
     pub side: Side,
-    /// The owner's [`Player::color`], an index for [`player_color`](crate::lobby::player_color).
+    /// The owner's [`Player::color`], an index for [`player_color`](crate::players::player_color).
     pub color: u8,
 }
 
