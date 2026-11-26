@@ -77,6 +77,61 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
 - [ ] **Playing over the internet without port forwarding.** Today the host forwards UDP port
       5000 (documented in the README). Alternatives: a relay server, or Steam networking.
       Lightyear 0.31 ships `lightyear_steam` and `lightyear_p2p` crates (not looked into yet).
+- [ ] **Anyone who can reach a host can join.** `PRIVATE_KEY` (`src/config.rs`) is all zeros
+      and joiners mint their own connect tokens, so the key isn't a secret (it can't be while it
+      ships inside an open-source client). That's fine on a LAN, but a port-forwarded host
+      accepts anyone who finds the address. A crafted token gets no further than a normal join:
+      `name_from_user_data` cleans the name. If it matters: a session password the host checks
+      after connecting, or tokens handed out by a server (a relay could do it).
+
+## Bugs and rough edges
+
+- [ ] **Hosting when the port is taken crashes the game.** If something already holds port 5000
+      (say, another copy of the game), Lightyear's `UdpEndpointPlugin::link` observer returns
+      `AddrInUse` and Bevy's default error handler panics: "Address already in use (os error
+      98)" (checked with a throwaway test). Release builds on Windows have no console, so the
+      window just disappears. Bind a test socket in `HostSession::apply` first and, if that
+      fails, stay in the menu with a `SessionEndReason` such as "Port 5000 is in use. Is the
+      game already hosting?". Without the panic it would still be broken: the netcode server
+      gets `Started` whether or not the bind worked, so the host would sit in a lobby nobody can
+      join.
+- [ ] **A walkover on the next-match screen doesn't restart the countdown.** When a player in
+      the coming match leaves during `SessionPhase::NextMatch`, `walk_over_leavers` pairs a new
+      match, but the phase stays `NextMatch`. `start_next_match_timer` doesn't run again, and
+      the host's `PhaseTimer` keeps its remaining time, so near the end of the screen the new
+      pair goes straight into the match. Clients' `Countdown` (`menu/next_match.rs`) keeps the
+      old time too. Restart the timer in `follow_tournament` when already in `NextMatch`, and
+      restart the client countdown when the next match changes.
+- [ ] **A race goes on with only one car left.** `end_race` only abandons once every car is
+      gone. If all the other drivers leave before anyone finishes, the last player drives the
+      remaining laps alone and scores 0 points. Pong abandons as soon as a paddle's player
+      leaves. Abandon when fewer than two cars are left and `director.finishers` is empty.
+      Racing needs 2 players to start, so a solo race isn't otherwise possible.
+- [ ] **A new name is lost when quitting from the main menu.** `save_profile` only runs on
+      `OnExit(AppState::MainMenu)`. Clicking Quit or closing the window after typing a name
+      never leaves the main menu, so the name isn't saved. Save on `AppExit` too.
+- [ ] **Skid marks depend on the frame rate.** `leave_skid_marks` runs in `Update` and divides
+      each change in `CarState` by the frame's `delta_secs`. Cars driven in `FixedUpdate` (all
+      of them on the host, a joiner's own car) only change on 128 Hz ticks. On a 144–240 Hz
+      screen, a frame with a tick sees 7.8 ms of driving in a 4–7 ms frame, so cornering and
+      braking look up to ~1.9× harder and marks start too easily. At 60 Hz, 2 or 3 ticks per
+      frame make it swing between 0.9× and 1.4×. Moving the system to `FixedUpdate` would break
+      interpolated cars (other players' cars on a joiner), which change every frame. Divide by
+      the time the change covers instead: ticks run × the fixed timestep for driven cars, the
+      frame time for interpolated ones.
+- [ ] **"Esc: leave" and the watching line overlap on narrow windows.** Both sit 8 px from the
+      bottom: the hint on the left (`spawn_leave_hint` in `menu.rs`), `WatchingText` centred
+      (`menu/watching.rs`). In Bevy's default monospace font, "Watching: Player 1 vs Player 2
+      (semi-final)" is about 540 px wide. In a 640 px window (`--left`/`--right` on a 1280 px
+      screen) it starts at ~50 px, on top of the hint (12–108 px). Two 16-character names
+      overlap it in any window narrower than ~950 px. Move one of them up.
+- [ ] **Pong's ball sinks into a paddle on fast hits.** `step_ball` turns the ball around on a
+      hit but leaves it where the step ended: up to `BALL_MAX_SPEED / TICK_RATE` ≈ 4.7 units
+      inside the paddle (the ball is 8 wide), for one tick. When it bounces, put it back in
+      front of the face (or mirror the overshoot). Cosmetic.
+- [ ] **Two players can have the same name.** `spawn_player` keeps names as sent, so two "Ada"s
+      (or someone who types "Player 2") look the same on bracket cards, results and "… left."
+      notices. The host could add a number to a name that's taken ("Ada 2").
 
 ## Later
 
@@ -91,7 +146,10 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
       music/effects volumes or fades, look at `bevy_kira_audio` (check it supports Bevy 0.20
       first).
 - [ ] **Car-to-car bumping**: the hard prediction problem. Do it on its own.
-- [ ] **Start on an agreed tick**, so predicted cars don't jump at the start.
+- [ ] **Start on an agreed tick**, so predicted cars don't jump at the start. It also fixes a
+      rollback problem: `drive_cars` reads `RaceStatus`, which isn't predicted. A rollback that
+      replays ticks from before the start sees the current `Racing` and lets the car move early.
+      Comparing the tick being simulated with the start tick fixes both.
 - [ ] **More interesting tracks**: describe the track as data (a centre line plus width) instead of
       an oval.
 - [x] **Placements in results**: `MinigameResult { placements, summary }`, best first, with
@@ -146,5 +204,10 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
       constants in step with the ones in `src/config.rs`.
 - [x] Delete the empty `src/minigames/four_player_pong` module.
 - [x] README: mention `RUST_LOG=info,smocka=debug cargo run` for the `debug!` logs.
-- [ ] Bevy's built-in font only covers ASCII, so names like "Åsa" show boxes for the letters it
-      lacks. Ship a font with wider coverage in `assets/` and use it for all UI text.
+- [ ] Pong's `update_score_text`, `sync_paddle_transform` and `sync_ball_transform`, and racing's
+      `sync_car_transform`, run in every state. That's harmless, since they find nothing to do
+      outside their minigame, but every other visuals system is scoped with
+      `.run_if(in_state(...))`. Scope these too.
+- [x] Bevy's built-in font only covers ASCII, so names like "Åsa" showed boxes. Fira Sans
+      (`assets/fonts/`, compiled in) replaces Bevy's default font in `MenuPlugin`, so every text
+      uses it. Covers Latin, Greek and Cyrillic, not CJK.

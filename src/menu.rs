@@ -26,6 +26,12 @@ use crate::profile::LocalProfile;
 use crate::session::{SessionPhase, StartMinigame};
 use widgets::{HINT_COLOR, label, menu_button, screen};
 
+/// The font for all text.
+const UI_FONT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/fonts/FiraSans-Regular.ttf"
+));
+
 /// What a menu button does when activated.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuButton {
@@ -49,6 +55,7 @@ impl Plugin for MenuPlugin {
         }
         // Only the real game remembers the player's name; headless tests start with none.
         app.insert_resource(LocalProfile::load());
+        app.add_systems(PreStartup, use_ui_font);
         app.init_resource::<main_menu::NameEdited>();
         app.add_systems(OnEnter(AppState::MainMenu), main_menu::spawn_main_menu);
         app.add_systems(OnExit(AppState::MainMenu), main_menu::save_profile);
@@ -109,6 +116,17 @@ impl Plugin for MenuPlugin {
             ),
         );
     }
+}
+
+/// Puts [`UI_FONT`] in place of Bevy's default font, which every text uses unless it picks
+/// another. Must run before `bevy_text` first reads the fonts (in `PostUpdate`): it doesn't notice
+/// a font replaced later.
+fn use_ui_font(mut fonts: ResMut<Assets<Font>>) {
+    if let Err(error) = fonts.insert(AssetId::default(), Font::from_bytes(UI_FONT.to_vec())) {
+        error!("Couldn't use the UI font, keeping Bevy's: {error}");
+        return;
+    }
+    debug!("Using Fira Sans for all text");
 }
 
 fn on_menu_button(
