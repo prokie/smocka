@@ -1,11 +1,16 @@
-//! This player's own profile: the name they picked in the main menu, remembered between launches.
+//! This player's own profile: the name they picked in the main menu, and the address they last
+//! joined, both remembered between launches in `smocka/settings.toml` in the system's settings
+//! folder.
 //!
 //! A joiner sends the name to the host inside its netcode connect token (the token's "user data"),
 //! so the host knows it the moment the player connects. The host uses its own profile directly.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
+use serde::{Deserialize, Serialize};
+
+use crate::config::network::SERVER_ADDR;
 
 /// The longest name allowed, in characters.
 pub const MAX_NAME_CHARS: usize = 16;
@@ -26,37 +31,120 @@ pub struct LocalProfile {
 impl LocalProfile {
     /// The profile saved by an earlier run, or an empty one.
     pub fn load() -> Self {
-        let name = settings_file()
-            .and_then(|path| std::fs::read_to_string(path).ok())
-            .map(|text| clean_name(&text))
-            .unwrap_or_default();
-        Self { name }
+        Self {
+            name: clean_name(&SavedSettings::load().name),
+        }
     }
 
     /// Save the profile for the next run. Failing to save is logged, not fatal.
     pub fn save(&self) {
-        let Some(path) = settings_file() else {
-            warn!("Can't save the player name: no settings folder on this system");
-            return;
-        };
-        let result = path
-            .parent()
-            .map_or(Ok(()), std::fs::create_dir_all)
-            .and_then(|()| std::fs::write(&path, &self.name));
-        match result {
-            Ok(()) => debug!("Saved the player name to {}", path.display()),
-            Err(error) => warn!(
-                "Couldn't save the player name to {}: {error}",
-                path.display()
-            ),
-        }
+        SavedSettings::update("player name", |saved| saved.name.clone_from(&self.name));
     }
 }
 
-/// Where the name is saved: a `smocka/name.txt` in the system's settings folder (for example
+/// The address last typed into the main menu's address field, shown there again when the menu
+/// comes back (for example after a join that failed) and on the next launch.
+///
+/// Defaults to a host on this machine. Like [`LocalProfile`], only the main menu loads and saves
+/// it.
+#[derive(Resource, Debug, Clone, PartialEq, Eq)]
+pub struct LastAddress(pub String);
+
+impl Default for LastAddress {
+    fn default() -> Self {
+        Self(SERVER_ADDR.to_string())
+    }
+}
+
+impl LastAddress {
+    /// The address saved by an earlier run, or the default.
+    pub fn load() -> Self {
+        SavedSettings::load()
+            .last_address
+            .map(|text| text.trim().to_string())
+            .filter(|text| !text.is_empty())
+            .map_or_else(Self::default, Self)
+    }
+
+    /// Save the address for the next run. Failing to save is logged, not fatal.
+    pub fn save(&self) {
+        SavedSettings::update("last address", |saved| {
+            saved.last_address = Some(self.0.clone());
+        });
+    }
+}
+
+/// The file everything is saved to, in [`settings_dir`].
+const SETTINGS_FILE: &str = "settings.toml";
+/// Where versions up to 0.1.1 saved the name, read when there's no [`SETTINGS_FILE`] yet.
+const LEGACY_NAME_FILE: &str = "name.txt";
+
+/// Everything remembered between launches, saved as TOML. A missing field takes its default, so
+/// files from older versions still load.
+#[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq, Eq)]
+#[serde(default)]
+struct SavedSettings {
+    /// The player's name, as typed.
+    name: String,
+    /// The address last joined from the main menu, as typed.
+    last_address: Option<String>,
+}
+
+impl SavedSettings {
+    /// What was saved in the system's settings folder, or defaults.
+    fn load() -> Self {
+        settings_dir()
+            .map(|dir| Self::read(&dir))
+            .unwrap_or_default()
+    }
+
+    /// Change one setting in the saved file, keeping the others. `what` names it in the log.
+    fn update(what: &str, change: impl FnOnce(&mut Self)) {
+        let Some(dir) = settings_dir() else {
+            warn!("Can't save the {what}: no settings folder on this system");
+            return;
+        };
+        let mut saved = Self::read(&dir);
+        change(&mut saved);
+        match saved.write(&dir) {
+            Ok(path) => debug!("Saved the {what} to {}", path.display()),
+            Err(error) => warn!("Couldn't save the {what} to {}: {error}", dir.display()),
+        }
+    }
+
+    /// What was saved in `dir`, or defaults. A file that doesn't parse is logged and ignored: the
+    /// next save replaces it.
+    fn read(dir: &Path) -> Self {
+        let path = dir.join(SETTINGS_FILE);
+        match std::fs::read_to_string(&path) {
+            Ok(text) => toml::from_str(&text).unwrap_or_else(|error| {
+                warn!(
+                    "Ignoring unreadable settings in {}: {error}",
+                    path.display()
+                );
+                Self::default()
+            }),
+            Err(_) => Self {
+                name: std::fs::read_to_string(dir.join(LEGACY_NAME_FILE)).unwrap_or_default(),
+                last_address: None,
+            },
+        }
+    }
+
+    /// Write to `dir`, creating it if needed, and return the file's path.
+    fn write(&self, dir: &Path) -> std::io::Result<PathBuf> {
+        let text = toml::to_string_pretty(self).map_err(std::io::Error::other)?;
+        let path = dir.join(SETTINGS_FILE);
+        std::fs::create_dir_all(dir)?;
+        std::fs::write(&path, text)?;
+        Ok(path)
+    }
+}
+
+/// Where settings are saved: a `smocka` folder in the system's settings folder (for example
 /// `~/.config` on Linux, `%APPDATA%` on Windows).
-fn settings_file() -> Option<PathBuf> {
-    dirs::config_dir().map(|dir| dir.join("smocka").join("name.txt"))
+fn settings_dir() -> Option<PathBuf> {
+    dirs::config_dir().map(|dir| dir.join("smocka"))
 }
 
 /// A typed name made safe to show: control characters removed, spaces collapsed and trimmed, and
@@ -90,7 +178,53 @@ pub fn name_from_user_data(data: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_NAME_CHARS, clean_name, name_from_user_data, name_to_user_data};
+    use super::{
+        LEGACY_NAME_FILE, MAX_NAME_CHARS, SETTINGS_FILE, SavedSettings, clean_name,
+        name_from_user_data, name_to_user_data,
+    };
+    use std::path::PathBuf;
+
+    /// An empty folder of its own for one test, under the system's temp folder.
+    fn empty_dir(test: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("smocka-{test}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn settings_survive_a_save() {
+        let dir = empty_dir("settings-round-trip");
+        let saved = SavedSettings {
+            name: "Åsa \"Ö\"".into(),
+            last_address: Some("192.168.1.42".into()),
+        };
+        saved.write(&dir).unwrap();
+        assert_eq!(SavedSettings::read(&dir), saved);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn missing_or_broken_settings_load_as_defaults() {
+        let dir = empty_dir("settings-defaults");
+        assert_eq!(SavedSettings::read(&dir), SavedSettings::default());
+
+        std::fs::write(dir.join(SETTINGS_FILE), "name = \"Ada\"\n").unwrap();
+        let saved = SavedSettings::read(&dir);
+        assert_eq!((saved.name.as_str(), saved.last_address), ("Ada", None));
+
+        std::fs::write(dir.join(SETTINGS_FILE), "this isn't toml").unwrap();
+        assert_eq!(SavedSettings::read(&dir), SavedSettings::default());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_name_saved_by_an_older_version_is_kept() {
+        let dir = empty_dir("settings-legacy-name");
+        std::fs::write(dir.join(LEGACY_NAME_FILE), "Pontus").unwrap();
+        assert_eq!(SavedSettings::read(&dir).name, "Pontus");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn names_are_trimmed_collapsed_and_cut() {

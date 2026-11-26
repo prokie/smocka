@@ -9,9 +9,9 @@ use bevy::text::EditableText;
 use super::MenuButton;
 use super::widgets::{ERROR_COLOR, HINT_COLOR, label, menu_button, screen, text_field};
 use crate::app_state::{AppState, SessionEndReason};
-use crate::config::network::{SERVER_ADDR, VERSION};
+use crate::config::network::VERSION;
 use crate::network::{JoinSession, parse_address};
-use crate::profile::{LocalProfile, MAX_NAME_CHARS, clean_name};
+use crate::profile::{LastAddress, LocalProfile, MAX_NAME_CHARS, clean_name};
 
 /// The text field holding the address to join.
 #[derive(Component)]
@@ -35,6 +35,7 @@ pub(super) fn spawn_main_menu(
     mut commands: Commands,
     reason: Res<SessionEndReason>,
     profile: Res<LocalProfile>,
+    last_address: Res<LastAddress>,
 ) {
     commands.spawn((
         screen(AppState::MainMenu),
@@ -65,7 +66,7 @@ pub(super) fn spawn_main_menu(
                 children![
                     (
                         AddressInput,
-                        text_field(SERVER_ADDR.to_string(), 64, 14.0),
+                        text_field(last_address.0.clone(), 64, 14.0),
                         AutoFocus,
                     ),
                     menu_button(MenuButton::Join, "Join"),
@@ -118,22 +119,33 @@ pub(super) fn address_input_focused(
 pub(super) fn join_on_enter(
     keys: Res<ButtonInput<KeyCode>>,
     address: Single<&EditableText, With<AddressInput>>,
+    mut last_address: ResMut<LastAddress>,
     mut message: Query<&mut Text, With<MenuMessage>>,
     mut commands: Commands,
 ) {
     if keys.just_pressed(KeyCode::Enter) {
-        join(&address.value().to_string(), &mut commands, &mut message);
+        join(
+            &address.value().to_string(),
+            &mut last_address,
+            &mut commands,
+            &mut message,
+        );
     }
 }
 
 /// Join the address the player typed, or say why it isn't one.
+///
+/// A valid address is remembered (see [`remember_address`]), so the field shows it again if the
+/// join fails.
 pub(super) fn join(
     typed: &str,
+    last_address: &mut LastAddress,
     commands: &mut Commands,
     message: &mut Query<&mut Text, With<MenuMessage>>,
 ) {
     match parse_address(typed) {
         Some(addr) => {
+            remember_address(typed, last_address);
             // A failure leaves the app in this menu, and `show_session_end_reason` shows why.
             commands.queue_handled(JoinSession { addr }, warn);
         }
@@ -147,6 +159,17 @@ pub(super) fn join(
             }
         }
     }
+}
+
+/// Keep a typed address for the address field and the next launch, saving it only when it
+/// changed.
+fn remember_address(typed: &str, last_address: &mut LastAddress) {
+    let typed = typed.trim();
+    if last_address.0 == typed {
+        return;
+    }
+    last_address.0 = typed.to_string();
+    last_address.save();
 }
 
 /// Shows a reason set while already in the menu, such as a [`JoinSession`] that failed.
@@ -167,10 +190,33 @@ pub(super) fn show_session_end_reason(
 #[cfg(test)]
 mod tests {
     use super::{
-        AddressInput, MenuMessage, SessionEndReason, address_input_focused, show_session_end_reason,
+        AddressInput, MenuMessage, SessionEndReason, address_input_focused, join,
+        show_session_end_reason,
     };
+    use crate::profile::LastAddress;
     use bevy::input_focus::InputFocus;
     use bevy::prelude::*;
+
+    #[test]
+    fn a_typo_is_not_remembered_as_the_last_address() {
+        let mut world = World::new();
+        world.insert_resource(LastAddress("192.168.1.42".into()));
+        world.spawn((MenuMessage, Text::default()));
+
+        world
+            .run_system_cached(
+                |mut last: ResMut<LastAddress>,
+                 mut commands: Commands,
+                 mut message: Query<&mut Text, With<MenuMessage>>| {
+                    join("192.168.1.", &mut last, &mut commands, &mut message);
+                },
+            )
+            .unwrap();
+
+        assert_eq!(world.resource::<LastAddress>().0, "192.168.1.42");
+        let mut texts = world.query_filtered::<&Text, With<MenuMessage>>();
+        assert!(texts.single(&world).unwrap().0.contains("isn't an address"));
+    }
 
     fn address_focused(world: &mut World) -> bool {
         world.run_system_cached(address_input_focused).unwrap()

@@ -22,7 +22,7 @@ use crate::config::network::HOST_ADDR;
 use crate::minigames::Minigame;
 use crate::minigames::racing::race::ChangeLaps;
 use crate::network::{HostSession, LeaveSession, close_session};
-use crate::profile::LocalProfile;
+use crate::profile::{LastAddress, LocalProfile};
 use crate::session::{SessionPhase, StartMinigame};
 use widgets::{HINT_COLOR, label, menu_button, screen};
 
@@ -53,8 +53,10 @@ impl Plugin for MenuPlugin {
         if !app.is_plugin_added::<TabNavigationPlugin>() {
             app.add_plugins(TabNavigationPlugin);
         }
-        // Only the real game remembers the player's name; headless tests start with none.
+        // Only the real game remembers the player's name and last address; headless tests start
+        // with neither.
         app.insert_resource(LocalProfile::load());
+        app.insert_resource(LastAddress::load());
         app.add_systems(PreStartup, use_ui_font);
         app.init_resource::<main_menu::NameEdited>();
         app.add_systems(OnEnter(AppState::MainMenu), main_menu::spawn_main_menu);
@@ -133,6 +135,7 @@ fn on_menu_button(
     trigger: On<Activate>,
     buttons: Query<&MenuButton>,
     address: Query<&EditableText, With<AddressInput>>,
+    mut last_address: ResMut<LastAddress>,
     mut message: Query<&mut Text, With<MenuMessage>>,
     mut commands: Commands,
 ) {
@@ -146,7 +149,7 @@ fn on_menu_button(
                 .single()
                 .map(|text| text.value().to_string())
                 .unwrap_or_default();
-            main_menu::join(&typed, &mut commands, &mut message);
+            main_menu::join(&typed, &mut last_address, &mut commands, &mut message);
         }
         MenuButton::Quit => {
             commands.write_message(AppExit::Success);

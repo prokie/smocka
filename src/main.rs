@@ -8,7 +8,7 @@ use bevy::window::{Monitor, PrimaryMonitor, PrimaryWindow, WindowPosition};
 use smocka::config::network::{HOST_ADDR, SERVER_ADDR};
 use smocka::menu::MenuPlugin;
 use smocka::network::{HostSession, JoinSession, parse_address};
-use smocka::profile::{LocalProfile, clean_name};
+use smocka::profile::{LastAddress, LocalProfile, clean_name};
 use smocka::{SmockaPlugin, camera, minigames};
 
 /// What to do at startup, from the command line.
@@ -92,6 +92,10 @@ fn main() {
 
     if let Some(name) = name {
         app.insert_resource(LocalProfile { name });
+    }
+    // If the join fails, the main menu offers the same address again, without saving it.
+    if let Launch::Join(addr) = launch {
+        app.insert_resource(LastAddress(addr.to_string()));
     }
     if let Some(half) = half {
         app.insert_resource(half);

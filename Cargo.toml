@@ -22,6 +22,7 @@ lightyear = { version = "0.31.0", features = [
 ] }
 serde = { version = "1.0.229", features = ["derive"] }
 dirs = "7.0.0"
+toml = "1.2.3"
 
 [profile.dev]
 opt-level = 1
