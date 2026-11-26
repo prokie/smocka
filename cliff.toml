@@ -40,6 +40,7 @@ commit_parsers = [
   { message = "^(?i)(update|updated) todos?\\b", skip = true },
   { message = "^(?i)(add|added|update|updated).*\\b(todo|claude)", skip = true },
   { message = "^(?i)merge\\b", skip = true },
+  { message = "^(?i)(release|bump)\\b", skip = true },
 
   { message = "^(?i)(add|added|implement|implemented|introduce|show|let|allow|support)\\b", group = "<!-- 0 -->Added" },
   { message = "^(?i)(fix|fixed|fixes)\\b", group = "<!-- 2 -->Fixed" },
