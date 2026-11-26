@@ -163,6 +163,15 @@ impl Match {
     }
 }
 
+/// A match as the bracket shows it, rounds not reached yet included.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BracketMatch {
+    /// `None` where it isn't decided yet who plays (or, second, for a bye).
+    pub players: [Option<PeerId>; 2],
+    pub winner: Option<PeerId>,
+    pub bye: bool,
+}
+
 /// `record_winner` was given a player who isn't in the match being played.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NotInMatch(pub PeerId);
@@ -219,6 +228,37 @@ impl Bracket {
             2 => "Quarter-final".into(),
             _ => format!("Round {}", round + 1),
         }
+    }
+
+    /// Every round of the whole tournament, the final included. Rounds not reached yet are
+    /// filled in with the winners so far: a semi-final can show "Ada vs ?" while the other
+    /// quarter-final is still to play.
+    pub fn overview(&self) -> Vec<Vec<BracketMatch>> {
+        let mut overview: Vec<Vec<BracketMatch>> = Vec::new();
+        for round in 0..self.round_count() {
+            let matches = match self.rounds.get(round) {
+                Some(pairings) => pairings
+                    .iter()
+                    .map(|pairing| BracketMatch {
+                        players: [Some(pairing.first), pairing.second],
+                        winner: pairing.winner,
+                        bye: pairing.second.is_none(),
+                    })
+                    .collect(),
+                None => overview
+                    .last()
+                    .expect("the first round always exists")
+                    .chunks(2)
+                    .map(|pair| BracketMatch {
+                        players: [pair[0].winner, pair[1].winner],
+                        winner: None,
+                        bye: false,
+                    })
+                    .collect(),
+            };
+            overview.push(matches);
+        }
+        overview
     }
 
     /// The player with id `id`, if they entered.
@@ -349,7 +389,7 @@ fn seed_order(size: usize) -> Vec<usize> {
 mod tests {
     use lightyear::prelude::PeerId;
 
-    use super::{Bracket, NotInMatch, Tournament, TournamentStep, seed, seed_order};
+    use super::{Bracket, BracketMatch, NotInMatch, Tournament, TournamentStep, seed, seed_order};
     use crate::minigames::Minigame;
     use crate::players::Player;
     use crate::session::{MinigameResult, Placement};
@@ -465,6 +505,35 @@ mod tests {
         assert_eq!(seed_order(2), [1, 2]);
         assert_eq!(seed_order(4), [1, 4, 2, 3]);
         assert_eq!(seed_order(8), [1, 8, 4, 5, 2, 7, 3, 6]);
+    }
+
+    #[test]
+    fn the_overview_fills_later_rounds_with_the_winners_so_far() {
+        let mut bracket = bracket(4);
+        bracket.record_winner(id(1)).unwrap();
+        let overview = bracket.overview();
+        assert_eq!(overview.len(), 2);
+        assert_eq!(
+            overview[1],
+            [BracketMatch {
+                players: [Some(id(1)), None],
+                winner: None,
+                bye: false,
+            }]
+        );
+        bracket.record_winner(id(3)).unwrap();
+        assert_eq!(bracket.overview()[1][0].players, [Some(id(1)), Some(id(3))]);
+    }
+
+    #[test]
+    fn the_overview_shows_byes_and_every_round() {
+        let overview = bracket(5).overview();
+        let sizes: Vec<usize> = overview.iter().map(Vec::len).collect();
+        assert_eq!(sizes, [4, 2, 1]);
+        let byes = overview[0].iter().filter(|pairing| pairing.bye).count();
+        assert_eq!(byes, 3);
+        // Byes go through straight away, so the semi-final with two of them is already set.
+        assert_eq!(overview[1][1].players, [Some(id(2)), Some(id(3))]);
     }
 
     #[test]

@@ -7,7 +7,8 @@ use crate::app_state::AppState;
 use crate::players::PlayerLeft;
 
 pub const NOTICE_DURATION: Duration = Duration::from_secs(4);
-const NOTICE_BACKGROUND: Color = Color::srgba(0.1, 0.1, 0.12, 0.85);
+/// Behind notices and other lines drawn over a minigame, so they read over any art.
+pub const NOTICE_BACKGROUND: Color = Color::srgba(0.1, 0.1, 0.12, 0.85);
 
 /// Where notices (such as "Player 2 left.") stack up, newest last.
 #[derive(Component)]

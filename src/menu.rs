@@ -6,6 +6,7 @@ mod next_match;
 mod notices;
 mod results;
 mod standings;
+mod watching;
 mod widgets;
 
 pub use main_menu::{AddressInput, MenuMessage, NameInput};
@@ -54,7 +55,11 @@ impl Plugin for MenuPlugin {
         app.add_systems(OnEnter(AppState::Connecting), spawn_connecting_screen);
         app.add_systems(
             OnEnter(AppState::InSession),
-            (spawn_leave_hint, notices::spawn_notice_area),
+            (
+                spawn_leave_hint,
+                notices::spawn_notice_area,
+                watching::spawn_watching_text,
+            ),
         );
         app.add_systems(OnEnter(SessionPhase::Lobby), lobby::spawn_lobby_screen);
         app.add_systems(
@@ -92,9 +97,14 @@ impl Plugin for MenuPlugin {
                     .run_if(in_state(SessionPhase::Lobby)),
                 results::update_results_screen.run_if(in_state(SessionPhase::Results)),
                 standings::update_standings_screen.run_if(in_state(SessionPhase::Standings)),
-                next_match::update_next_match_screen.run_if(in_state(SessionPhase::NextMatch)),
+                (
+                    next_match::update_next_match_screen,
+                    next_match::update_bracket_view,
+                )
+                    .run_if(in_state(SessionPhase::NextMatch)),
                 widgets::update_countdowns,
                 notices::expire_notices,
+                watching::update_watching_text.run_if(in_state(AppState::InSession)),
                 close_session.run_if(on_message::<WindowCloseRequested>),
             ),
         );

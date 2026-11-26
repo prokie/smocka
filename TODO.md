@@ -128,8 +128,9 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
           a replicated `Tournament` (game + bracket), seeded by points with random ties, matches
           one after another with a `SessionPhase::NextMatch` screen between
           (`TournamentRules::next_match`), and the bracket's placements as the result.
-    - [ ] 4. Watching: a "Watching: Ada vs Bo" label for players not in the match, and the bracket
-          on the next-match screen (the `Bracket` is already replicated in `Tournament`).
+    - [x] 4. Watching: "Watching: Ada vs Bo (semi-final)" along the bottom for players not in
+          the match (`menu/watching.rs`), and every round of the bracket on the next-match screen
+          (`Bracket::overview`).
     - [ ] 5. Walkovers: a player who leaves mid-tournament loses their match; abandon only with
           fewer than two players left.
 - [ ] **Spectating when knocked out** (or waiting for your next match). With matches one after
