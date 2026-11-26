@@ -1,0 +1,133 @@
+//! Knockout tournaments: Pong with more than two players plays match after match until one
+//! champion is left, and the bracket's placements are the minigame's result.
+
+use std::time::Duration;
+
+use bevy::prelude::*;
+use smocka::minigames::Minigame;
+use smocka::minigames::two_player_pong::paddles::Paddle;
+use smocka::minigames::two_player_pong::score::PongRules;
+use smocka::players::Player;
+use smocka::session::{MinigameResult, Participants, SessionPhase};
+use smocka::standings::Points;
+use smocka::tournament::{Tournament, TournamentRules};
+
+use crate::common::{TestApp, connected_pair, update_until, update_until_within};
+
+/// A host and two joiners in the lobby, with no wait before each match.
+fn trio() -> (TestApp, TestApp, TestApp) {
+    let (mut host, mut first, addr) = connected_pair();
+    let mut second = TestApp::join(addr);
+    host.0.world_mut().insert_resource(TournamentRules {
+        next_match: Duration::ZERO,
+    });
+    update_until(&mut [&mut host, &mut first, &mut second], |apps| {
+        apps.iter_mut().all(|app| app.players() == 3)
+    });
+    (host, first, second)
+}
+
+fn has_tournament(app: &mut TestApp) -> bool {
+    let world = app.0.world_mut();
+    world.query::<&Tournament>().iter(world).next().is_some()
+}
+
+fn paddles(app: &mut TestApp) -> usize {
+    let world = app.0.world_mut();
+    world
+        .query_filtered::<(), With<Paddle>>()
+        .iter(world)
+        .count()
+}
+
+fn result(app: &mut TestApp) -> Option<MinigameResult> {
+    let world = app.0.world_mut();
+    world.query::<&MinigameResult>().iter(world).next().cloned()
+}
+
+/// Everyone's points total as this app sees them, lowest first.
+fn totals(app: &mut TestApp) -> Vec<u32> {
+    let world = app.0.world_mut();
+    let mut totals: Vec<u32> = world
+        .query::<&Points>()
+        .iter(world)
+        .map(|points| points.total)
+        .collect();
+    totals.sort();
+    totals
+}
+
+/// The player numbers in the current match, as the host sees them.
+fn playing(host: &mut TestApp) -> Vec<u32> {
+    let world = host.0.world_mut();
+    let participants = world
+        .query::<&Participants>()
+        .single(world)
+        .unwrap()
+        .clone();
+    let players: Vec<Player> = world.query::<&Player>().iter(world).cloned().collect();
+    participants
+        .0
+        .iter()
+        .filter_map(|id| players.iter().find(|player| player.id == *id))
+        .map(|player| player.number)
+        .collect()
+}
+
+#[test]
+fn three_players_play_a_tournament_to_one_result() {
+    let (mut host, mut first, mut second) = trio();
+    host.0
+        .world_mut()
+        .insert_resource(PongRules { goals_to_win: 1 });
+    host.start_minigame(Minigame::TwoPlayerPong);
+
+    // Nobody moves, so the left paddle wins each match 1-0: two matches, then the result.
+    update_until_within(
+        &mut [&mut host, &mut first, &mut second],
+        Duration::from_secs(30),
+        |apps| {
+            apps.iter_mut().all(|app| {
+                app.phase() == Some(SessionPhase::Results)
+                    && result(app).is_some_and(|result| result.placements.len() == 3)
+            })
+        },
+    );
+    for app in [&mut host, &mut first, &mut second] {
+        let result = result(app).unwrap();
+        let places: Vec<u32> = result.placements.iter().map(|p| p.place).collect();
+        assert_eq!(places, [1, 2, 3], "{result:?}");
+        assert!(result.summary.starts_with("Final: "), "{result:?}");
+        // The champion beat two players, the finalist one.
+        assert_eq!(totals(app), [0, 1, 2]);
+    }
+}
+
+#[test]
+fn a_player_leaving_mid_match_ends_the_tournament() {
+    let (mut host, mut first, mut second) = trio();
+    host.start_minigame(Minigame::TwoPlayerPong);
+    update_until(&mut [&mut host, &mut first, &mut second], |apps| {
+        apps.iter_mut().all(|app| {
+            app.phase() == Some(SessionPhase::TwoPlayerPong)
+                && paddles(app) == 2
+                && has_tournament(app)
+        })
+    });
+
+    // At least one of the two playing is a joiner: they leave.
+    let playing = playing(&mut host);
+    let first_plays = playing.contains(&first.own_player_number().unwrap());
+    let (mut leaving, mut staying) = if first_plays {
+        (first, second)
+    } else {
+        (second, first)
+    };
+    leaving.disconnect();
+
+    update_until(&mut [&mut host, &mut staying], |apps| {
+        apps.iter_mut().all(|app| {
+            app.phase() == Some(SessionPhase::Lobby) && paddles(app) == 0 && !has_tournament(app)
+        })
+    });
+}

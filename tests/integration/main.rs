@@ -8,3 +8,4 @@ mod network;
 mod pong;
 mod racing;
 mod session;
+mod tournament;

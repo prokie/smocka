@@ -124,12 +124,12 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
           starts a minigame (`pick_participants`), and Pong and racing seat exactly those.
     - [x] 2. Bracket logic as plain data: `src/tournament.rs` (`Bracket`: seeding, byes,
           `record_winner`, `placements`, `describe`), unit tested.
-    - [ ] 3. Run a tournament when a minigame has fewer seats than players: matches one after
-          another with a short "next match" phase between, each match's `MinigameEnded::Won`
-          recorded in the bracket instead of ending the minigame, and the bracket's placements as
-          the result. Decide the seeding (random, or by points).
+    - [x] 3. Run a tournament when a two-seat minigame has more players (`needs_tournament`):
+          a replicated `Tournament` (game + bracket), seeded by points with random ties, matches
+          one after another with a `SessionPhase::NextMatch` screen between
+          (`TournamentRules::next_match`), and the bracket's placements as the result.
     - [ ] 4. Watching: a "Watching: Ada vs Bo" label for players not in the match, and the bracket
-          on the next-match screen (replicate the `Bracket`).
+          on the next-match screen (the `Bracket` is already replicated in `Tournament`).
     - [ ] 5. Walkovers: a player who leaves mid-tournament loses their match; abandon only with
           fewer than two players left.
 - [ ] **Spectating when knocked out** (or waiting for your next match). With matches one after

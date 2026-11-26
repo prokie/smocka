@@ -2,6 +2,7 @@
 
 mod lobby;
 mod main_menu;
+mod next_match;
 mod notices;
 mod results;
 mod standings;
@@ -64,6 +65,10 @@ impl Plugin for MenuPlugin {
             OnEnter(SessionPhase::Standings),
             standings::spawn_standings_screen,
         );
+        app.add_systems(
+            OnEnter(SessionPhase::NextMatch),
+            next_match::spawn_next_match_screen,
+        );
         app.add_observer(on_menu_button);
         app.add_observer(lobby::on_swatch);
         app.add_observer(notices::notice_player_left);
@@ -87,6 +92,7 @@ impl Plugin for MenuPlugin {
                     .run_if(in_state(SessionPhase::Lobby)),
                 results::update_results_screen.run_if(in_state(SessionPhase::Results)),
                 standings::update_standings_screen.run_if(in_state(SessionPhase::Standings)),
+                next_match::update_next_match_screen.run_if(in_state(SessionPhase::NextMatch)),
                 widgets::update_countdowns,
                 notices::expire_notices,
                 close_session.run_if(on_message::<WindowCloseRequested>),

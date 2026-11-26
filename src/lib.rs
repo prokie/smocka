@@ -23,6 +23,7 @@ impl Plugin for SmockaPlugin {
             players::PlayersPlugin,
             session::SessionPlugin,
             standings::StandingsPlugin,
+            tournament::TournamentPlugin,
             minigames::MinigamesPlugin,
         ));
     }

@@ -61,6 +61,9 @@ pub mod session {
     pub const RESULTS_DURATION: Duration = Duration::from_secs(5);
     /// How long the standings stay up before everyone goes back to the lobby.
     pub const STANDINGS_DURATION: Duration = Duration::from_secs(5);
+    /// How long the screen before each tournament match stays up, unless
+    /// [`TournamentRules`](crate::tournament::TournamentRules) says otherwise.
+    pub const NEXT_MATCH_DURATION: Duration = Duration::from_secs(4);
 }
 
 pub mod display {

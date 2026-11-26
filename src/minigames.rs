@@ -2,12 +2,13 @@ pub mod racing;
 pub mod two_player_pong;
 
 use bevy::prelude::*;
+use serde::{Deserialize, Serialize};
 
 use crate::config::minigames::racing::GRID_SLOTS;
 use crate::session::SessionPhase;
 
 /// A minigame the host can start from the lobby.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Minigame {
     /// Two-player Pong: the two lowest-numbered players play, everyone else watches.
     TwoPlayerPong,

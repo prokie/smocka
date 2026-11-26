@@ -1,17 +1,134 @@
 //! Knockout tournaments, for minigames with fewer seats than players (such as two-player Pong):
-//! everyone plays matches until one champion is left. This is the bracket alone, as plain data;
-//! the session runs the matches.
+//! everyone plays matches until one champion is left. The [`Bracket`] is plain data; the host
+//! keeps it in a replicated [`Tournament`], and the session runs the matches one after another
+//! with a [`SessionPhase::NextMatch`](crate::session::SessionPhase::NextMatch) screen between.
 //!
 //! Players are seeded in the order given, and paired the standard way (1 v 4 and 2 v 3, …), so
 //! the top two seeds can only meet in the final. If the number of players isn't a power of two,
 //! the top seeds get byes into the second round: with 3 players, seed 1 waits for the winner of
 //! 2 v 3. Every match but the byes is played, so `n` players play `n - 1` matches.
+//!
+//! Players are seeded by points, most first, and in random order among those with the same
+//! points, so a session's first tournament is drawn at random.
 
-use lightyear::prelude::PeerId;
+use std::cmp::Reverse;
+use std::time::Duration;
+
+use bevy::prelude::*;
+use lightyear::prelude::*;
+use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
+use crate::config::session::NEXT_MATCH_DURATION;
+use crate::minigames::Minigame;
 use crate::players::Player;
-use crate::session::Placement;
+use crate::session::{MinigameResult, Placement};
+use crate::standings::Points;
+
+/// A tournament in progress. One entity, spawned by the host when a tournament starts and
+/// replicated, so every peer can show who plays next. Removed back in the lobby.
+#[derive(Component, Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct Tournament {
+    pub game: Minigame,
+    pub bracket: Bracket,
+    /// How the last match went, e.g. "Ada beat Bo (3 - 1)". Empty before the first.
+    pub last_match: String,
+}
+
+/// What [`Tournament::record`] makes of a finished match.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TournamentStep {
+    /// Play this match next.
+    NextMatch([PeerId; 2]),
+    /// That was the final: the tournament's result, everyone placed.
+    Over(MinigameResult),
+}
+
+impl Tournament {
+    /// A tournament of `game` between `seeded`, best seed first. `None` with fewer than two.
+    pub fn new(game: Minigame, seeded: Vec<Player>) -> Option<Self> {
+        Some(Self {
+            game,
+            bracket: Bracket::new(seeded)?,
+            last_match: String::new(),
+        })
+    }
+
+    /// Record the match that ended with `result`: its winner goes through.
+    pub fn record(&mut self, result: &MinigameResult) -> Result<TournamentStep, String> {
+        let Some((_, players)) = self.bracket.next_match() else {
+            return Err("the tournament is already over".into());
+        };
+        let winner = result
+            .winners()
+            .next()
+            .ok_or("the match has no winner")?
+            .player;
+        let loser = players
+            .into_iter()
+            .find(|player| *player != winner)
+            .unwrap_or(winner);
+        self.bracket
+            .record_winner(winner)
+            .map_err(|_| format!("{winner:?} won a match they weren't in"))?;
+        let name = |id| self.bracket.player(id).map_or("?", Player::name);
+        self.last_match = format!("{} beat {}", name(winner), name(loser));
+        if !result.summary.is_empty() {
+            self.last_match.push_str(&format!(" ({})", result.summary));
+        }
+        if let Some((_, next)) = self.bracket.next_match() {
+            return Ok(TournamentStep::NextMatch(next));
+        }
+        let placements = self
+            .bracket
+            .placements()
+            .ok_or("no match left, but no champion")?;
+        Ok(TournamentStep::Over(MinigameResult {
+            placements,
+            summary: format!("Final: {}", self.last_match),
+        }))
+    }
+}
+
+/// Host only: how tournaments run.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TournamentRules {
+    /// How long the screen before each match stays up. Defaults to [`NEXT_MATCH_DURATION`].
+    pub next_match: Duration,
+}
+
+impl Default for TournamentRules {
+    fn default() -> Self {
+        Self {
+            next_match: NEXT_MATCH_DURATION,
+        }
+    }
+}
+
+/// Registers [`Tournament`] for replication. Must be added after
+/// [`SessionPlugin`](crate::session::SessionPlugin).
+pub struct TournamentPlugin;
+
+impl Plugin for TournamentPlugin {
+    fn build(&self, app: &mut App) {
+        app.component::<Tournament>().replicate();
+        app.init_resource::<TournamentRules>();
+    }
+}
+
+/// Whether `game` is played as a tournament with `players` players: it seats two, and there are
+/// more. (Minigames that seat more than two just seat the first players.)
+pub fn needs_tournament(game: Minigame, players: usize) -> bool {
+    game.max_players() == 2 && players > 2
+}
+
+/// `players` in seed order: most points first, and in random order among equal points.
+pub fn seed(mut players: Vec<(Player, Points)>) -> Vec<Player> {
+    players.shuffle(&mut rand::rng());
+    // A stable sort keeps the shuffled order among equal points.
+    players.sort_by_key(|(_, points)| Reverse(points.total));
+    players.into_iter().map(|(player, _)| player).collect()
+}
 
 /// One pairing in a round: two players, or one with a bye, who wins it without playing.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
@@ -232,8 +349,11 @@ fn seed_order(size: usize) -> Vec<usize> {
 mod tests {
     use lightyear::prelude::PeerId;
 
-    use super::{Bracket, NotInMatch, seed_order};
+    use super::{Bracket, NotInMatch, Tournament, TournamentStep, seed, seed_order};
+    use crate::minigames::Minigame;
     use crate::players::Player;
+    use crate::session::{MinigameResult, Placement};
+    use crate::standings::Points;
 
     fn id(seed: u64) -> PeerId {
         PeerId::Netcode(seed)
@@ -280,6 +400,64 @@ mod tests {
             .into_iter()
             .map(|placement| (placement.place, placement.name))
             .collect()
+    }
+
+    fn player(seed: u64) -> Player {
+        Player {
+            id: id(seed),
+            number: seed as u32,
+            name: seed.to_string(),
+            color: 0,
+        }
+    }
+
+    /// A match result won by seed `winner` over seed `loser`.
+    fn won(winner: u64, loser: u64) -> MinigameResult {
+        MinigameResult {
+            placements: vec![
+                Placement::new(&player(winner), 1),
+                Placement::new(&player(loser), 2),
+            ],
+            summary: "1 - 0".into(),
+        }
+    }
+
+    #[test]
+    fn seeds_by_points_with_ties_in_any_order() {
+        let with = |number, total| (player(number), Points { total, gained: 0 });
+        for _ in 0..20 {
+            let seeded: Vec<u32> = seed(vec![with(1, 0), with(2, 5), with(3, 0), with(4, 2)])
+                .iter()
+                .map(|player| player.number)
+                .collect();
+            assert_eq!(seeded[..2], [2, 4]);
+            assert!(seeded[2..] == [1, 3] || seeded[2..] == [3, 1], "{seeded:?}");
+        }
+    }
+
+    #[test]
+    fn a_tournament_goes_match_by_match_to_a_result() {
+        let players = (1..=3).map(player).collect();
+        let mut tournament = Tournament::new(Minigame::TwoPlayerPong, players).unwrap();
+        assert_eq!(
+            tournament.record(&won(3, 2)),
+            Ok(TournamentStep::NextMatch([id(1), id(3)]))
+        );
+        assert_eq!(tournament.last_match, "3 beat 2 (1 - 0)");
+        let Ok(TournamentStep::Over(result)) = tournament.record(&won(1, 3)) else {
+            panic!("the final ends it");
+        };
+        let order: Vec<String> = result.placements.iter().map(|p| p.describe()).collect();
+        assert_eq!(order, ["1st 1", "2nd 3", "3rd 2"]);
+        assert_eq!(result.summary, "Final: 1 beat 3 (1 - 0)");
+    }
+
+    #[test]
+    fn a_result_for_someone_not_playing_is_refused() {
+        let players = (1..=3).map(player).collect();
+        let mut tournament = Tournament::new(Minigame::TwoPlayerPong, players).unwrap();
+        assert!(tournament.record(&won(1, 2)).is_err());
+        assert_eq!(tournament.bracket.next_match(), Some((0, [id(2), id(3)])));
     }
 
     #[test]

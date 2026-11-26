@@ -8,6 +8,7 @@ use crate::minigames::Minigame;
 use crate::network::is_host;
 use crate::players::Player;
 use crate::standings::{Points, award_points};
+use crate::tournament::{Tournament, TournamentRules, TournamentStep, needs_tournament, seed};
 
 /// What the session is doing. A local Bevy sub-state of [`AppState::InSession`] that follows the
 /// host's [`CurrentPhase`].
@@ -21,6 +22,8 @@ pub enum SessionPhase {
     TwoPlayerPong,
     /// Playing the racing minigame.
     Racing,
+    /// Between a tournament's matches: who plays next, and how the last match went.
+    NextMatch,
     /// Showing how everyone placed in the last minigame.
     Results,
     /// Showing everyone's points so far, before going back to the lobby.
@@ -32,7 +35,10 @@ impl SessionPhase {
     pub fn is_minigame(self) -> bool {
         match self {
             SessionPhase::TwoPlayerPong | SessionPhase::Racing => true,
-            SessionPhase::Lobby | SessionPhase::Results | SessionPhase::Standings => false,
+            SessionPhase::Lobby
+            | SessionPhase::NextMatch
+            | SessionPhase::Results
+            | SessionPhase::Standings => false,
         }
     }
 }
@@ -45,9 +51,9 @@ impl SessionPhase {
 pub struct CurrentPhase(pub SessionPhase);
 
 /// Who plays the current minigame, in seat order: Pong's left then right paddle, racing's grid
-/// slots. Chosen by the host when it starts a minigame, kept next to the [`CurrentPhase`] and
-/// replicated, so every peer knows who plays and who watches. Minigames seat exactly these
-/// players rather than picking their own.
+/// slots. In a [`Tournament`], the two in the current (or next) match. Chosen by the host, kept
+/// next to the [`CurrentPhase`] and replicated, so every peer knows who plays and who watches.
+/// Minigames seat exactly these players rather than picking their own.
 #[derive(Component, Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
 pub struct Participants(pub Vec<PeerId>);
 
@@ -132,9 +138,12 @@ pub fn ordinal(n: u32) -> String {
 /// or more than once, does nothing.
 #[derive(Event, Debug, Clone, PartialEq, Eq)]
 pub enum MinigameEnded {
-    /// The game was played to the end: show the result, then go back to the lobby.
+    /// The game was played to the end: show the result, then go back to the lobby. In a
+    /// [`Tournament`], a match ended instead: the next match follows, or after the final, the
+    /// tournament's result.
     Won(MinigameResult),
-    /// The game can't go on (for example, a player left): go straight back to the lobby.
+    /// The game can't go on (for example, a player left): go straight back to the lobby. Ends a
+    /// [`Tournament`] too.
     Abandoned,
 }
 
@@ -173,6 +182,10 @@ impl Plugin for SessionPlugin {
             .run_if(is_host),
         );
         app.add_systems(
+            OnEnter(SessionPhase::NextMatch),
+            start_next_match_timer.run_if(is_host),
+        );
+        app.add_systems(
             OnEnter(SessionPhase::Standings),
             (|mut commands: Commands| {
                 commands.insert_resource(PhaseTimer {
@@ -192,7 +205,8 @@ impl Plugin for SessionPlugin {
 }
 
 /// Command: the host starts a [`Minigame`] from the lobby, with the [`Participants`] chosen by
-/// [`pick_participants`]. Refused unless hosting, in the lobby, with at least
+/// [`pick_participants`], or as a [`Tournament`] if it seats fewer than are here (see
+/// [`needs_tournament`]). Refused unless hosting, in the lobby, with at least
 /// [`Minigame::min_players`] players.
 #[derive(Debug, Clone, Copy)]
 pub struct StartMinigame(pub Minigame);
@@ -206,7 +220,12 @@ impl Command for StartMinigame {
             return;
         }
         let StartMinigame(game) = self;
-        let players: Vec<Player> = world.query::<&Player>().iter(world).cloned().collect();
+        let standings: Vec<(Player, Points)> = world
+            .query::<(&Player, Option<&Points>)>()
+            .iter(world)
+            .map(|(player, points)| (player.clone(), points.copied().unwrap_or_default()))
+            .collect();
+        let players: Vec<Player> = standings.iter().map(|(player, _)| player.clone()).collect();
         let Ok((mut phase, mut participants)) = world
             .query::<(&mut CurrentPhase, &mut Participants)>()
             .single_mut(world)
@@ -223,6 +242,34 @@ impl Command for StartMinigame {
                 game.min_players(),
                 players.len()
             );
+            return;
+        }
+        if needs_tournament(game, players.len()) {
+            let Some(tournament) = Tournament::new(game, seed(standings)) else {
+                error!(
+                    "Couldn't draw a {game:?} tournament for {} players",
+                    players.len()
+                );
+                return;
+            };
+            let Some((_, first)) = tournament.bracket.next_match() else {
+                error!("A new {game:?} tournament has no match to play");
+                return;
+            };
+            info!(
+                "Starting a {game:?} tournament for {} players: {}",
+                players.len(),
+                tournament.bracket.describe()
+            );
+            participants.0 = first.to_vec();
+            phase.0 = SessionPhase::NextMatch;
+            world.spawn((
+                Name::from("Tournament"),
+                tournament,
+                DespawnOnEnter(SessionPhase::Lobby),
+                DespawnOnEnter(AppState::MainMenu),
+                Replicate::to_clients(NetworkTarget::All),
+            ));
             return;
         }
         participants.0 = pick_participants(game, &players);
@@ -270,10 +317,12 @@ fn spawn_current_phase(_trigger: On<Add<Started>>, mut commands: Commands) {
 
 fn end_minigame(
     trigger: On<MinigameEnded>,
-    mut phase: Single<&mut CurrentPhase>,
+    session: Single<(&mut CurrentPhase, &mut Participants)>,
+    tournament: Option<Single<&mut Tournament>>,
     mut players: Query<(&Player, &mut Points)>,
     mut commands: Commands,
 ) {
+    let (mut phase, mut participants) = session.into_inner();
     if !phase.0.is_minigame() {
         return;
     }
@@ -283,6 +332,31 @@ fn end_minigame(
             phase.0 = SessionPhase::Lobby;
         }
         MinigameEnded::Won(result) => {
+            let result = match tournament.map(|tournament| tournament.into_inner()) {
+                None => result.clone(),
+                Some(mut tournament) => match tournament.record(result) {
+                    Ok(TournamentStep::NextMatch(next)) => {
+                        info!(
+                            "Tournament match over ({}). {}",
+                            tournament.last_match,
+                            tournament.bracket.describe()
+                        );
+                        participants.0 = next.to_vec();
+                        phase.0 = SessionPhase::NextMatch;
+                        return;
+                    }
+                    Ok(TournamentStep::Over(result)) => {
+                        info!("Tournament over. {}", tournament.bracket.describe());
+                        result
+                    }
+                    Err(why) => {
+                        error!("Abandoning the tournament: {why}");
+                        phase.0 = SessionPhase::Lobby;
+                        return;
+                    }
+                },
+            };
+            let result = &result;
             let order: Vec<String> = result.placements.iter().map(Placement::describe).collect();
             info!("Minigame over: {} ({})", order.join(", "), result.summary);
             award_points(result, &mut players);
@@ -295,13 +369,35 @@ fn end_minigame(
             phase.0 = SessionPhase::Results;
         }
         MinigameEnded::Abandoned => {
-            info!("Minigame abandoned");
+            if tournament.is_some() {
+                info!("Minigame abandoned, and with it the tournament");
+            } else {
+                info!("Minigame abandoned");
+            }
             phase.0 = SessionPhase::Lobby;
         }
     }
 }
 
-/// Host only: when the results or standings have been up long enough, move on. A timer left over
+/// Host only: give the players a moment to see who's up, then start the tournament's next match.
+fn start_next_match_timer(
+    tournament: Option<Single<&Tournament>>,
+    rules: Res<TournamentRules>,
+    mut phase: Single<&mut CurrentPhase>,
+    mut commands: Commands,
+) {
+    let Some(tournament) = tournament else {
+        error!("Waiting for a tournament's next match, but there's no tournament");
+        phase.0 = SessionPhase::Lobby;
+        return;
+    };
+    commands.insert_resource(PhaseTimer {
+        timer: Timer::new(rules.next_match, TimerMode::Once),
+        then: tournament.game.phase(),
+    });
+}
+
+/// Host only: when a screen between minigames has been up long enough, move on. A timer left over
 /// from a session that ended on one of those screens is dropped.
 fn move_on_when_the_timer_ends(
     time: Res<Time>,
@@ -309,7 +405,10 @@ fn move_on_when_the_timer_ends(
     mut phase: Single<&mut CurrentPhase>,
     mut commands: Commands,
 ) {
-    if !matches!(phase.0, SessionPhase::Results | SessionPhase::Standings) {
+    if !matches!(
+        phase.0,
+        SessionPhase::NextMatch | SessionPhase::Results | SessionPhase::Standings
+    ) {
         commands.remove_resource::<PhaseTimer>();
         return;
     }
@@ -407,5 +506,6 @@ mod tests {
         assert!(!SessionPhase::Lobby.is_minigame());
         assert!(!SessionPhase::Results.is_minigame());
         assert!(!SessionPhase::Standings.is_minigame());
+        assert!(!SessionPhase::NextMatch.is_minigame());
     }
 }
