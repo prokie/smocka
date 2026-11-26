@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use bevy::prelude::*;
 
-use super::label;
+use super::widgets::label;
 use crate::app_state::AppState;
 use crate::lobby::PlayerLeft;
 

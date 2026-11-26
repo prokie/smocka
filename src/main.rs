@@ -6,8 +6,8 @@ use bevy::ecs::error::warn;
 use bevy::prelude::*;
 use bevy::window::{Monitor, PrimaryMonitor, PrimaryWindow, WindowPosition};
 use smocka::config::network::{HOST_ADDR, SERVER_ADDR};
-use smocka::menu::{MenuPlugin, parse_address};
-use smocka::network::{HostSession, JoinSession};
+use smocka::menu::MenuPlugin;
+use smocka::network::{HostSession, JoinSession, parse_address};
 use smocka::profile::{LocalProfile, clean_name};
 use smocka::{SmockaPlugin, camera, minigames};
 

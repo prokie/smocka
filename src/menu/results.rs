@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use lightyear::prelude::*;
 
-use super::{HINT_COLOR, label, screen};
+use super::widgets::{HINT_COLOR, label, screen};
 use crate::config::session::RESULTS_DURATION;
 use crate::lobby::{Player, local_peer_id};
 use crate::session::{MinigameResult, SessionPhase};

@@ -6,7 +6,8 @@ use bevy::ui::InteractionDisabled;
 use bevy::ui_widgets::{Activate, Button};
 use lightyear::prelude::*;
 
-use super::{HINT_COLOR, MenuButton, label, menu_button, screen};
+use super::MenuButton;
+use super::widgets::{HINT_COLOR, label, menu_button, screen};
 use crate::lobby::{PLAYER_COLORS, PickColor, Player, color_is_free, local_peer_id, player_color};
 use crate::minigames::Minigame;
 use crate::network::Hosting;
