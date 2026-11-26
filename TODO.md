@@ -7,20 +7,9 @@
 - [x] **3. Track** — oval in `track.rs`, `surface_at()`, grass slowdown, grid, `track.png`, `F3` gizmos.
 - [x] **4. Checkpoints and laps** — `CHECKPOINTS` / `checkpoint_at()` in `track.rs`, `RaceProgress` counted
       by the host in `progress.rs`, "Lap 2/3" HUD, checkpoints in the `F3` gizmos.
-
-### 5. Start and finish
-Goal: a whole race from countdown to results.
-
-- [ ] Countdown: a host-owned, replicated `RaceStatus` (`Countdown` → `Racing`). `drive_cars`
-      ignores throttle until `Racing`, and the HUD shows 3-2-1-GO.
-- [ ] Finishing: completing `LAPS` gives the car the next place. Log each finish with `info!`.
-- [ ] End when every car has finished, or `FINISH_GRACE` (~10 s) after the first finish. Then
-      trigger `MinigameEnded::Won` with 1st place as winner and the full order in `summary`.
-      Cars that didn't finish go last, ordered by progress.
-- [ ] Players leaving: their car disappears; keep racing. Trigger `Abandoned` only when no cars
-      are left, with an `info!` saying why at the trigger site (see CLAUDE.md).
-- [ ] Integration test: the host moves a car to just before the line on its last lap, and both
-      peers reach `Results` with the right winner.
+- [x] **5. Start and finish** — `RaceStatus` countdown / racing / finishing and the host's
+      `RaceDirector` in `race.rs`, places on `RaceProgress`, `FINISH_GRACE`, results with the full
+      order, abandon when every car's player has left.
 
 Known limitation: with prediction, the joiner's car can jump forward a little when the race starts.
 Acceptable for now (see *Later*).

@@ -4,6 +4,7 @@ use lightyear::prelude::input::native::InputMarker;
 use super::RacingInput;
 use super::car::{Car, CarState};
 use super::progress::{RaceProgress, lap_label};
+use super::race::{RaceStatus, status_label};
 use super::track::{CHECKPOINTS, outline};
 use crate::config::minigames::racing::{START_LINE_X, TRACK_INNER_RADIUS, TRACK_OUTER_RADIUS};
 use crate::lobby::player_color;
@@ -28,6 +29,10 @@ const CHECKPOINT_GIZMO_COLOR: Color = Color::srgb(0.3, 0.9, 1.0);
 /// Lap counter in the top-left corner, in screen pixels.
 const LAP_TEXT_SIZE: f32 = 28.0;
 const LAP_TEXT_MARGIN: f32 = 16.0;
+/// Countdown and "GO!" in the middle of the screen, in screen pixels.
+const STATUS_TEXT_SIZE: f32 = 72.0;
+/// How long "GO!" stays up after the start, in seconds.
+const GO_SECONDS: f32 = 1.0;
 
 #[derive(Component)]
 pub struct TrackSprite;
@@ -35,6 +40,10 @@ pub struct TrackSprite;
 /// Shows the lap this player's car is on.
 #[derive(Component)]
 pub struct LapText;
+
+/// Shows the countdown, "GO!", and how long until the race ends.
+#[derive(Component)]
+pub struct StatusText;
 
 /// Whether to draw the track's road edges and start line over the art, to check the two line up.
 #[derive(Resource, Debug, Default)]
@@ -46,7 +55,10 @@ pub struct RacingVisualsPlugin;
 impl Plugin for RacingVisualsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<TrackGizmos>();
-        app.add_systems(OnEnter(SessionPhase::Racing), (spawn_track, spawn_lap_text));
+        app.add_systems(
+            OnEnter(SessionPhase::Racing),
+            (spawn_track, spawn_lap_text, spawn_status_text),
+        );
         app.add_observer(add_car_sprite);
         app.add_systems(
             Update,
@@ -54,6 +66,7 @@ impl Plugin for RacingVisualsPlugin {
                 toggle_track_gizmos,
                 draw_track_gizmos.run_if(|show: Res<TrackGizmos>| show.0),
                 update_lap_text,
+                update_status_text,
             )
                 .chain()
                 .run_if(in_state(SessionPhase::Racing)),
@@ -100,8 +113,55 @@ fn update_lap_text(
 ) {
     let shown = own_car
         .single()
-        .map(|progress| lap_label(progress.laps))
+        .map(|progress| lap_label(*progress))
         .unwrap_or_default();
+    if text.0 != shown {
+        text.0 = shown;
+    }
+}
+
+fn spawn_status_text(mut commands: Commands) {
+    commands.spawn((
+        DespawnOnExit(SessionPhase::Racing),
+        Node {
+            position_type: PositionType::Absolute,
+            width: percent(100),
+            height: percent(100),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+        children![(
+            StatusText,
+            Text::new(""),
+            TextFont {
+                font_size: FontSize::Px(STATUS_TEXT_SIZE),
+                ..default()
+            },
+            TextColor(Color::WHITE),
+        )],
+    ));
+}
+
+/// Show the host's [`RaceStatus`]. "GO!" is timed here, from when this app saw the race start.
+fn update_status_text(
+    time: Res<Time>,
+    status: Option<Single<&RaceStatus>>,
+    mut go: Local<Option<Timer>>,
+    mut text: Single<&mut Text, With<StatusText>>,
+) {
+    let shown = match status {
+        Some(status) => {
+            if let RaceStatus::Countdown(_) = **status {
+                *go = Some(Timer::from_seconds(GO_SECONDS, TimerMode::Once));
+            } else if let Some(go) = go.as_mut() {
+                go.tick(time.delta());
+            }
+            let just_started = go.as_ref().is_some_and(|go| !go.is_finished());
+            status_label(**status, just_started)
+        }
+        None => String::new(),
+    };
     if text.0 != shown {
         text.0 = shown;
     }

@@ -91,6 +91,8 @@ pub mod minigames {
     /// Car handling and the starting grid for the racing minigame. Speeds are in world units per
     /// second, accelerations in world units per second², and angles in radians.
     pub mod racing {
+        use std::time::Duration;
+
         use crate::config::display::{VIEW_HEIGHT, VIEW_WIDTH};
 
         /// Car length (nose to tail) in world units. Keep `car.png` the same width.
@@ -153,6 +155,13 @@ pub mod minigames {
 
         /// Laps in a race.
         pub const LAPS: u32 = 3;
+        /// How long the cars wait on the grid before the start, unless
+        /// [`RaceRules`](crate::minigames::racing::race::RaceRules) says otherwise.
+        pub const COUNTDOWN: Duration = Duration::from_secs(3);
+        /// How long the race goes on after the first car finishes, so one slow player can't hold
+        /// everyone up. Unless [`RaceRules`](crate::minigames::racing::race::RaceRules) says
+        /// otherwise.
+        pub const FINISH_GRACE: Duration = Duration::from_secs(10);
         /// How far each checkpoint reaches along the track. A car must be seen inside it on some
         /// tick, so keep it well above how far a car moves in one tick (`MAX_SPEED / TICK_RATE`);
         /// `track.rs` checks this when it compiles.

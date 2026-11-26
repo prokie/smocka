@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use super::RacingSystems;
 use super::progress::RaceProgress;
+use super::race::RaceStatus;
 use super::racing_input::RacingInput;
 use super::track::{START_HEADING, Surface, grid_position, surface_at};
 use crate::config::minigames::racing::{
@@ -112,15 +113,21 @@ fn spawn_cars(mut commands: Commands, players: Query<(&Player, &ControlledBy)>) 
     }
 }
 
-/// Runs on the host for every car and on each client for its own predicted one.
-fn drive_cars(time: Res<Time>, mut cars: Query<(&mut CarState, &ActionState<RacingInput>)>) {
+/// Runs on the host for every car and on each client for its own predicted one. Until the
+/// countdown is over (or the race's status hasn't arrived yet), input is ignored.
+fn drive_cars(
+    time: Res<Time>,
+    status: Option<Single<&RaceStatus>>,
+    mut cars: Query<(&mut CarState, &ActionState<RacingInput>)>,
+) {
+    let may_drive = status.is_some_and(|status| status.cars_may_drive());
     for (mut state, input) in &mut cars {
-        let next = drive(
-            *state,
-            input.0,
-            surface_at(state.position),
-            time.delta_secs(),
-        );
+        let input = if may_drive {
+            input.0
+        } else {
+            RacingInput::default()
+        };
+        let next = drive(*state, input, surface_at(state.position), time.delta_secs());
         state.set_if_neq(next);
     }
 }
@@ -199,7 +206,7 @@ mod tests {
     use bevy::prelude::*;
     use lightyear::prelude::input::native::ActionState;
 
-    use super::{CarState, RacingInput, drive, drive_cars, lerp_angle, wrap_angle};
+    use super::{CarState, RaceStatus, RacingInput, drive, drive_cars, lerp_angle, wrap_angle};
     use crate::config::minigames::racing::{
         CAR_MAX_X, EDGE_MAX_SPEED, GRASS_MAX_SPEED, MAX_REVERSE_SPEED, MAX_SPEED,
     };
@@ -333,12 +340,14 @@ mod tests {
         assert_eq!(state.speed, -MAX_REVERSE_SPEED.min(GRASS_MAX_SPEED));
     }
 
-    /// Whether one run of `drive_cars` marks a car in `state`, driven with `input`, as changed.
-    fn drive_cars_marks_changed(state: CarState, input: RacingInput) -> bool {
+    /// Whether one run of `drive_cars` during `status` marks a car in `state`, driven with
+    /// `input`, as changed.
+    fn drive_cars_marks_changed(status: RaceStatus, state: CarState, input: RacingInput) -> bool {
         let mut world = World::new();
         let mut time = Time::<()>::default();
         time.advance_by(Duration::from_secs_f32(DT));
         world.insert_resource(time);
+        world.spawn(status);
         let car = world.spawn((state, ActionState(input))).id();
         world.clear_trackers();
         world.run_system_once(drive_cars).unwrap();
@@ -351,11 +360,28 @@ mod tests {
 
     #[test]
     fn a_parked_car_is_not_marked_as_changed() {
-        assert!(!drive_cars_marks_changed(moving(0.0), COAST));
+        assert!(!drive_cars_marks_changed(
+            RaceStatus::Racing,
+            moving(0.0),
+            COAST
+        ));
     }
 
     #[test]
     fn a_car_that_moves_is_marked_as_changed() {
-        assert!(drive_cars_marks_changed(moving(0.0), THROTTLE));
+        assert!(drive_cars_marks_changed(
+            RaceStatus::Racing,
+            moving(0.0),
+            THROTTLE
+        ));
+    }
+
+    #[test]
+    fn cars_cant_move_during_the_countdown() {
+        assert!(!drive_cars_marks_changed(
+            RaceStatus::Countdown(2),
+            moving(0.0),
+            THROTTLE
+        ));
     }
 }
