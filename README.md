@@ -5,6 +5,23 @@ A multiplayer party game in the style of *Pummel Party*, built with [Bevy](https
 > **Status:** early development. Two minigames: two-player Pong (first to 5 goals) and Racing
 > (3 laps on an oval track, with a countdown and a finishing order).
 
+## Download and play
+
+Download the zip for your system from the
+[Releases page](https://github.com/prokie/smocka/releases), unzip it, and run `smocka`
+(`smocka.exe` on Windows). Keep the `assets` folder next to it.
+
+- **Everyone needs the same version.** The main menu shows it under the title. A player on
+  another version can't join: their join times out.
+- The builds aren't signed, so the first launch shows a warning. On **Windows**, click
+  *More info → Run anyway*. On **macOS**, right-click `smocka` and choose *Open* (or run
+  `xattr -dr com.apple.quarantine smocka` in the unzipped folder). The macOS build is for Apple
+  Silicon.
+- **Same network** (home Wi-Fi or LAN): join with the host's local address, such as
+  `192.168.1.10`.
+- **Over the internet:** the host must forward **UDP port 5000** on their router to their
+  computer, and the others join with the host's public IP address.
+
 ## Requirements
 
 - Rust (edition 2024)
@@ -52,6 +69,12 @@ cargo test
 cargo doc --no-deps
 ```
 
+GitHub Actions runs these checks on every push to `main` and every pull request
+(`.github/workflows/ci.yml`).
+
+Integration tests run real host and client apps headlessly over localhost UDP. Add new suites as
+modules in `tests/integration/main.rs`, not as new files under `tests/`.
+
 To also see the game's `debug!` logs (goals, car spawns and the like):
 
 ```sh
@@ -61,5 +84,14 @@ RUST_LOG=info,smocka=debug,wgpu=error,naga=warn cargo run
 `RUST_LOG` replaces Bevy's default log filter, so the last two parts keep the graphics libraries
 quiet again.
 
-Integration tests run real host and client apps headlessly over localhost UDP. Add new suites as
-modules in `tests/integration/main.rs`, not as new files under `tests/`.
+### Making a release
+
+1. Bump `version` in `Cargo.toml` (and commit it, with the updated `Cargo.lock`). The version
+   decides who can play together, so every release needs a new one.
+2. Tag the commit with the same version and push the tag:
+   ```sh
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+3. `.github/workflows/release.yml` builds Linux, Windows and macOS zips and publishes them as a
+   GitHub Release. It fails if the tag doesn't match the version in `Cargo.toml`.

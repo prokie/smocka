@@ -73,7 +73,9 @@ fn return_to_menu_when_disconnected(
 fn describe(reason: &DisconnectedReason, state: AppState) -> Option<String> {
     let text = match (reason, state) {
         (DisconnectedReason::UserRequested(_), _) => return None,
-        (_, AppState::Connecting) => "Couldn't connect to the host.",
+        (_, AppState::Connecting) => {
+            "Couldn't connect to the host. Check the address, and that you both have the same version."
+        }
         (DisconnectedReason::ByPeer(_), _) => "The host ended the session.",
         _ => "The connection to the host was lost.",
     };
@@ -96,7 +98,9 @@ mod tests {
         let reason = DisconnectedReason::TransportError("ConnectionRequestTimedOut".into());
         assert_eq!(
             describe(&reason, AppState::Connecting).as_deref(),
-            Some("Couldn't connect to the host.")
+            Some(
+                "Couldn't connect to the host. Check the address, and that you both have the same version."
+            )
         );
     }
 

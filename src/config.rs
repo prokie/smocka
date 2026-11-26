@@ -14,9 +14,42 @@ pub mod network {
     pub const SERVER_ADDR: SocketAddr =
         SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, SERVER_PORT));
 
-    /// Must match between host and joining clients.
-    pub const PROTOCOL_ID: u64 = 0;
+    /// This build's version, from `Cargo.toml`. Shown in the main menu.
+    pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+    /// Must match between host and joining clients, or the host ignores the join (which then
+    /// times out). Derived from [`VERSION`], so players on different versions can't play
+    /// together: another version may register replicated components differently and break in
+    /// confusing ways. Bump the version in `Cargo.toml` for every release.
+    pub const PROTOCOL_ID: u64 = fnv1a(VERSION.as_bytes());
+
+    /// The 64-bit FNV-1a hash of `bytes`: simple, stable across builds and platforms, and usable
+    /// in a `const`.
+    const fn fnv1a(bytes: &[u8]) -> u64 {
+        let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+        let mut i = 0;
+        while i < bytes.len() {
+            hash ^= bytes[i] as u64;
+            hash = hash.wrapping_mul(0x0100_0000_01b3);
+            i += 1;
+        }
+        hash
+    }
+
     pub const PRIVATE_KEY: [u8; 32] = [0; 32];
+
+    #[cfg(test)]
+    mod tests {
+        use super::fnv1a;
+
+        #[test]
+        fn different_versions_get_different_protocol_ids() {
+            assert_ne!(fnv1a(b"0.1.0"), fnv1a(b"0.1.1"));
+            assert_ne!(fnv1a(b"0.1.0"), fnv1a(b"0.2.0"));
+            // The published FNV-1a test vector, so the hash can't silently change.
+            assert_eq!(fnv1a(b"a"), 0xaf63_dc4c_8601_ec8c);
+        }
+    }
 }
 
 pub mod session {

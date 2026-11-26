@@ -1,0 +1,100 @@
+# Pushing a version tag (e.g. `git tag v0.2.0 && git push origin v0.2.0`) builds the game for
+# Linux, Windows and macOS and attaches a zip for each to a GitHub Release. The tag must match the
+# version in Cargo.toml, because that version decides who can play together (see PROTOCOL_ID).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            platform: linux-x86_64
+            binary: smocka
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            platform: windows-x86_64
+            binary: smocka.exe
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            platform: macos-arm64
+            binary: smocka
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the tag matches the version in Cargo.toml
+        shell: bash
+        run: |
+          version=$(grep -m1 '^version' Cargo.toml | cut -d '"' -f 2)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match version $version in Cargo.toml"
+            exit 1
+          fi
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Bevy's Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libudev-dev libwayland-dev libxkbcommon-dev libx11-dev
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      # The game looks for `assets/` next to its executable.
+      - name: Package
+        shell: bash
+        run: |
+          dir="smocka-$GITHUB_REF_NAME-${{ matrix.platform }}"
+          mkdir "$dir"
+          cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "$dir/"
+          cp -r assets "$dir/"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            7z a "$dir.zip" "$dir"
+          else
+            zip -r "$dir.zip" "$dir"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}
+          path: smocka-*.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create the release
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.zip \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Smocka $GITHUB_REF_NAME" \
+            --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}

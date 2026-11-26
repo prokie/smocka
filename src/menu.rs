@@ -13,7 +13,7 @@ use bevy::window::WindowCloseRequested;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use crate::app_state::{AppState, SessionEndReason};
-use crate::config::network::{HOST_ADDR, SERVER_ADDR, SERVER_PORT};
+use crate::config::network::{HOST_ADDR, SERVER_ADDR, SERVER_PORT, VERSION};
 use crate::minigames::Minigame;
 use crate::network::{HostSession, JoinSession, LeaveSession, close_session};
 use crate::session::{SessionPhase, StartMinigame};
@@ -129,6 +129,7 @@ fn spawn_main_menu(mut commands: Commands, reason: Res<SessionEndReason>) {
         screen(AppState::MainMenu),
         children![
             label("SMOCKA", 64.0, Color::WHITE),
+            label(format!("Version {VERSION}"), 16.0, HINT_COLOR),
             menu_button(MenuButton::Host, "Host game"),
             (
                 Node {

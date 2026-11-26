@@ -98,32 +98,18 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
 
 ## Playing with friends
 
-- [ ] **Downloadable builds from GitHub Actions.** On a version tag (e.g. `v0.1.0`), build for
-      Windows, Linux and macOS and attach a zip per platform to a GitHub Release, so friends
-      download from the repo's Releases page. There's no CI yet (no `.github/`).
-  - Each zip holds the binary plus the `assets/` folder next to it (Bevy looks for `assets/` beside
-    the executable). Alternatively, embed the art in the binary with Bevy's `embedded_asset!`.
-  - The Linux runner needs Bevy's system packages: `libudev-dev`, `libwayland-dev`,
-    `libxkbcommon-dev` (and `libasound2-dev` once audio is back).
-  - Windows: add `#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]` to
-    `main.rs`, so release builds don't open a console window next to the game.
-  - The builds aren't signed, so Windows SmartScreen and macOS Gatekeeper will warn. Tell
-    friends how to get past it ("More info → Run anyway"; right-click → Open). Build macOS for
-    Apple Silicon (`aarch64-apple-darwin`), plus Intel if a friend needs it.
-  - Cache the build (e.g. `Swatinem/rust-cache`): the release profile uses fat LTO, so it's slow.
-  - Starting point: Bevy's community template `bevy_new_2d` has a ready-made release workflow for
-    these platforms (and optional itch.io upload) to copy and adapt.
-  - Also run `cargo fmt --check`, clippy and the tests on every push.
-  - Add a short "Download and play" section to the README.
-- [ ] **Refuse other versions of the game.** Everyone must run the same build: another build may
-      register replicated components differently and break in confusing ways. `PROTOCOL_ID` in
-      `src/config.rs` is always `0`; derive it from the crate version so netcode refuses joins
-      from a different build. Show the version in the menu, and suggest "different version?" when
-      a join times out.
-- [ ] **Playing over the internet.** Joining works on a local network. Over the internet, the host
-      must forward UDP port 5000 on their router, which is fine for a first try with friends. To
-      avoid port forwarding: a relay server, or Steam networking. Lightyear 0.31 ships
-      `lightyear_steam` and `lightyear_p2p` crates (not looked into yet).
+- [x] **Downloadable builds**: `.github/workflows/release.yml` builds Linux, Windows and macOS
+      (Apple Silicon) zips on a `v*` tag and publishes a GitHub Release; `ci.yml` runs fmt,
+      clippy, tests and docs on every push. The README has *Download and play* and *Making a
+      release*. Not yet run on GitHub: check the first tagged release.
+  - [ ] Linux builds come from `ubuntu-latest`, so they need a recent glibc. If a friend's distro
+        is too old, build on an older Ubuntu image.
+  - [ ] Intel Macs: add an `x86_64-apple-darwin` build if a friend needs it.
+- [x] **Refuse other versions of the game**: `PROTOCOL_ID` is a hash of the crate version, the
+      main menu shows the version, and a timed-out join suggests checking it.
+- [ ] **Playing over the internet without port forwarding.** Today the host forwards UDP port
+      5000 (documented in the README). Alternatives: a relay server, or Steam networking.
+      Lightyear 0.31 ships `lightyear_steam` and `lightyear_p2p` crates (not looked into yet).
 
 ## Later
 

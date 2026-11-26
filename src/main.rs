@@ -1,3 +1,7 @@
+// Release builds on Windows run without a console window next to the game. Debug builds keep it,
+// for the logs.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use bevy::ecs::error::warn;
 use bevy::prelude::*;
 use smocka::config::network::{HOST_ADDR, SERVER_ADDR};

@@ -112,7 +112,9 @@ fn joining_where_nobody_hosts_goes_back_to_the_menu_with_an_error() {
     });
     assert_eq!(
         client.end_reason().as_deref(),
-        Some("Couldn't connect to the host.")
+        Some(
+            "Couldn't connect to the host. Check the address, and that you both have the same version."
+        )
     );
 }
 
