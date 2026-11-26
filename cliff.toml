@@ -1,0 +1,48 @@
+# git-cliff (https://git-cliff.org) turns the commit history into release notes.
+# The release workflow runs `git cliff --latest --strip all` for each version tag.
+# Preview what the next release will say: `git cliff --unreleased`.
+#
+# Commits here are plain sentences ("Add laps", "Fix join on enter"), not Conventional Commits,
+# so they are grouped by their first word. Keep writing them as one-line, imperative summaries
+# and they read well as release notes.
+
+[changelog]
+header = """
+# Changelog
+
+All notable changes to Smocka, generated from the commit history by git-cliff.
+"""
+body = """
+{% if version -%}
+## {{ version }} ({{ timestamp | date(format="%Y-%m-%d") }})
+{% else -%}
+## Unreleased
+{% endif -%}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim }}
+{% for commit in commits -%}
+- {{ commit.message | split(pat="\n") | first | trim | upper_first }} \
+  ([{{ commit.id | truncate(length=7, end="") }}](https://github.com/prokie/smocka/commit/{{ commit.id }}))
+{% endfor -%}
+{% endfor %}
+"""
+trim = true
+
+[git]
+conventional_commits = false
+filter_unconventional = false
+filter_commits = false
+tag_pattern = "v[0-9].*"
+sort_commits = "oldest"
+# The HTML comments only fix the order of the sections; `striptags` removes them from the output.
+commit_parsers = [
+  # Housekeeping that players don't care about.
+  { message = "^(?i)(update|updated) todos?\\b", skip = true },
+  { message = "^(?i)(add|added|update|updated).*\\b(todo|claude)", skip = true },
+  { message = "^(?i)merge\\b", skip = true },
+
+  { message = "^(?i)(add|added|implement|implemented|introduce|show|let|allow|support)\\b", group = "<!-- 0 -->Added" },
+  { message = "^(?i)(fix|fixed|fixes)\\b", group = "<!-- 2 -->Fixed" },
+  { message = "^(?i)(remove|removed|delete|deleted|drop)\\b", group = "<!-- 3 -->Removed" },
+  { message = ".*", group = "<!-- 1 -->Changed" },
+]

@@ -110,3 +110,9 @@ quiet again.
    ```
 3. `.github/workflows/release.yml` builds Linux, Windows and macOS zips and publishes them as a
    GitHub Release. It fails if the tag doesn't match the version in `Cargo.toml`.
+
+The release notes are written for you: a download link per system, then every commit since the
+previous tag, grouped by its first word (Add…, Fix…, Remove…, everything else under Changed) by
+[git-cliff](https://git-cliff.org) using `cliff.toml`. So write commit messages as one-line,
+imperative summaries a player could read. To preview the notes before tagging, run
+`git cliff --unreleased`.

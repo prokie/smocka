@@ -85,16 +85,53 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      # The whole history and its tags, so git-cliff can find the commits since the last release.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: git-cliff
+
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
+
+      # Download links for each platform, then the changes since the previous tag (see cliff.toml).
+      - name: Write the release notes
+        run: |
+          tag="$GITHUB_REF_NAME"
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/$tag"
+          {
+            echo "## Download"
+            echo
+            echo "Unzip, then run \`smocka\` (\`smocka.exe\` on Windows) with the \`assets\` folder next to it."
+            echo "Everyone in a game needs this same version."
+            echo
+            echo "| System | Download |"
+            echo "| --- | --- |"
+            echo "| Windows (x86-64) | [smocka-$tag-windows-x86_64.zip]($base/smocka-$tag-windows-x86_64.zip) |"
+            echo "| macOS (Apple Silicon) | [smocka-$tag-macos-arm64.zip]($base/smocka-$tag-macos-arm64.zip) |"
+            echo "| Linux (x86-64) | [smocka-$tag-linux-x86_64.zip]($base/smocka-$tag-linux-x86_64.zip) |"
+            echo
+            echo "macOS blocks apps from unidentified developers: right-click \`smocka\` and choose **Open** the first time."
+            echo
+            git cliff --latest --strip all
+            previous=$(git describe --tags --abbrev=0 "$tag^" 2>/dev/null || true)
+            if [ -n "$previous" ]; then
+              echo
+              echo "**Full changes:** https://github.com/$GITHUB_REPOSITORY/compare/$previous...$tag"
+            fi
+          } > notes.md
+          cat notes.md
 
       - name: Create the release
         run: |
           gh release create "$GITHUB_REF_NAME" dist/*.zip \
             --repo "$GITHUB_REPOSITORY" \
             --title "Smocka $GITHUB_REF_NAME" \
-            --generate-notes
+            --notes-file notes.md
         env:
           GH_TOKEN: ${{ github.token }}

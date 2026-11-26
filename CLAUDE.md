@@ -15,6 +15,19 @@ Before considering any task complete, verify that all checks pass cleanly:
 - **Format:** Run `cargo fmt` to ensure everything is formatted properly.
 - **Documentation:** Maintain clear rustdoc comments (`///` and `//!`) on public types, components, and non-obvious systems. Run `cargo doc --no-deps` to verify there are no broken doc links or warnings.
 
+## Commit messages
+`git-cliff` (`cliff.toml`) builds player-facing release notes from commit subjects, grouped by the first word.
+
+- **Format:** Imperative, capitalized, no trailing period, ≤72 chars. One change per commit (avoid "and").
+- **Player-facing:** Describe the visible effect and name the minigame/screen when not obvious (`Fix players joining twice when Enter is held`, not `Fix bug in handle_join`). Put technical details in the body after a blank line.
+- **First word sets the section:**
+  - `Add` / `Show` / `Let` / `Allow` / `Support` / `Implement` → **Added**
+  - `Fix` → **Fixed**
+  - `Remove` / `Drop` → **Removed**
+  - Anything else (`Improve`, `Make`, `Rename`, `Speed up`, …) → **Changed**
+- **Excluded housekeeping:** Start with `Update TODO` or `Update CLAUDE.md` so `cliff.toml` skips them.
+- Preview with `git cliff --unreleased`.
+
 ## Logging
 Use Bevy's `info!` / `warn!` / `error!` / `debug!` (from `bevy::prelude`), never `println!`. Adding logs for state changes, endings, and refused requests is part of task completion alongside the checks above.
 
