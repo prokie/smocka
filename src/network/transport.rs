@@ -47,9 +47,14 @@ impl Command for HostSession {
     fn apply(self, world: &mut World) {
         start_new_session(world);
         let addr = self.addr;
-        let server_config = server::NetcodeConfig::default()
-            .with_protocol_id(PROTOCOL_ID)
-            .with_key(Key::from(PRIVATE_KEY));
+        let server_config = server::NetcodeConfig {
+            // We bind to `0.0.0.0`, which Lightyear only matches against loopback addresses in a
+            // connect token, so with the check on, joins over LAN (`192.168.x.y`) get ignored.
+            server_addr_check: false,
+            ..server::NetcodeConfig::default()
+                .with_protocol_id(PROTOCOL_ID)
+                .with_key(Key::from(PRIVATE_KEY))
+        };
 
         let server = world
             .spawn((
