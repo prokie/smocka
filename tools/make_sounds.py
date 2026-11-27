@@ -188,9 +188,6 @@ def pong_sounds() -> dict[str, Signal]:
 
 def racing_sounds() -> dict[str, Signal]:
     sounds: dict[str, Signal] = {
-        # One beep per second of the countdown, then a higher, longer one at the start.
-        "countdown": tone(D5, 0.2, 0.15, BRIGHT, bright_decay=0.06),
-        "go": tone(D6, 0.6, 0.4, BRIGHT, bright_decay=0.14),
         # Two quick rising notes when your car completes a lap.
         "lap": mix(
             tone(A5, 0.12, 0.06, SOFT, bright_decay=0.025),
@@ -293,6 +290,10 @@ def shootout_sounds() -> dict[str, Signal]:
 
 def minigame_sounds() -> dict[str, Signal]:
     return {
+        # The countdown before a minigame starts: one beep per second, then a higher, longer one
+        # at the start.
+        "countdown": tone(D5, 0.2, 0.15, BRIGHT, bright_decay=0.06),
+        "go": tone(D6, 0.6, 0.4, BRIGHT, bright_decay=0.14),
         # When a minigame is won: up through a chord, then a warmer chord together.
         "minigame_won": then(
             mix(

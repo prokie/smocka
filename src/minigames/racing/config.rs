@@ -65,9 +65,6 @@ pub const LAPS: u32 = 3;
 pub const MIN_LAPS: u32 = 1;
 /// The most laps the host can pick.
 pub const MAX_LAPS: u32 = 10;
-/// How long the cars wait on the grid before the start, unless
-/// [`RaceRules`](super::race::RaceRules) says otherwise.
-pub const COUNTDOWN: Duration = Duration::from_secs(3);
 /// How long the race goes on after the first car finishes, so one slow player can't hold
 /// everyone up. Unless [`RaceRules`](super::race::RaceRules) says otherwise.
 pub const FINISH_GRACE: Duration = Duration::from_secs(10);

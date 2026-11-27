@@ -2,6 +2,7 @@
 //! (`config.rs`), a [`MinigameInfo`] called `INFO` (with the [`settings`] the host can
 //! pick), and the [`SessionPhase`](crate::session::SessionPhase) it's played in, called `PHASE`.
 
+pub mod countdown;
 pub mod outcome;
 pub mod racing;
 pub mod settings;
@@ -84,6 +85,7 @@ impl Plugin for MinigamesPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((
             settings::SettingsPlugin,
+            countdown::CountdownPlugin,
             two_player_pong::TwoPlayerPongPlugin,
             racing::RacingPlugin,
             shootout::ShootoutPlugin,
@@ -98,6 +100,7 @@ impl Plugin for MinigameVisualsPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((
             sounds::MinigameSoundsPlugin,
+            countdown::CountdownVisualsPlugin,
             two_player_pong::PongVisualsPlugin,
             racing::RacingVisualsPlugin,
             shootout::ShootoutVisualsPlugin,

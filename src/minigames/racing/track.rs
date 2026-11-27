@@ -39,7 +39,7 @@ impl Surface {
 
 /// Which track a race is on. The host picks it in the lobby
 /// ([`TRACK_SETTING`](super::TRACK_SETTING)) and puts it on the race's replicated entity, next to
-/// [`RaceStart`](super::race::RaceStart), so every peer drives and draws the same track from the
+/// [`StartTick`](crate::minigames::countdown::StartTick), so every peer drives and draws the same track from the
 /// moment it can start driving.
 #[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum TrackId {

@@ -34,10 +34,8 @@ const CHECKPOINT_GIZMO_COLOR: Color = Color::srgb(0.3, 0.9, 1.0);
 /// Lap counter in the top-left corner, in screen pixels.
 const LAP_TEXT_SIZE: f32 = 28.0;
 const LAP_TEXT_MARGIN: f32 = 16.0;
-/// Countdown and "GO!" in the middle of the screen, in screen pixels.
+/// How long the race has left, in the middle of the screen, in screen pixels.
 const STATUS_TEXT_SIZE: f32 = 72.0;
-/// How long "GO!" stays up after the start, in seconds.
-const GO_SECONDS: f32 = 1.0;
 
 /// The race's track art, which covers the whole screen (see [`Layout::image`](super::track::Layout::image)).
 #[derive(Component)]
@@ -51,7 +49,7 @@ pub struct LapText;
 #[derive(Component)]
 pub struct PositionText;
 
-/// Shows the countdown, "GO!", and how long until the race ends.
+/// Shows how long until the race ends, once someone has finished.
 #[derive(Component)]
 pub struct StatusText;
 
@@ -255,25 +253,14 @@ fn spawn_status_text(mut commands: Commands) {
     ));
 }
 
-/// Show the host's [`RaceStatus`]. "GO!" is timed here, from when this app saw the race start.
+/// Show the host's [`RaceStatus`]: how long the race has left once someone has finished.
 fn update_status_text(
-    time: Res<Time>,
     status: Option<Single<&RaceStatus>>,
-    mut go: Local<Option<Timer>>,
     mut text: Single<&mut Text, With<StatusText>>,
 ) {
-    let shown = match status {
-        Some(status) => {
-            if let RaceStatus::Countdown(_) = **status {
-                *go = Some(Timer::from_seconds(GO_SECONDS, TimerMode::Once));
-            } else if let Some(go) = go.as_mut() {
-                go.tick(time.delta());
-            }
-            let just_started = go.as_ref().is_some_and(|go| !go.is_finished());
-            status_label(**status, just_started)
-        }
-        None => String::new(),
-    };
+    let shown = status
+        .map(|status| status_label(**status))
+        .unwrap_or_default();
     if text.0 != shown {
         text.0 = shown;
     }

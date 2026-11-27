@@ -124,10 +124,17 @@ fn spawn_window_and_camera(app: &mut TestApp) -> Entity {
     world.spawn((Window::default(), PrimaryWindow)).id()
 }
 
-/// Connect a host and a joiner, start a shootout, and wait until both see both gunners.
+/// Host only: start shootouts at once, with no countdown, so tests needn't wait for it.
+fn skip_countdown(host: &mut TestApp) {
+    host.0.world_mut().resource_mut::<ShootoutRules>().countdown = Duration::ZERO;
+}
+
+/// Connect a host and a joiner, start a shootout with no countdown, and wait until both see both
+/// gunners.
 fn shootout_pair() -> (TestApp, TestApp) {
     let (mut host, mut client, _) = connected_pair();
     update_until(&mut [&mut host, &mut client], |apps| apps[0].players() == 2);
+    skip_countdown(&mut host);
     host.start_minigame(Minigame::Shootout);
     update_until(&mut [&mut host, &mut client], |apps| {
         apps.iter_mut().all(|app| {
@@ -161,6 +168,37 @@ fn every_player_gets_a_gunner_on_its_own_spawn_point_on_every_peer() {
         .iter(world)
         .count();
     assert_eq!(interpolated, 0);
+}
+
+#[test]
+fn nobody_walks_or_shoots_until_the_countdown_is_over() {
+    let (mut host, mut client, _) = connected_pair();
+    host.0.world_mut().resource_mut::<ShootoutRules>().countdown = Duration::from_secs(2);
+    update_until(&mut [&mut host, &mut client], |apps| apps[0].players() == 2);
+    host.start_minigame(Minigame::Shootout);
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut().all(|app| gunners(app).len() == 2)
+    });
+    let spawn = position(&mut host, joiners).unwrap();
+
+    // The joiner walks into the arena and the host fires, but nothing happens until the start.
+    // That's long enough for the joiner's input to reach the host; their own, predicted gunner
+    // would move at once.
+    hold(&mut client, KeyCode::KeyW);
+    hold(&mut client, KeyCode::KeyA);
+    hold(&mut host, KeyCode::Space);
+    update_for(&mut [&mut host, &mut client], Duration::from_millis(800));
+    for app in [&mut host, &mut client] {
+        assert_eq!(position(app, joiners), Some(spawn));
+        assert!(balls_from(app, hosts).is_empty());
+    }
+
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut().all(|app| {
+            position(app, joiners).is_some_and(|now| now != spawn)
+                && !balls_from(app, hosts).is_empty()
+        })
+    });
 }
 
 #[test]
@@ -416,6 +454,7 @@ fn the_host_picks_how_many_hits_knock_a_gunner_out_and_joiners_see_it() {
         apps[0].players() == 2 && hits_to_knock_out(apps[1]) == Some(1)
     });
 
+    skip_countdown(&mut host);
     host.start_minigame(Minigame::Shootout);
     update_until(&mut [&mut host, &mut client], |apps| {
         apps.iter_mut().all(|app| {
@@ -454,6 +493,7 @@ fn a_shootout_holds_up_over_an_average_connection_and_catches_up_incoming_shots(
         Duration::from_secs(10),
         |apps| apps[0].players() == 2 && hits_to_knock_out(apps[1]) == Some(2),
     );
+    skip_countdown(&mut host);
     host.start_minigame(Minigame::Shootout);
     update_until_within(
         &mut [&mut host, &mut client],
@@ -563,6 +603,7 @@ fn centre_pickups_spawn_replicate_and_apply_spread_and_shield_effects() {
         ..ShootoutRules::default()
     };
     update_until(&mut [&mut host, &mut client], |apps| apps[0].players() == 2);
+    skip_countdown(&mut host);
     host.start_minigame(Minigame::Shootout);
 
     // Wait for the host to spawn a centre pickup and replicate it to the joiner.
@@ -654,6 +695,7 @@ fn sudden_death_shrinks_the_safe_zone_and_knocks_out_a_gunner_outside_it() {
     update_until(&mut [&mut host, &mut client], |apps| {
         apps[0].players() == 2 && hits_to_knock_out(apps[1]) == Some(2)
     });
+    skip_countdown(&mut host);
     host.start_minigame(Minigame::Shootout);
     update_until(&mut [&mut host, &mut client], |apps| {
         apps.iter_mut().all(|app| {

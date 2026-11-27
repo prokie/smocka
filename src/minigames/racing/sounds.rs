@@ -1,9 +1,9 @@
-//! Racing's sounds: the countdown, bumps, and for the car you drive, its engine, laps and finish.
+//! Racing's sounds: bumps, and for the car you drive, its engine, laps and finish. The countdown
+//! before the start is the shared one (see [`countdown`](crate::minigames::countdown)).
 //!
-//! Each peer plays them from what it sees: the countdown from the replicated [`RaceStatus`], laps
-//! and the finish from your car's replicated [`RaceProgress`], bumps from [`CarsBumped`], and the
-//! engine from your car's [`CarState`]. Bumps are only worked out by the host and drivers, so
-//! spectators don't hear them.
+//! Each peer plays them from what it sees: laps and the finish from your car's replicated
+//! [`RaceProgress`], bumps from [`CarsBumped`], and the engine from your car's [`CarState`]. Bumps
+//! are only worked out by the host and drivers, so spectators don't hear them.
 
 use bevy::prelude::*;
 use lightyear::prelude::input::native::InputMarker;
@@ -14,18 +14,14 @@ use super::bumps::CarsBumped;
 use super::car::CarState;
 use super::config::MAX_SPEED;
 use super::progress::RaceProgress;
-use super::race::RaceStatus;
 use crate::sound::{Sound, play_sound, play_varied_sound};
 
-const COUNTDOWN_SOUND: &str = "minigames/racing/countdown.wav";
-const GO_SOUND: &str = "minigames/racing/go.wav";
 const LAP_SOUND: &str = "minigames/racing/lap.wav";
 const FINISH_SOUND: &str = "minigames/racing/finish.wav";
 const BUMP_SOUND: &str = "minigames/racing/bump.wav";
 /// Loops seamlessly, and is played faster (so higher) the faster the car goes.
 const ENGINE_SOUND: &str = "minigames/racing/engine.wav";
 
-const COUNTDOWN_VOLUME: f32 = 0.5;
 const LAP_VOLUME: f32 = 0.5;
 const FINISH_VOLUME: f32 = 0.5;
 const ENGINE_VOLUME: f32 = 0.25;
@@ -39,32 +35,6 @@ const ENGINE_IDLE_SPEED: f32 = 0.7;
 const ENGINE_TOP_SPEED: f32 = 2.0;
 /// Changes to the engine sound's speed smaller than this aren't worth passing on.
 const ENGINE_SPEED_STEP: f32 = 0.01;
-
-/// A sound for a change in the race's status.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StatusSound {
-    /// A second of the countdown.
-    Countdown,
-    /// The race started.
-    Go,
-}
-
-/// The sound for the race's status going from `before` (`None` if there was no race) to `now`: a
-/// beep for each number the countdown shows, and "go" at the start.
-pub fn status_sound(before: Option<RaceStatus>, now: RaceStatus) -> Option<StatusSound> {
-    // What the countdown shows: see `status_label`.
-    let shown = |status| match status {
-        Some(RaceStatus::Countdown(seconds)) => Some(seconds.max(1)),
-        _ => None,
-    };
-    match (before, now) {
-        (Some(RaceStatus::Countdown(_)), RaceStatus::Racing) => Some(StatusSound::Go),
-        (_, RaceStatus::Countdown(_)) if shown(before) != shown(Some(now)) => {
-            Some(StatusSound::Countdown)
-        }
-        _ => None,
-    }
-}
 
 /// A sound for your car getting further round the track.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,8 +76,6 @@ type OwnCar = With<InputMarker<RacingInput>>;
 
 #[derive(Resource)]
 struct RacingSounds {
-    countdown: Handle<AudioSource>,
-    go: Handle<AudioSource>,
     lap: Handle<AudioSource>,
     finish: Handle<AudioSource>,
     bump: Handle<AudioSource>,
@@ -123,47 +91,18 @@ impl Plugin for RacingSoundsPlugin {
         app.add_observer(play_bump_sound);
         app.add_systems(
             Update,
-            (
-                play_status_sounds,
-                play_progress_sounds,
-                run_engine_sound,
-                rev_engine_sound,
-            )
-                .run_if(in_state(PHASE)),
+            (play_progress_sounds, run_engine_sound, rev_engine_sound).run_if(in_state(PHASE)),
         );
     }
 }
 
 fn load_sounds(assets: Res<AssetServer>, mut commands: Commands) {
     commands.insert_resource(RacingSounds {
-        countdown: assets.load(COUNTDOWN_SOUND),
-        go: assets.load(GO_SOUND),
         lap: assets.load(LAP_SOUND),
         finish: assets.load(FINISH_SOUND),
         bump: assets.load(BUMP_SOUND),
         engine: assets.load(ENGINE_SOUND),
     });
-}
-
-/// Beep the countdown and the start. `seen` is the status this peer saw last frame: `None` with
-/// no race on.
-fn play_status_sounds(
-    status: Option<Single<&RaceStatus>>,
-    sounds: Res<RacingSounds>,
-    mut seen: Local<Option<RaceStatus>>,
-    mut commands: Commands,
-) {
-    let now = status.map(|status| **status);
-    if let Some(now) = now {
-        match status_sound(*seen, now) {
-            Some(StatusSound::Countdown) => {
-                play_sound(&mut commands, &sounds.countdown, COUNTDOWN_VOLUME);
-            }
-            Some(StatusSound::Go) => play_sound(&mut commands, &sounds.go, COUNTDOWN_VOLUME),
-            None => {}
-        }
-    }
-    *seen = now;
 }
 
 /// Chime when your car completes a lap or finishes. `seen` is its progress last frame: `None`
@@ -240,55 +179,10 @@ fn rev_engine_sound(
 mod tests {
     use super::{
         BUMP_MAX_VOLUME, BUMP_MIN_IMPACT, ENGINE_IDLE_SPEED, ENGINE_TOP_SPEED, ProgressSound,
-        StatusSound, bump_volume, engine_speed, progress_sound, status_sound,
+        bump_volume, engine_speed, progress_sound,
     };
     use crate::minigames::racing::config::{MAX_REVERSE_SPEED, MAX_SPEED};
     use crate::minigames::racing::progress::RaceProgress;
-    use crate::minigames::racing::race::RaceStatus;
-
-    #[test]
-    fn beeps_each_second_of_the_countdown_then_go() {
-        let statuses = [
-            RaceStatus::Countdown(3),
-            RaceStatus::Countdown(3),
-            RaceStatus::Countdown(2),
-            RaceStatus::Countdown(1),
-            RaceStatus::Countdown(0),
-            RaceStatus::Racing,
-            RaceStatus::Racing,
-            RaceStatus::Finishing(10),
-        ];
-        let mut before = None;
-        let heard: Vec<Option<StatusSound>> = statuses
-            .into_iter()
-            .map(|now| {
-                let sound = status_sound(before, now);
-                before = Some(now);
-                sound
-            })
-            .collect();
-        use StatusSound::{Countdown, Go};
-        assert_eq!(
-            heard,
-            [
-                Some(Countdown),
-                None,
-                Some(Countdown),
-                Some(Countdown),
-                // 0 is shown as 1, like the label.
-                None,
-                Some(Go),
-                None,
-                None
-            ]
-        );
-    }
-
-    #[test]
-    fn arriving_after_the_start_is_silent() {
-        assert_eq!(status_sound(None, RaceStatus::Racing), None);
-        assert_eq!(status_sound(None, RaceStatus::Finishing(5)), None);
-    }
 
     fn progress(laps: u32, place: Option<u32>) -> RaceProgress {
         RaceProgress {

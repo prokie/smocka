@@ -1,4 +1,5 @@
-//! When a shootout ends: knockouts, placements and abandoning if everyone else leaves.
+//! When a shootout starts and ends: the countdown, knockouts, placements and abandoning if
+//! everyone else leaves.
 //!
 //! The host keeps [`ShootoutDirector`] for the round, recording each knockout with the tick it
 //! happened on so players knocked out on the same tick share a place. Once at most one gunner
@@ -8,7 +9,7 @@
 use std::time::Duration;
 
 use bevy::prelude::*;
-use lightyear::prelude::Tick;
+use lightyear::prelude::*;
 
 use super::config::{
     PICKUP_FIRST_DELAY, PICKUP_INTERVAL, SUDDEN_DEATH_DELAY, SUDDEN_DEATH_SHRINK,
@@ -16,13 +17,17 @@ use super::config::{
 };
 use super::gunner::{Gunner, Health};
 use super::{PHASE, ShootoutSystems};
+use crate::minigames::countdown::{START_COUNTDOWN, StartTick};
 use crate::minigames::outcome::{MinigameEnded, MinigameResult, Placement};
 use crate::network::is_host;
 
-/// Host only: timing for centre pickups and sudden death in the next shootout. Defaults to the
-/// constants in [`config`](super::config); tests can shorten them without waiting tens of seconds.
+/// Host only: timing for the countdown, centre pickups and sudden death in the next shootout.
+/// Defaults to [`START_COUNTDOWN`] and the constants in [`config`](super::config); tests can
+/// shorten them without waiting tens of seconds.
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ShootoutRules {
+    /// How long everyone waits at their spawn before they can move and shoot.
+    pub countdown: Duration,
     pub pickup_first_delay: Duration,
     pub pickup_interval: Duration,
     pub sudden_death_delay: Duration,
@@ -33,6 +38,7 @@ pub struct ShootoutRules {
 impl Default for ShootoutRules {
     fn default() -> Self {
         Self {
+            countdown: START_COUNTDOWN,
             pickup_first_delay: PICKUP_FIRST_DELAY,
             pickup_interval: PICKUP_INTERVAL,
             sudden_death_delay: SUDDEN_DEATH_DELAY,
@@ -109,7 +115,26 @@ impl Plugin for RoundPlugin {
     }
 }
 
-fn start_round(mut commands: Commands) {
+/// Host only: set the round up, and count down to its start (see
+/// [`countdown`](crate::minigames::countdown)). Until then, gunners can't walk or shoot, and the
+/// pickup and sudden-death clocks wait.
+fn start_round(
+    rules: Res<ShootoutRules>,
+    timeline: Res<LocalTimeline>,
+    fixed: Res<Time<Fixed>>,
+    mut commands: Commands,
+) {
+    let start = StartTick::after(timeline.tick(), rules.countdown, fixed.timestep());
+    info!(
+        "Shootout starts in {} s, on tick {}",
+        rules.countdown.as_secs_f32().ceil() as u32,
+        start.0.0
+    );
+    commands.spawn((
+        start,
+        DespawnOnExit(PHASE),
+        Replicate::to_clients(NetworkTarget::All),
+    ));
     commands.insert_resource(ShootoutDirector::default());
 }
 

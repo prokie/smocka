@@ -13,9 +13,10 @@ use super::config::{
     SLIDE_DECELERATION, TURN_RATE,
 };
 use super::progress::RaceProgress;
-use super::race::{RaceStart, picked_track};
+use super::race::picked_track;
 use super::racing_input::RacingInput;
 use super::track::{Surface, TrackId};
+use crate::minigames::countdown::StartTick;
 use crate::minigames::outcome::Participants;
 use crate::minigames::settings::MinigameSettings;
 use crate::network::is_host;
@@ -176,19 +177,19 @@ fn spawn_cars(
 /// Runs on the host for every car and on each driver's machine for the cars it predicts (all of
 /// them). Spectators' cars are interpolated, so it leaves them alone, even though the host's
 /// rebroadcast gives them inputs too. A car with no input yet coasts. Before the race's
-/// [`RaceStart`] tick, input is ignored: judged by the tick being simulated, so a rollback
+/// race's [`StartTick`], input is ignored: judged by the tick being simulated, so a rollback
 /// replaying ticks from before the start keeps the cars still. Until the race's entity (with its
 /// start and its [`TrackId`]) has arrived, cars stay parked on the grid where they were spawned.
 fn drive_cars(
     time: Res<Time>,
     timeline: Res<LocalTimeline>,
-    race: Option<Single<(&RaceStart, &TrackId)>>,
+    race: Option<Single<(&StartTick, &TrackId)>>,
     mut cars: Query<(&mut CarState, Option<&ActionState<RacingInput>>), Without<Interpolated>>,
 ) {
     let Some((start, track)) = race.map(|race| (*race.0, race.1.track())) else {
         return;
     };
-    let may_drive = start.cars_may_drive(timeline.tick());
+    let may_drive = start.has_started(timeline.tick());
     for (mut state, input) in &mut cars {
         let input = match input {
             Some(input) if may_drive => input.0,
@@ -300,7 +301,7 @@ mod tests {
 
     use lightyear::prelude::{LocalTimeline, Tick};
 
-    use super::{CarState, RaceStart, RacingInput, drive, drive_cars, lerp_angle, wrap_angle};
+    use super::{CarState, RacingInput, StartTick, drive, drive_cars, lerp_angle, wrap_angle};
     use crate::minigames::racing::config::{
         CAR_MAX_X, EDGE_MAX_SPEED, GRASS_MAX_SPEED, MAX_REVERSE_SPEED, MAX_SPEED,
         SLIDE_DECELERATION,
@@ -496,7 +497,7 @@ mod tests {
         let mut timeline = LocalTimeline::default();
         timeline.apply_delta(tick as i32);
         world.insert_resource(timeline);
-        world.spawn((RaceStart(Tick(START)), TrackId::default()));
+        world.spawn((StartTick(Tick(START)), TrackId::default()));
         world
     }
 
@@ -562,7 +563,7 @@ mod tests {
     fn cars_cant_move_before_the_start_has_arrived() {
         let mut world = race_world(START + 10);
         let start = world
-            .query_filtered::<Entity, With<RaceStart>>()
+            .query_filtered::<Entity, With<StartTick>>()
             .single(&world)
             .unwrap();
         world.despawn(start);
@@ -575,7 +576,7 @@ mod tests {
     fn cars_cant_move_before_the_track_is_known() {
         let mut world = race_world(START + 10);
         let race = world
-            .query_filtered::<Entity, With<RaceStart>>()
+            .query_filtered::<Entity, With<StartTick>>()
             .single(&world)
             .unwrap();
         world.entity_mut(race).remove::<TrackId>();
@@ -594,7 +595,7 @@ mod tests {
         let speed_on = |track: TrackId| {
             let mut world = race_world(START);
             let race = world
-                .query_filtered::<Entity, With<RaceStart>>()
+                .query_filtered::<Entity, With<StartTick>>()
                 .single(&world)
                 .unwrap();
             world.entity_mut(race).insert(track);

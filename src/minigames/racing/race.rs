@@ -9,10 +9,11 @@ use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use super::car::{Car, CarState};
-use super::config::{COUNTDOWN, FINISH_GRACE};
+use super::config::FINISH_GRACE;
 use super::progress::{RaceProgress, running_order};
 use super::track::{Track, TrackId};
 use super::{LAPS_SETTING, PHASE, RacingSystems, TRACK_SETTING};
+use crate::minigames::countdown::{START_COUNTDOWN, StartTick};
 use crate::minigames::outcome::{MinigameEnded, MinigameResult, Placement};
 use crate::minigames::settings::MinigameSettings;
 use crate::network::is_host;
@@ -28,33 +29,11 @@ pub enum RaceStatus {
     Finishing(u32),
 }
 
-/// The tick the race starts on: cars drive from it on. The host picks it as the race is set up, a
-/// whole countdown ahead, and it's replicated with the [`RaceStatus`], so every peer starts the
-/// cars it simulates on the same tick. A joiner predicts ahead of the host, so it would otherwise
-/// start them only once the host's [`RaceStatus::Racing`] arrived, too late, and its cars would
-/// jump when corrected. Rollbacks that replay ticks from before the start keep the cars still,
-/// too, which the current [`RaceStatus`] can't tell them.
-#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
-pub struct RaceStart(pub Tick);
-
-impl RaceStart {
-    /// Whether cars may drive on tick `tick`.
-    pub fn cars_may_drive(self, tick: Tick) -> bool {
-        tick >= self.0
-    }
-}
-
-/// How many fixed ticks of `timestep` a countdown of `countdown` lasts: the tick its timer
-/// finishes on, counting the first tick after it starts as 1. (A countdown of 0 is over at once.)
-pub fn countdown_ticks(countdown: Duration, timestep: Duration) -> u32 {
-    countdown.as_nanos().div_ceil(timestep.as_nanos()) as u32
-}
-
 /// Host only: how the next race is timed. How many laps it has is a setting the host picks in
 /// the lobby: [`LAPS_SETTING`].
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RaceRules {
-    /// Defaults to [`COUNTDOWN`].
+    /// Defaults to [`START_COUNTDOWN`].
     pub countdown: Duration,
     /// Defaults to [`FINISH_GRACE`].
     pub finish_grace: Duration,
@@ -63,7 +42,7 @@ pub struct RaceRules {
 impl Default for RaceRules {
     fn default() -> Self {
         Self {
-            countdown: COUNTDOWN,
+            countdown: START_COUNTDOWN,
             finish_grace: FINISH_GRACE,
         }
     }
@@ -187,7 +166,6 @@ pub struct RacePlugin;
 impl Plugin for RacePlugin {
     fn build(&self, app: &mut App) {
         app.component::<RaceStatus>().replicate();
-        app.component::<RaceStart>().replicate();
         app.component::<TrackId>().replicate();
         app.init_resource::<RaceRules>();
 
@@ -215,9 +193,10 @@ pub fn picked_track(settings: &MinigameSettings) -> TrackId {
 
 /// Host only: when the race starts, spawn its status and start the countdown.
 ///
-/// The countdown's timer (in [`RaceDirector`]) finishes on the same tick as [`RaceStart`], so the
-/// status says "GO!" on the tick the cars may first drive. The race's [`TrackId`] goes on the same
-/// entity as [`RaceStart`], so they reach every peer together.
+/// The race's [`StartTick`] (see [`countdown`](crate::minigames::countdown)) is the tick the
+/// cars may first drive, and the countdown's timer (in [`RaceDirector`]) finishes on it too, so
+/// the status turns to [`RaceStatus::Racing`] then. The race's [`TrackId`] goes on the same entity
+/// as its [`StartTick`], so they reach every peer together.
 fn start_race(
     rules: Res<RaceRules>,
     settings: Res<MinigameSettings>,
@@ -227,16 +206,16 @@ fn start_race(
 ) {
     let laps = settings.get(LAPS_SETTING);
     let track = picked_track(&settings);
-    let start = timeline.tick() + countdown_ticks(rules.countdown, fixed.timestep()) as i32;
+    let start = StartTick::after(timeline.tick(), rules.countdown, fixed.timestep());
     info!(
         "Race of {laps} laps on the {} track starts in {} s, on tick {}",
         track.name(),
         rules.countdown.as_secs_f32().ceil() as u32,
-        start.0
+        start.0.0
     );
     commands.spawn((
         RaceStatus::Countdown(whole_seconds(rules.countdown)),
-        RaceStart(start),
+        start,
         track,
         DespawnOnExit(PHASE),
         Replicate::to_clients(NetworkTarget::All),
@@ -316,13 +295,12 @@ fn end_race(
     }));
 }
 
-/// What the middle of the screen shows during `status`. `just_started` is whether the race began a
-/// moment ago, to show "GO!".
-pub fn status_label(status: RaceStatus, just_started: bool) -> String {
+/// What the middle of the screen shows during `status`: how long the race has left once someone
+/// has finished. The countdown before the start is the shared one (see
+/// [`countdown`](crate::minigames::countdown)).
+pub fn status_label(status: RaceStatus) -> String {
     match status {
-        RaceStatus::Countdown(seconds) => seconds.max(1).to_string(),
-        RaceStatus::Racing if just_started => "GO!".into(),
-        RaceStatus::Racing => String::new(),
+        RaceStatus::Countdown(_) | RaceStatus::Racing => String::new(),
         RaceStatus::Finishing(seconds) => format!("Race ends in {seconds}"),
     }
 }
@@ -377,12 +355,11 @@ mod tests {
     use bevy::math::Vec2;
     use lightyear::prelude::PeerId;
 
-    use lightyear::prelude::Tick;
-
     use super::{
-        Car, FastestLap, RaceDirector, RaceRules, RaceStart, RaceStatus, countdown_ticks,
-        lap_time_label, race_placements, race_summary, status_label,
+        Car, FastestLap, RaceDirector, RaceRules, RaceStatus, lap_time_label, race_placements,
+        race_summary, status_label,
     };
+    use crate::minigames::countdown::countdown_ticks;
     use crate::minigames::racing::progress::RaceProgress;
     use crate::minigames::racing::track::TrackId;
 
@@ -479,14 +456,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn cars_drive_from_the_start_tick_on() {
-        let start = RaceStart(Tick(100));
-        assert!(!start.cars_may_drive(Tick(99)));
-        assert!(start.cars_may_drive(Tick(100)));
-        assert!(start.cars_may_drive(Tick(5000)));
-    }
-
+    /// The race's status turns to [`RaceStatus::Racing`] on the race's
+    /// [`StartTick`](crate::minigames::countdown::StartTick), when the cars may first drive.
     #[test]
     fn the_countdown_timer_finishes_on_the_start_tick() {
         // At 128 Hz and at 60 Hz, where a tick isn't a whole number of nanoseconds.
@@ -552,14 +523,10 @@ mod tests {
     }
 
     #[test]
-    fn the_status_label_counts_down_then_says_go() {
-        assert_eq!(status_label(RaceStatus::Countdown(3), false), "3");
-        assert_eq!(status_label(RaceStatus::Countdown(0), false), "1");
-        assert_eq!(status_label(RaceStatus::Racing, true), "GO!");
-        assert_eq!(status_label(RaceStatus::Racing, false), "");
-        assert_eq!(
-            status_label(RaceStatus::Finishing(7), false),
-            "Race ends in 7"
-        );
+    fn the_status_label_only_shows_the_time_left_after_a_finish() {
+        // The shared countdown shows the start.
+        assert_eq!(status_label(RaceStatus::Countdown(3)), "");
+        assert_eq!(status_label(RaceStatus::Racing), "");
+        assert_eq!(status_label(RaceStatus::Finishing(7)), "Race ends in 7");
     }
 }

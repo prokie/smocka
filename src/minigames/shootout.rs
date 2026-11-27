@@ -17,6 +17,7 @@ pub use visuals::ShootoutVisualsPlugin;
 
 use bevy::prelude::*;
 
+use super::countdown::has_started;
 use super::settings::{Setting, SettingId};
 use super::{Minigame, MinigameInfo};
 use crate::session::SessionPhase;
@@ -88,6 +89,18 @@ impl Plugin for ShootoutPlugin {
             )
                 .chain()
                 .run_if(in_state(PHASE)),
+        );
+        // Nobody walks or shoots, and the pickup and sudden-death clocks wait, until the
+        // countdown is over. The rest keeps running, so a shootout can still be abandoned then.
+        app.configure_sets(
+            FixedUpdate,
+            (
+                ShootoutSystems::Walk,
+                ShootoutSystems::Pickups,
+                ShootoutSystems::Fire,
+                ShootoutSystems::Zone,
+            )
+                .distributive_run_if(has_started),
         );
     }
 }
