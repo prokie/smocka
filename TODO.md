@@ -36,11 +36,7 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
         resizable shapes, with edges smoothed by the camera's MSAA (on by default, 4 samples).
 
 ## Playing with friends
-
-- **Downloadable builds** (`.github/workflows/release.yml`, zips on a `v*` tag):
-  - [ ] Linux builds come from `ubuntu-latest`, so they need a recent glibc. If a friend's distro
-        is too old, build on an older Ubuntu image.
-  - [ ] Intel Macs: add an `x86_64-apple-darwin` build if a friend needs it.
+- [ ] Intel Macs: add an `x86_64-apple-darwin` build if a friend needs it.
 - [ ] **Playing over the internet without port forwarding.** Today the host forwards UDP port
       5000 (documented in the README). Alternatives: a relay server, or Steam networking.
       Lightyear 0.31 ships `lightyear_steam` and `lightyear_p2p` crates (not looked into yet).

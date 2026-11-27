@@ -38,7 +38,9 @@ impl TestApp {
     /// A new app hosting a session on `addr`.
     pub fn host(addr: SocketAddr) -> Self {
         let mut app = Self::new();
-        HostSession { addr }.apply(app.0.world_mut());
+        HostSession { addr }
+            .apply(app.0.world_mut())
+            .expect("failed to host session");
         app
     }
 

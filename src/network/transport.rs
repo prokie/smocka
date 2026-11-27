@@ -9,7 +9,8 @@ use lightyear::prelude::{
     server::{self, ServerUdpIo, Start, Started, Stop},
     *,
 };
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::io::ErrorKind;
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
 
 /// Old server and host-client entities are only removed here, not when leaving, so their goodbye
 /// packets have time to be sent.
@@ -17,6 +18,13 @@ use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 /// A joining client is never removed: Lightyear stores client-side resources (such as the
 /// prediction manager) on it, so it must live as long as the app. [`JoinSession`] reuses it.
 fn start_new_session(world: &mut World) {
+    despawn_old_session(world);
+    enter_connecting(world);
+}
+
+/// Despawn the previous session's server and host client. This also closes the old server's
+/// socket, so hosting again on the same port works.
+fn despawn_old_session(world: &mut World) {
     let old: Vec<Entity> = world
         .query_filtered::<Entity, (
             Or<(With<Server>, (With<Client>, With<LinkOf>))>,
@@ -27,6 +35,9 @@ fn start_new_session(world: &mut World) {
     for entity in old {
         world.despawn(entity);
     }
+}
+
+fn enter_connecting(world: &mut World) {
     if let Some(mut reason) = world.get_resource_mut::<SessionEndReason>() {
         reason.0 = None;
     }
@@ -35,18 +46,49 @@ fn start_new_session(world: &mut World) {
     }
 }
 
+/// Check that a UDP socket can be bound to `addr` right now, then release it.
+///
+/// Lightyear can't report a failed bind: its `LinkStart` observer returns the error, which Bevy's
+/// default error handler turns into a panic. Even without the panic, the netcode server would
+/// still be `Started`, leaving the host in a lobby nobody can join.
+fn check_can_bind(addr: SocketAddr) -> std::io::Result<()> {
+    UdpSocket::bind(addr).map(drop)
+}
+
+/// The main-menu message for a failed [`check_can_bind`].
+fn describe_host_error(error: &std::io::Error, addr: SocketAddr) -> String {
+    let port = addr.port();
+    match error.kind() {
+        ErrorKind::AddrInUse => format!("Port {port} is in use. Is the game already hosting?"),
+        _ => format!("Couldn't host on port {port}."),
+    }
+}
+
 /// Command: start a server on `addr` and a local client in this process.
+///
+/// If `addr` can't be bound (another copy of the game is hosting, say), the app stays in the menu
+/// and [`SessionEndReason`] says why. Queue it with
+/// `commands.queue_handled(HostSession { addr }, warn)`: a plain `commands.queue` panics on error.
 #[derive(Debug, Clone, Copy)]
 pub struct HostSession {
     pub addr: SocketAddr,
 }
 
 impl Command for HostSession {
-    type Out = ();
+    type Out = Result;
 
-    fn apply(self, world: &mut World) {
-        start_new_session(world);
+    fn apply(self, world: &mut World) -> Result {
         let addr = self.addr;
+        // Before checking the port, so a previous session's server on the same port lets go of it.
+        despawn_old_session(world);
+        if let Err(error) = check_can_bind(addr) {
+            if let Some(mut reason) = world.get_resource_mut::<SessionEndReason>() {
+                reason.0 = Some(describe_host_error(&error, addr));
+            }
+            return Err(format!("Not hosting: can't bind {addr}: {error}").into());
+        }
+        enter_connecting(world);
+
         let server_config = server::NetcodeConfig {
             // We bind to `0.0.0.0`, which Lightyear only matches against loopback addresses in a
             // connect token, so with the check on, joins over LAN (`192.168.x.y`) get ignored.
@@ -76,6 +118,7 @@ impl Command for HostSession {
         world.trigger(Connect { entity: client });
 
         info!("Hosting on {addr}");
+        Ok(())
     }
 }
 
@@ -201,7 +244,38 @@ pub fn close_session(
 
 #[cfg(test)]
 mod tests {
-    use super::new_client_id;
+    use super::{check_can_bind, describe_host_error, new_client_id};
+    use std::io::{Error, ErrorKind};
+    use std::net::UdpSocket;
+
+    #[test]
+    fn a_taken_port_cant_be_bound() {
+        let taken = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let error = check_can_bind(taken.local_addr().unwrap()).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::AddrInUse);
+    }
+
+    #[test]
+    fn checking_a_free_port_releases_it() {
+        let addr = UdpSocket::bind("127.0.0.1:0")
+            .and_then(|socket| socket.local_addr())
+            .unwrap();
+        check_can_bind(addr).unwrap();
+        check_can_bind(addr).unwrap();
+    }
+
+    #[test]
+    fn a_port_in_use_suggests_the_game_is_already_hosting() {
+        let addr = "0.0.0.0:5000".parse().unwrap();
+        assert_eq!(
+            describe_host_error(&Error::from(ErrorKind::AddrInUse), addr),
+            "Port 5000 is in use. Is the game already hosting?"
+        );
+        assert_eq!(
+            describe_host_error(&Error::from(ErrorKind::PermissionDenied), addr),
+            "Couldn't host on port 5000."
+        );
+    }
 
     #[test]
     fn client_ids_differ_between_joins() {

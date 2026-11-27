@@ -118,7 +118,9 @@ fn named_pair(host_name: &str, joiner_name: &str) -> (TestApp, TestApp) {
     host.0.world_mut().insert_resource(LocalProfile {
         name: host_name.into(),
     });
-    smocka::network::HostSession { addr }.apply(host.0.world_mut());
+    smocka::network::HostSession { addr }
+        .apply(host.0.world_mut())
+        .unwrap();
     let mut client = TestApp::join_as(addr, joiner_name);
     update_until(&mut [&mut host, &mut client], |apps| {
         apps.iter_mut().all(|app| app.players() == 2)

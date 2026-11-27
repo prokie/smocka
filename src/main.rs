@@ -104,8 +104,8 @@ fn main() {
 
     app.add_systems(Startup, move |mut commands: Commands| match launch {
         Launch::Menu => {}
-        Launch::Host => commands.queue(HostSession { addr: HOST_ADDR }),
         // A failure stays in the main menu, which shows why.
+        Launch::Host => commands.queue_handled(HostSession { addr: HOST_ADDR }, warn),
         Launch::Join(addr) => commands.queue_handled(JoinSession { addr }, warn),
     });
 

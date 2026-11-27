@@ -11,6 +11,7 @@ mod widgets;
 
 pub use main_menu::{AddressInput, MenuMessage, NameInput};
 
+use bevy::ecs::error::warn;
 use bevy::input_focus::tab_navigation::TabNavigationPlugin;
 use bevy::prelude::*;
 use bevy::text::EditableText;
@@ -143,7 +144,8 @@ fn on_menu_button(
         return;
     };
     match button {
-        MenuButton::Host => commands.queue(HostSession { addr: HOST_ADDR }),
+        // A failure leaves the app in this menu, and `show_session_end_reason` shows why.
+        MenuButton::Host => commands.queue_handled(HostSession { addr: HOST_ADDR }, warn),
         MenuButton::Join => {
             let typed = address
                 .single()

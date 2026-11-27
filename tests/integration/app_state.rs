@@ -20,6 +20,37 @@ fn an_app_starts_in_the_menu_without_a_session() {
 }
 
 #[test]
+fn hosting_on_a_port_another_game_holds_stays_in_the_menu() {
+    let addr = free_addr();
+    let mut first = TestApp::host(addr);
+    update_until(&mut [&mut first], |apps| {
+        apps[0].app_state() == AppState::InSession
+    });
+
+    let mut second = TestApp::new();
+    assert!(HostSession { addr }.apply(second.0.world_mut()).is_err());
+    for _ in 0..10 {
+        second.0.update();
+    }
+
+    assert_eq!(second.app_state(), AppState::MainMenu);
+    assert_eq!(
+        second.end_reason().as_deref(),
+        Some(
+            format!(
+                "Port {} is in use. Is the game already hosting?",
+                addr.port()
+            )
+            .as_str()
+        )
+    );
+    assert_eq!(second.connected_clients(), 0);
+    // The first game's session carries on.
+    first.0.update();
+    assert_eq!(first.app_state(), AppState::InSession);
+}
+
+#[test]
 fn hosting_enters_a_session_in_the_lobby() {
     let mut host = TestApp::host(free_addr());
 
@@ -92,7 +123,7 @@ fn a_host_can_leave_and_host_again_on_the_same_port() {
         apps[0].app_state() == AppState::MainMenu && apps[0].players() == 0
     });
 
-    HostSession { addr }.apply(host.0.world_mut());
+    HostSession { addr }.apply(host.0.world_mut()).unwrap();
     let mut client = TestApp::join(addr);
     update_until(&mut [&mut host, &mut client], |apps| {
         apps.iter_mut()
@@ -173,7 +204,7 @@ fn a_former_joiner_can_host() {
     });
 
     let addr = free_addr();
-    HostSession { addr }.apply(player.0.world_mut());
+    HostSession { addr }.apply(player.0.world_mut()).unwrap();
     let mut joiner = TestApp::join(addr);
     update_until(&mut [&mut player, &mut joiner], |apps| {
         apps.iter_mut()
