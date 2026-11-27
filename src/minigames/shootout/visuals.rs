@@ -1,8 +1,12 @@
-//! Local-only sprites for the shootout: the arena, and a sprite per gunner turned the way it aims.
+//! Local-only sprites and cursor for the shootout: the arena, a sprite per gunner turned the way
+//! it aims, and a crosshair cursor while this player controls a gunner.
 
 use bevy::prelude::*;
+use bevy::window::{CursorIcon, CursorSystems, PrimaryWindow, SystemCursorIcon};
+use lightyear::prelude::input::native::InputMarker;
 
 use super::PHASE;
+use super::ShootoutInput;
 use super::config::GUNNER_RADIUS;
 use super::gunner::{Gunner, GunnerState};
 use crate::camera::gameplay_camera_2d;
@@ -30,6 +34,7 @@ pub struct ShootoutVisualsPlugin;
 impl Plugin for ShootoutVisualsPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(PHASE), (spawn_camera, spawn_arena));
+        app.add_systems(OnExit(PHASE), reset_cursor);
         app.add_observer(add_gunner_sprite);
         app.add_systems(
             FixedFirst,
@@ -37,8 +42,10 @@ impl Plugin for ShootoutVisualsPlugin {
         );
         app.add_systems(
             PostUpdate,
-            sync_gunner_transform
-                .before(TransformSystems::Propagate)
+            (
+                sync_gunner_transform.before(TransformSystems::Propagate),
+                update_crosshair_cursor.before(CursorSystems::Update),
+            )
                 .run_if(in_state(PHASE)),
         );
     }
@@ -90,5 +97,73 @@ fn sync_gunner_transform(
         transform.translation.x = shown.position.x;
         transform.translation.y = shown.position.y;
         transform.rotation = Quat::from_rotation_z(shown.aim);
+    }
+}
+
+/// Show a crosshair cursor while this player controls a gunner, and the normal cursor while
+/// watching.
+fn update_crosshair_cursor(
+    own_gunner: Query<(), With<InputMarker<ShootoutInput>>>,
+    window: Single<(Entity, Option<&CursorIcon>), With<PrimaryWindow>>,
+    mut commands: Commands,
+) {
+    let (window, cursor) = *window;
+    let crosshair = CursorIcon::System(SystemCursorIcon::Crosshair);
+    if !own_gunner.is_empty() {
+        if cursor != Some(&crosshair) {
+            commands.entity(window).insert(crosshair);
+        }
+    } else if cursor.is_some() {
+        commands.entity(window).remove::<CursorIcon>();
+    }
+}
+
+/// Put the normal cursor back when leaving the shootout.
+fn reset_cursor(
+    window: Single<(Entity, Option<&CursorIcon>), With<PrimaryWindow>>,
+    mut commands: Commands,
+) {
+    let (window, cursor) = *window;
+    if cursor.is_some() {
+        commands.entity(window).remove::<CursorIcon>();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bevy::ecs::system::RunSystemOnce;
+    use bevy::prelude::*;
+    use bevy::window::{CursorIcon, PrimaryWindow, SystemCursorIcon};
+    use lightyear::prelude::input::native::InputMarker;
+
+    use super::{reset_cursor, update_crosshair_cursor};
+    use crate::minigames::shootout::ShootoutInput;
+
+    #[test]
+    fn crosshair_is_shown_only_while_controlling_a_gunner_and_reset_on_exit() {
+        let mut world = World::new();
+        let window = world.spawn((Window::default(), PrimaryWindow)).id();
+
+        // A spectator (no controlled gunner) keeps the default cursor.
+        world.run_system_once(update_crosshair_cursor).unwrap();
+        assert_eq!(world.get::<CursorIcon>(window), None);
+
+        // Once this player has a controlled gunner, the cursor becomes a crosshair.
+        let gunner = world.spawn(InputMarker::<ShootoutInput>::default()).id();
+        world.run_system_once(update_crosshair_cursor).unwrap();
+        assert_eq!(
+            world.get::<CursorIcon>(window),
+            Some(&CursorIcon::System(SystemCursorIcon::Crosshair))
+        );
+
+        // Leaving the shootout restores the normal cursor.
+        world.run_system_once(reset_cursor).unwrap();
+        assert_eq!(world.get::<CursorIcon>(window), None);
+
+        // If the player stops controlling a gunner mid-round, the cursor also resets.
+        world.run_system_once(update_crosshair_cursor).unwrap();
+        world.despawn(gunner);
+        world.run_system_once(update_crosshair_cursor).unwrap();
+        assert_eq!(world.get::<CursorIcon>(window), None);
     }
 }

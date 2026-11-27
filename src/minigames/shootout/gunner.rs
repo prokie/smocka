@@ -53,10 +53,15 @@ impl Ease for GunnerState {
     }
 }
 
+/// Wrap `angle` into `-π..π`.
+pub fn normalize_angle(angle: f32) -> f32 {
+    (angle + PI).rem_euclid(TAU) - PI
+}
+
 /// From `start` to `end` the short way round, `t` of the way (0 to 1). In `-π..π`.
 pub fn lerp_angle(start: f32, end: f32, t: f32) -> f32 {
-    let turn = (end - start + PI).rem_euclid(TAU) - PI;
-    (start + turn * t + PI).rem_euclid(TAU) - PI
+    let turn = normalize_angle(end - start);
+    normalize_angle(start + turn * t)
 }
 
 /// Registers the replicated gunner components and spawns the gunners.
@@ -124,14 +129,22 @@ fn spawn_gunners(
 
 #[cfg(test)]
 mod tests {
-    use std::f32::consts::{FRAC_PI_2, PI};
+    use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
     use bevy::math::Vec2;
 
-    use super::{GunnerState, lerp_angle};
+    use super::{GunnerState, lerp_angle, normalize_angle};
 
     fn close(a: f32, b: f32) -> bool {
         (a - b).abs() < 1e-5
+    }
+
+    #[test]
+    fn angles_wrap_into_range() {
+        assert!(close(normalize_angle(0.0), 0.0));
+        assert!(close(normalize_angle(TAU + FRAC_PI_2), FRAC_PI_2));
+        assert!(close(normalize_angle(-TAU - FRAC_PI_2), -FRAC_PI_2));
+        assert!(close(normalize_angle(PI), -PI));
     }
 
     #[test]

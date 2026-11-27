@@ -1,5 +1,5 @@
-//! Walking: gunners move at a fixed speed in eight directions, and slide along the border wall and
-//! the cover rather than going through.
+//! Walking and aiming: gunners move at a fixed speed in eight directions, slide along the border
+//! wall and cover rather than going through, and turn toward their input's aim.
 
 use bevy::prelude::*;
 use lightyear::prelude::input::native::ActionState;
@@ -42,17 +42,17 @@ fn walk_gunners(
     }
 }
 
-/// The gunner's state after walking for `dt` seconds with `input`. Diagonals are no faster than
-/// straight lines. A pure function, so Lightyear can re-run it during rollback.
+/// The gunner's state after walking and aiming for `dt` seconds with `input`. Diagonals are no
+/// faster than straight lines. A pure function, so Lightyear can re-run it during rollback.
 pub fn walk(state: GunnerState, input: ShootoutInput, dt: f32) -> GunnerState {
     let step = input.walk().normalize_or_zero() * GUNNER_SPEED * dt;
-    if step == Vec2::ZERO {
-        return state;
-    }
-    GunnerState {
-        position: keep_out_of_walls(state.position + step),
-        ..state
-    }
+    let position = if step == Vec2::ZERO {
+        state.position
+    } else {
+        keep_out_of_walls(state.position + step)
+    };
+    let aim = input.aim_angle().unwrap_or(state.aim);
+    GunnerState { position, aim }
 }
 
 /// The nearest place to `position` where a gunner fits: inside the border wall, and out of every
@@ -115,6 +115,8 @@ fn out_of_block(position: Vec2, block: Rect) -> Vec2 {
 
 #[cfg(test)]
 mod tests {
+    use std::f32::consts::FRAC_PI_2;
+
     use bevy::math::Vec2;
 
     use super::{keep_out_of_walls, walk};
@@ -127,7 +129,11 @@ mod tests {
     const DT: f32 = 1.0 / 128.0;
 
     fn input(walk_x: i8, walk_y: i8) -> ShootoutInput {
-        ShootoutInput { walk_x, walk_y }
+        ShootoutInput {
+            walk_x,
+            walk_y,
+            aim: None,
+        }
     }
 
     fn at(x: f32, y: f32) -> GunnerState {
@@ -158,6 +164,41 @@ mod tests {
     fn stands_still_without_input() {
         let start = at(-30.0, 120.0);
         assert_eq!(walk(start, ShootoutInput::default(), DT), start);
+    }
+
+    #[test]
+    fn turns_to_aim_even_while_standing_still() {
+        let start = at(50.0, 100.0);
+        let turned = walk(
+            start,
+            ShootoutInput {
+                aim: Some(FRAC_PI_2),
+                ..ShootoutInput::default()
+            },
+            DT,
+        );
+        assert_eq!(turned.position, start.position);
+        assert!((turned.aim - FRAC_PI_2).abs() < 1e-5, "{}", turned.aim);
+    }
+
+    #[test]
+    fn keeps_its_aim_when_input_has_none_or_nan() {
+        let start = GunnerState {
+            position: Vec2::new(50.0, 100.0),
+            aim: FRAC_PI_2,
+        };
+        assert_eq!(walk(start, ShootoutInput::default(), DT), start);
+        assert_eq!(
+            walk(
+                start,
+                ShootoutInput {
+                    aim: Some(f32::NAN),
+                    ..ShootoutInput::default()
+                },
+                DT,
+            ),
+            start
+        );
     }
 
     #[test]

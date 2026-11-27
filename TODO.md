@@ -4,9 +4,9 @@
 
 A top-down last-one-standing shooter with mouse or right-stick aim and fast, dodgeable paint
 balls, built a step at a time (`minigames/shootout/`). Done: the arena, a gunner per player,
-and walking it with WASD / arrows / left stick, blocked by the walls and cover.
+walking it with WASD / arrows / left stick (blocked by the walls and cover), and aiming with the
+mouse (crosshair cursor) or the right stick.
 
-- [ ] Aiming: the mouse (crosshair cursor) or the right stick.
 - [ ] Shooting: a Fire control (mouse buttons bindable too) that shoots a paint ball, fast (start
       at ~600 units/s) but dodgeable. The host moves every ball each tick and checks the stretch it
       covered against the walls and gunners (like Pong's ball against the paddles), so speed can't

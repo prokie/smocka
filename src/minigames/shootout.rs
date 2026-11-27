@@ -1,6 +1,7 @@
 //! Shootout: a top-down free-for-all in an arena with cover. The last player standing wins.
 //!
-//! Built a step at a time. So far: the arena, and a gunner per player that walks around it.
+//! Built a step at a time. So far: the arena, and a gunner per player that walks and aims around
+//! it.
 
 pub mod config;
 pub mod gunner;
@@ -34,7 +35,7 @@ pub const INFO: MinigameInfo = MinigameInfo {
 /// The order the shootout's game logic runs in each `FixedUpdate` tick.
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ShootoutSystems {
-    /// Walk the gunners from this tick's input.
+    /// Walk and aim the gunners from this tick's input.
     Walk,
 }
 
