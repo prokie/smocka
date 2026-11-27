@@ -13,8 +13,9 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use super::config::{
-    BOOST_MAX_SPEED, BOOST_PAD_LENGTH, BOOST_PAD_WIDTH, CHECKPOINT_DEPTH, CHECKPOINT_MARGIN,
-    GRASS_MAX_SPEED, GRID_LANE_OFFSET, GRID_ROW_SPACING,
+    BOOST_MAX_SPEED, BOOST_PAD_LENGTH, BOOST_PAD_WIDTH, CAR_LENGTH, CHECKPOINT_DEPTH,
+    CHECKPOINT_MARGIN, GRASS_MAX_SPEED, GRID_LANE_OFFSET, GRID_ROW_SPACING, TRACK_HEIGHT,
+    TRACK_WIDTH,
 };
 use crate::config::network::TICK_RATE;
 
@@ -119,6 +120,9 @@ const fn right(radius: f32, degrees: f32) -> Piece {
 /// A track as data. Keep `tools/make_art.py`'s copy in step, then redraw the art.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Layout {
+    /// Size of the track area (and its art) in world units, centred on `(0, 0)`. Larger than the
+    /// virtual screen so the camera pans as you drive.
+    pub size: Vec2,
     /// The middle of the start/finish line, where [`pieces`](Self::pieces) start and end.
     pub start_line: Vec2,
     /// Which way cars face on the grid, along the start straight, in radians anticlockwise from
@@ -133,100 +137,112 @@ pub struct Layout {
     pub pieces: &'static [Piece],
     /// Where the centre line crosses itself, if it does.
     pub crossing: Option<Vec2>,
-    /// Its art, which covers the whole screen.
+    /// Its art, which covers [`size`](Self::size).
     pub image: &'static str,
     /// Racing's picture on its lobby tile while this track is picked (see
     /// [`Minigame::thumbnail`](crate::minigames::Minigame::thumbnail)).
     pub thumbnail: &'static str,
 }
 
-/// A figure of eight: tight and technical, with braking for a dip into the infield and two
-/// hairpins. Where the line crosses itself, the start straight runs across the road coming down
-/// from the top of the screen, so cars meet side-on there.
+/// A figure of eight: sweeping bends, a dip into the infield and a tight hairpin. Where the line
+/// crosses itself, the start straight runs across the road coming down from the top of the track,
+/// so cars meet side-on there.
 pub const FIGURE_EIGHT: Layout = Layout {
-    start_line: Vec2::new(-60.0, -40.0),
+    size: Vec2::new(TRACK_WIDTH, TRACK_HEIGHT),
+    start_line: Vec2::new(-120.0, -80.0),
     start_heading: 0.0,
-    road_half_width: 24.0,
+    road_half_width: 32.0,
     pieces: &FIGURE_EIGHT_PIECES,
-    crossing: Some(Vec2::new(50.0, -40.0)),
+    crossing: Some(Vec2::new(100.0, -80.0)),
     image: "minigames/racing/figure_eight.png",
     thumbnail: "minigames/racing/figure_eight_thumbnail.png",
 };
 
-const FIGURE_EIGHT_PIECES: [Piece; 35] = [
+const FIGURE_EIGHT_PIECES: [Piece; 39] = [
     Piece::Checkpoint,
-    // The start straight, across the crossing.
-    Piece::Straight(280.0),
-    left(45.0, 90.0),
+    // The start straight, across the crossing, with a boost past it.
+    Piece::Straight(320.0),
+    Piece::BoostPad { offset: 14.0 },
+    Piece::Straight(240.0),
+    left(90.0, 90.0),
     Piece::Checkpoint,
-    Piece::Straight(85.0),
-    left(45.0, 90.0),
-    Piece::Straight(20.0),
+    Piece::Straight(170.0),
+    left(90.0, 90.0),
+    Piece::Straight(40.0),
     // The dip: down into the infield and back up, with a checkpoint at the bottom so it can't
     // be skipped across the grass.
-    left(25.0, 90.0),
-    Piece::Straight(20.0),
-    right(32.0, 90.0),
+    left(50.0, 90.0),
+    Piece::Straight(40.0),
+    right(64.0, 90.0),
     Piece::Checkpoint,
-    right(32.0, 90.0),
-    Piece::Straight(20.0),
-    left(25.0, 90.0),
+    right(64.0, 90.0),
+    Piece::Straight(40.0),
+    left(50.0, 90.0),
     // The top straight, into the hairpin: a boost on the inside, if you can still make the
     // hairpin after it.
-    Piece::Straight(40.0),
-    Piece::BoostPad { offset: 10.0 },
-    Piece::Straight(266.0),
-    left(32.0, 90.0),
+    Piece::Straight(120.0),
+    Piece::BoostPad { offset: 14.0 },
+    Piece::Straight(492.0),
+    left(64.0, 90.0),
     Piece::Checkpoint,
-    left(32.0, 90.0),
+    left(64.0, 90.0),
     // Back across, and down through the crossing, with a boost on the right.
-    Piece::Straight(60.0),
-    Piece::BoostPad { offset: -10.0 },
-    Piece::Straight(170.0),
-    right(40.0, 90.0),
-    Piece::Straight(106.0),
+    Piece::Straight(120.0),
+    Piece::BoostPad { offset: -14.0 },
+    Piece::Straight(340.0),
+    right(80.0, 90.0),
+    Piece::Straight(212.0),
     Piece::Checkpoint,
-    Piece::Straight(15.0),
+    Piece::Straight(30.0),
     // The bottom loop, back onto the start straight.
-    right(50.0, 90.0),
-    Piece::Straight(105.0),
+    right(100.0, 90.0),
+    Piece::Straight(210.0),
     Piece::Checkpoint,
-    Piece::Straight(105.0),
-    right(50.0, 90.0),
-    Piece::Checkpoint,
-    right(50.0, 90.0),
+    Piece::Straight(60.0),
+    Piece::BoostPad { offset: 14.0 },
     Piece::Straight(150.0),
+    right(100.0, 90.0),
+    Piece::Checkpoint,
+    right(100.0, 90.0),
+    Piece::Straight(300.0),
 ];
 
-/// A wide oval, raced anticlockwise: flat out all the way round, so it's all about bumping.
+/// A wide oval, raced anticlockwise: flat out all the way round, so it's all about slipstreaming
+/// and bumping.
 pub const OVAL: Layout = Layout {
-    start_line: Vec2::new(0.0, -130.0),
+    size: Vec2::new(TRACK_WIDTH, TRACK_HEIGHT),
+    start_line: Vec2::new(0.0, -260.0),
     start_heading: 0.0,
-    road_half_width: 30.0,
+    road_half_width: 40.0,
     pieces: &OVAL_PIECES,
     crossing: None,
     image: "minigames/racing/oval.png",
     thumbnail: "minigames/racing/oval_thumbnail.png",
 };
 
-const OVAL_PIECES: [Piece; 15] = [
+const OVAL_PIECES: [Piece; 18] = [
     Piece::Checkpoint,
-    Piece::Straight(140.0),
-    left(130.0, 90.0),
+    // A boost past the start line on the inside...
+    Piece::Straight(100.0),
+    Piece::BoostPad { offset: 18.0 },
+    Piece::Straight(180.0),
+    left(260.0, 90.0),
     Piece::Checkpoint,
-    // A boost on the outside of the bend...
-    Piece::BoostPad { offset: -14.0 },
-    left(130.0, 90.0),
-    // ...and one on the inside of the top straight.
-    Piece::Straight(50.0),
-    Piece::BoostPad { offset: 14.0 },
-    Piece::Straight(90.0),
+    // ...one on the outside of the right bend...
+    Piece::BoostPad { offset: -18.0 },
+    left(260.0, 90.0),
+    // ...one on the inside of the top straight...
+    Piece::Straight(100.0),
+    Piece::BoostPad { offset: 18.0 },
+    Piece::Straight(180.0),
     Piece::Checkpoint,
-    Piece::Straight(140.0),
-    left(130.0, 90.0),
+    Piece::Straight(280.0),
+    left(260.0, 90.0),
     Piece::Checkpoint,
-    left(130.0, 90.0),
-    Piece::Straight(140.0),
+    // ...and one on the outside of the left bend.
+    Piece::BoostPad { offset: -18.0 },
+    left(260.0, 90.0),
+    Piece::Straight(280.0),
 ];
 
 /// A strip across the road that a car must be seen in for its lap to count: [`CHECKPOINT_DEPTH`]
@@ -322,6 +338,17 @@ pub struct Track {
 impl Track {
     pub fn layout(&self) -> &'static Layout {
         self.layout
+    }
+
+    /// Size of the track area in world units, centred on `(0, 0)`.
+    pub fn size(&self) -> Vec2 {
+        self.layout.size
+    }
+
+    /// The furthest a car centre may get from `(0, 0)`, sideways and up or down. Keeps the whole
+    /// car inside the track area whichever way it points.
+    pub fn car_bounds(&self) -> Vec2 {
+        self.layout.size / 2.0 - Vec2::splat(CAR_LENGTH / 2.0)
     }
 
     /// The surface at `position`.
@@ -484,7 +511,8 @@ impl Track {
         segment.point(along - segment.along)
     }
 
-    fn distance_from_centre_line(&self, position: Vec2) -> f32 {
+    /// Distance from `position` to the nearest point on the track's centre line.
+    pub fn distance_from_centre_line(&self, position: Vec2) -> f32 {
         self.segments
             .iter()
             .map(|segment| segment.distance_to(position))
@@ -589,8 +617,7 @@ mod tests {
 
     use super::{Piece, Surface, Track, TrackId};
     use crate::minigames::racing::config::{
-        CAR_LENGTH, CAR_MAX_X, CAR_MAX_Y, CAR_WIDTH, CHECKPOINT_DEPTH, CHECKPOINT_MARGIN,
-        GRID_SLOTS,
+        CAR_LENGTH, CAR_WIDTH, CHECKPOINT_DEPTH, CHECKPOINT_MARGIN, GRID_SLOTS,
     };
 
     /// The least grass between two stretches of road that aren't the same bit of track, so
@@ -659,9 +686,9 @@ mod tests {
     }
 
     #[test]
-    fn a_car_anywhere_on_the_road_is_on_screen() {
-        let limit = Vec2::new(CAR_MAX_X, CAR_MAX_Y);
+    fn a_car_anywhere_on_the_road_is_in_bounds() {
         for (id, track) in tracks() {
+            let limit = track.car_bounds();
             for offset in [-half_width(track), half_width(track)] {
                 for point in track.outline(offset, 2.0) {
                     assert!(point.abs().cmple(limit).all(), "{id:?} at {point}");
@@ -748,17 +775,17 @@ mod tests {
         let figure_eight = TrackId::FigureEight.track();
         for point in [
             // Inside the loop at the top right, and the one at the bottom left.
-            Vec2::new(150.0, 0.0),
-            Vec2::new(-120.0, -90.0),
+            Vec2::new(300.0, 0.0),
+            Vec2::new(-240.0, -180.0),
             // Between the top straight and the straight back from the hairpin.
-            Vec2::new(-100.0, 103.0),
+            Vec2::new(-200.0, 206.0),
             // Across the top of the dip: driving straight on past it leaves the road.
-            Vec2::new(143.0, 135.0),
+            Vec2::new(286.0, 270.0),
         ] {
             assert_eq!(figure_eight.surface_at(point), Surface::Grass, "{point}");
         }
         let oval = TrackId::Oval.track();
-        for point in [Vec2::ZERO, Vec2::new(0.0, -99.0), Vec2::new(0.0, -161.0)] {
+        for point in [Vec2::ZERO, Vec2::new(0.0, -219.0), Vec2::new(0.0, -301.0)] {
             assert_eq!(oval.surface_at(point), Surface::Grass, "{point}");
         }
     }
@@ -853,8 +880,9 @@ mod tests {
     #[test]
     fn checkpoints_dont_overlap() {
         for (id, track) in tracks() {
-            for x in (-320..=320).step_by(2) {
-                for y in (-180..=180).step_by(2) {
+            let half = (track.size() / 2.0).as_ivec2();
+            for x in (-half.x..=half.x).step_by(4) {
+                for y in (-half.y..=half.y).step_by(4) {
                     let point = Vec2::new(x as f32, y as f32);
                     let count = track
                         .checkpoints()
@@ -955,17 +983,17 @@ mod tests {
     }
 
     #[test]
-    fn the_oval_keeps_its_old_shape() {
-        // A stadium: straights at y = ±130 from x = -140 to 140, bends of radius 130 round each
-        // end, and the road 60 wide.
+    fn the_oval_is_a_wide_stadium() {
+        // A stadium: straights at y = ±260 from x = -280 to 280, bends of radius 260 round each
+        // end, and the road 80 wide.
         let oval = TrackId::Oval.track();
         for (point, expected) in [
-            (Vec2::new(0.0, -101.0), Surface::Road),
-            (Vec2::new(0.0, -159.0), Surface::Road),
-            (Vec2::new(140.0 + 101.0, 0.0), Surface::Road),
-            (Vec2::new(-140.0 - 159.0, 0.0), Surface::Road),
-            (Vec2::new(0.0, 99.0), Surface::Grass),
-            (Vec2::new(140.0 + 120.0, 120.0), Surface::Grass),
+            (Vec2::new(0.0, -221.0), Surface::Road),
+            (Vec2::new(0.0, -299.0), Surface::Road),
+            (Vec2::new(280.0 + 221.0, 0.0), Surface::Road),
+            (Vec2::new(-280.0 - 299.0, 0.0), Surface::Road),
+            (Vec2::new(0.0, 219.0), Surface::Grass),
+            (Vec2::new(280.0 + 240.0, 240.0), Surface::Grass),
         ] {
             assert_eq!(oval.surface_at(point), expected, "{point}");
         }

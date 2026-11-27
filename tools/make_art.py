@@ -28,6 +28,8 @@ ART_SCALE: Final[int] = 3  # config::display::ART_SCALE
 SUPERSAMPLE: Final[int] = 4
 VIEW_W: Final[float] = 640.0  # config::display::VIEW_WIDTH
 VIEW_H: Final[float] = 360.0  # config::display::VIEW_HEIGHT
+TRACK_W: Final[float] = 2.0 * VIEW_W  # minigames::racing::config::TRACK_WIDTH
+TRACK_H: Final[float] = 2.0 * VIEW_H  # minigames::racing::config::TRACK_HEIGHT
 
 # Keep in step with minigames::racing::config.
 GRID_ROW: Final[float] = 24.0  # GRID_ROW_SPACING
@@ -42,6 +44,7 @@ class TrackLayout:
     """Keep in step with minigames::racing::track::Layout."""
 
     name: str  # the art's file name, in assets/minigames/racing/
+    size: tuple[float, float]
     start_line: tuple[float, float]
     road_half_width: float
     # Its pieces, leaving out the checkpoints and boost pads (the game draws those): ("straight",
@@ -55,52 +58,57 @@ class TrackLayout:
 # Keep in step with minigames::racing::track: FIGURE_EIGHT and OVAL.
 FIGURE_EIGHT: Final[TrackLayout] = TrackLayout(
     name="figure_eight",
-    start_line=(-60.0, -40.0),
-    road_half_width=24.0,
-    crossing=(50.0, -40.0),
+    size=(TRACK_W, TRACK_H),
+    start_line=(-120.0, -80.0),
+    road_half_width=32.0,
+    crossing=(100.0, -80.0),
     pieces=[
-        ("straight", 280.0),
-        ("turn", 45.0, 90.0),
-        ("straight", 85.0),
-        ("turn", 45.0, 90.0),
-        ("straight", 20.0),
-        ("turn", 25.0, 90.0),
-        ("straight", 20.0),
-        ("turn", 32.0, -90.0),
-        ("turn", 32.0, -90.0),
-        ("straight", 20.0),
-        ("turn", 25.0, 90.0),
-        ("straight", 40.0),
-        ("straight", 266.0),
-        ("turn", 32.0, 90.0),
-        ("turn", 32.0, 90.0),
-        ("straight", 60.0),
+        ("straight", 320.0),
+        ("straight", 240.0),
+        ("turn", 90.0, 90.0),
         ("straight", 170.0),
-        ("turn", 40.0, -90.0),
-        ("straight", 106.0),
-        ("straight", 15.0),
-        ("turn", 50.0, -90.0),
-        ("straight", 105.0),
-        ("straight", 105.0),
-        ("turn", 50.0, -90.0),
-        ("turn", 50.0, -90.0),
+        ("turn", 90.0, 90.0),
+        ("straight", 40.0),
+        ("turn", 50.0, 90.0),
+        ("straight", 40.0),
+        ("turn", 64.0, -90.0),
+        ("turn", 64.0, -90.0),
+        ("straight", 40.0),
+        ("turn", 50.0, 90.0),
+        ("straight", 120.0),
+        ("straight", 492.0),
+        ("turn", 64.0, 90.0),
+        ("turn", 64.0, 90.0),
+        ("straight", 120.0),
+        ("straight", 340.0),
+        ("turn", 80.0, -90.0),
+        ("straight", 212.0),
+        ("straight", 30.0),
+        ("turn", 100.0, -90.0),
+        ("straight", 210.0),
+        ("straight", 60.0),
         ("straight", 150.0),
+        ("turn", 100.0, -90.0),
+        ("turn", 100.0, -90.0),
+        ("straight", 300.0),
     ],
 )
 OVAL: Final[TrackLayout] = TrackLayout(
     name="oval",
-    start_line=(0.0, -130.0),
-    road_half_width=30.0,
+    size=(TRACK_W, TRACK_H),
+    start_line=(0.0, -260.0),
+    road_half_width=40.0,
     pieces=[
-        ("straight", 140.0),
-        ("turn", 130.0, 90.0),
-        ("turn", 130.0, 90.0),
-        ("straight", 50.0),
-        ("straight", 90.0),
-        ("straight", 140.0),
-        ("turn", 130.0, 90.0),
-        ("turn", 130.0, 90.0),
-        ("straight", 140.0),
+        ("straight", 100.0),
+        ("straight", 180.0),
+        ("turn", 260.0, 90.0),
+        ("turn", 260.0, 90.0),
+        ("straight", 100.0),
+        ("straight", 180.0),
+        ("straight", 280.0),
+        ("turn", 260.0, 90.0),
+        ("turn", 260.0, 90.0),
+        ("straight", 280.0),
     ],
 )
 TRACKS: Final[list[TrackLayout]] = [FIGURE_EIGHT, OVAL]
@@ -200,10 +208,17 @@ THUMBNAIL_SPRITE_SCALE: Final[float] = 2.5
 class Canvas:
     """A `width` x `height` drawing area in world units, y up, with (0, 0) in the middle."""
 
-    def __init__(self, width: float, height: float, background: RGBA = (0, 0, 0, 0)) -> None:
+    def __init__(
+        self,
+        width: float,
+        height: float,
+        background: RGBA = (0, 0, 0, 0),
+        supersample: int = SUPERSAMPLE,
+    ) -> None:
         self.width = width
         self.height = height
-        self.scale = ART_SCALE * SUPERSAMPLE
+        self.supersample = supersample
+        self.scale = ART_SCALE * supersample
         size = (round(width * self.scale), round(height * self.scale))
         self.image = Image.new("RGBA", size, background)
         self.draw = ImageDraw.Draw(self.image)
@@ -362,31 +377,33 @@ def box_junction(canvas: Canvas, crossing: tuple[float, float], half: float) -> 
     """Yellow criss-cross lines over the square where the road crosses itself, so it reads as a
     crossing at a glance. The square is `half` either side of `crossing`."""
     cx, cy = crossing
-    hatch = Canvas(VIEW_W, VIEW_H)
+    inset = 3.0
+    inner = half - inset
+    hatch = Canvas(2 * inner, 2 * inner, supersample=canvas.supersample)
     spacing = 8.0
-    reach = 2 * half
+    reach = 2 * inner
     steps = math.ceil(reach / spacing)
     for i in range(-steps, steps + 1):
         d = i * spacing
-        hatch.line(cx + d - reach, cy - reach, cx + d + reach, cy + reach, BOX_JUNCTION, 1.0)
-        hatch.line(cx + d - reach, cy + reach, cx + d + reach, cy - reach, BOX_JUNCTION, 1.0)
-    inset = 3.0
-    box = [round(v) for v in canvas.box(cx - half + inset, cy - half + inset, cx + half - inset, cy + half - inset)]
-    canvas.image.alpha_composite(hatch.image.crop(box), (box[0], box[1]))
-    canvas.rect(cx - half + inset, cy - half + inset, cx + half - inset, cy + half - inset,
+        hatch.line(d - reach, -reach, d + reach, reach, BOX_JUNCTION, 1.0)
+        hatch.line(d - reach, reach, d + reach, -reach, BOX_JUNCTION, 1.0)
+    left, top = canvas.point(cx - inner, cy + inner)
+    canvas.image.alpha_composite(hatch.image, (round(left), round(top)))
+    canvas.rect(cx - inner, cy - inner, cx + inner, cy + inner,
                 None, outline=BOX_JUNCTION, width=1.2)
 
 
 def draw_track(track: TrackLayout) -> None:
     assert track.start_heading == 0.0, "the start line and grid are only drawn facing right"
     half_width = track.road_half_width
-    canvas = Canvas(VIEW_W, VIEW_H)
+    track_w, track_h = track.size
+    canvas = Canvas(track_w, track_h, supersample=2)
 
     # Grass with mowing stripes.
     stripe = 20.0
-    for i in range(math.ceil(VIEW_W / stripe)):
-        x0 = -VIEW_W / 2 + i * stripe
-        canvas.rect(x0, -VIEW_H / 2, x0 + stripe, VIEW_H / 2, (GRASS_A, GRASS_B)[i % 2])
+    for i in range(math.ceil(track_w / stripe)):
+        x0 = -track_w / 2 + i * stripe
+        canvas.rect(x0, -track_h / 2, x0 + stripe, track_h / 2, (GRASS_A, GRASS_B)[i % 2])
 
     # Dark edges all round, then the bends' kerbs, then the road over everything, so where the
     # road crosses itself it runs straight over the other stretch's edges.
@@ -699,15 +716,22 @@ def tinted(sprite: Image.Image, tint: tuple[float, float, float]) -> Image.Image
     return ImageChops.multiply(sprite, colour)
 
 
-def place(base: Image.Image, sprite: Image.Image, x: float, y: float, degrees: float = 0.0) -> None:
-    """Draw `sprite` on `base` (a full-screen piece of art) centred on world point (`x`, `y`),
-    turned `degrees` anticlockwise, and THUMBNAIL_SPRITE_SCALE times its size."""
-    size = (round(sprite.width * THUMBNAIL_SPRITE_SCALE), round(sprite.height * THUMBNAIL_SPRITE_SCALE))
+def place(
+    base: Image.Image,
+    sprite: Image.Image,
+    x: float,
+    y: float,
+    degrees: float = 0.0,
+    scale: float = THUMBNAIL_SPRITE_SCALE,
+) -> None:
+    """Draw `sprite` on `base` centred on world point (`x`, `y`), turned `degrees` anticlockwise,
+    and `scale` times its size."""
+    size = (round(sprite.width * scale), round(sprite.height * scale))
     sprite = sprite.resize(size, Image.Resampling.LANCZOS)
     if degrees:
         sprite = sprite.rotate(degrees, resample=Image.Resampling.BICUBIC, expand=True)
-    left = (x + VIEW_W / 2) * ART_SCALE - sprite.width / 2
-    top = (VIEW_H / 2 - y) * ART_SCALE - sprite.height / 2
+    left = base.width / 2 + x * ART_SCALE - sprite.width / 2
+    top = base.height / 2 - y * ART_SCALE - sprite.height / 2
     base.alpha_composite(sprite, (round(left), round(top)))
 
 
@@ -751,19 +775,20 @@ def draw_racing_thumbnails() -> None:
     car = Image.open(folder / "car.png").convert("RGBA")
     for track in TRACKS:
         base = Image.open(folder / f"{track.name}.png").convert("RGBA")
+        scale = THUMBNAIL_SPRITE_SCALE * (track.size[0] / VIEW_W)
         sx, sy = track.start_line
         lanes = (sy + GRID_LANE, sy - GRID_LANE)
         if track.crossing:
             # Three cars on the start straight, heading into the crossing, and a fourth coming
             # down at them.
             cx, cy = track.crossing
-            cars = [(5.0, lanes[0], 0.0), (-45.0, lanes[1], 0.0), (-95.0, lanes[0], 0.0),
-                    (cx, cy + 62.0, -90.0)]
+            cars = [(10.0, lanes[0], 0.0), (-90.0, lanes[1], 0.0), (-190.0, lanes[0], 0.0),
+                    (cx, cy + 124.0, -90.0)]
         else:
             # Four cars racing along the start straight, past the line.
-            cars = [(sx + x, lanes[i % 2], 0.0) for i, x in enumerate((110.0, 60.0, 5.0, -50.0))]
+            cars = [(sx + x, lanes[i % 2], 0.0) for i, x in enumerate((220.0, 120.0, 10.0, -100.0))]
         for tint, (x, y, degrees) in zip(PLAYER_TINTS, cars):
-            place(base, tinted(car, tint), x, y, degrees)
+            place(base, tinted(car, tint), x, y, degrees, scale=scale)
         save_thumbnail(base, folder / f"{track.name}_thumbnail.png")
 
 

@@ -370,13 +370,14 @@ mod tests {
         let pointing = (transform.rotation * Vec3::X).truncate();
         assert!(pointing.angle_to(Vec2::from_angle(next.heading())).abs() < 1e-3);
         // Spread across the road, the middle one in the middle.
+        let spacing = 2.0 * track().layout().road_half_width / MARKER_CHEVRONS as f32;
         let mut across: Vec<f32> = world
             .query_filtered::<&Transform, With<MarkerChevron>>()
             .iter(&world)
             .map(|transform| transform.translation.y)
             .collect();
         across.sort_by(f32::total_cmp);
-        assert_eq!(across, [-16.0, 0.0, 16.0]);
+        assert_eq!(across, [-spacing, 0.0, spacing]);
         assert_eq!(message(&mut world), "");
     }
 

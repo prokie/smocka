@@ -1,8 +1,10 @@
 mod boost_visuals;
 pub mod bumps;
+mod camera;
 pub mod car;
 mod checkpoint_guide;
 pub mod config;
+mod minimap;
 pub mod progress;
 pub mod race;
 mod racing_input;

@@ -30,12 +30,11 @@ pub const TURN_RATE: f32 = 3.5;
 /// The speed (either way) at which steering reaches its full [`TURN_RATE`].
 pub const FULL_STEER_SPEED: f32 = 60.0;
 
-/// The furthest a car centre may get from the middle of the screen, sideways and up or
-/// down. Keeps the whole car on screen whichever way it points.
-pub const CAR_MAX_X: f32 = VIEW_WIDTH / 2.0 - CAR_LENGTH / 2.0;
-/// See [`CAR_MAX_X`].
-pub const CAR_MAX_Y: f32 = VIEW_HEIGHT / 2.0 - CAR_LENGTH / 2.0;
-/// A car pushing against the edge of the screen goes no faster than this, so it can still
+/// Default track world width: twice the virtual screen, so the camera pans as you drive.
+pub const TRACK_WIDTH: f32 = 2.0 * VIEW_WIDTH;
+/// Default track world height. See [`TRACK_WIDTH`].
+pub const TRACK_HEIGHT: f32 = 2.0 * VIEW_HEIGHT;
+/// A car pushing against the edge of the track goes no faster than this, so it can still
 /// turn away from it.
 pub const EDGE_MAX_SPEED: f32 = 40.0;
 

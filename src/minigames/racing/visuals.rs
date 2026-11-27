@@ -5,16 +5,16 @@ use super::LAPS_SETTING;
 use super::PHASE;
 use super::RacingInput;
 use super::boost_visuals::BoostVisualsPlugin;
+use super::camera::RacingCameraPlugin;
 use super::car::{Car, CarState};
 use super::checkpoint_guide::CheckpointGuidePlugin;
 use super::config::{CAR_LENGTH, CAR_WIDTH};
+use super::minimap::MinimapPlugin;
 use super::progress::{RaceProgress, lap_label, position_label, running_order};
 use super::race::{RaceStatus, status_label};
 use super::skid_marks::SkidMarksPlugin;
 use super::sounds::RacingSoundsPlugin;
 use super::track::TrackId;
-use crate::camera::gameplay_camera_2d;
-use crate::config::display::{VIEW_HEIGHT, VIEW_WIDTH};
 use crate::minigames::settings::PublishedSettings;
 use crate::minigames::smoothing::{Smoothed, remember_previous_tick, smoothed};
 use crate::players::player_color;
@@ -39,7 +39,8 @@ const LAP_TEXT_MARGIN: f32 = 16.0;
 /// How long the race has left, in the middle of the screen, in screen pixels.
 const STATUS_TEXT_SIZE: f32 = 72.0;
 
-/// The race's track art, which covers the whole screen (see [`Layout::image`](super::track::Layout::image)).
+/// The race's track art, sized to [`Layout::size`](super::track::Layout::size) (see
+/// [`Layout::image`](super::track::Layout::image)).
 #[derive(Component)]
 pub struct TrackSprite;
 
@@ -66,6 +67,8 @@ pub struct RacingVisualsPlugin;
 impl Plugin for RacingVisualsPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((
+            RacingCameraPlugin,
+            MinimapPlugin,
             SkidMarksPlugin,
             RacingSoundsPlugin,
             CheckpointGuidePlugin,
@@ -74,12 +77,7 @@ impl Plugin for RacingVisualsPlugin {
         app.init_resource::<TrackGizmos>();
         app.add_systems(
             OnEnter(PHASE),
-            (
-                spawn_camera,
-                spawn_lap_text,
-                spawn_position_text,
-                spawn_status_text,
-            ),
+            (spawn_lap_text, spawn_position_text, spawn_status_text),
         );
         app.add_observer(add_car_sprite);
         app.add_systems(
@@ -108,12 +106,6 @@ impl Plugin for RacingVisualsPlugin {
     }
 }
 
-/// The whole track fits on screen.
-fn spawn_camera(mut commands: Commands) {
-    debug!("Spawning the racing camera");
-    commands.spawn(gameplay_camera_2d(PHASE, VIEW_WIDTH, VIEW_HEIGHT));
-}
-
 /// Draw the race's track once its [`TrackId`] is known: at once on the host, and on a joiner when
 /// the race's entity arrives.
 fn spawn_track(
@@ -128,13 +120,14 @@ fn spawn_track(
     if !drawn.is_empty() {
         return;
     }
+    let layout = track.layout();
     debug!("Drawing the {} track", track.name());
     commands.spawn((
         TrackSprite,
         DespawnOnExit(PHASE),
         Sprite {
-            custom_size: Some(Vec2::new(VIEW_WIDTH, VIEW_HEIGHT)),
-            ..Sprite::from_image(assets.load(track.layout().image))
+            custom_size: Some(layout.size),
+            ..Sprite::from_image(assets.load(layout.image))
         },
         Transform::from_xyz(0.0, 0.0, TRACK_Z),
     ));

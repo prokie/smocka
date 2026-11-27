@@ -11,8 +11,9 @@ use lightyear::prelude::{Interpolated, PeerId, Rollback};
 
 use super::PHASE;
 use super::RacingSystems;
-use super::car::{Car, CarState, on_screen};
+use super::car::{Car, CarState, in_bounds};
 use super::config::{BOOST_MAX_SPEED, BUMP_RESTITUTION, CAR_LENGTH, CAR_WIDTH, MAX_REVERSE_SPEED};
+use super::track::TrackId;
 use crate::config::network::TICK_RATE;
 
 // A car's outline is a capsule along its length, so it must be longer than it is wide.
@@ -88,18 +89,18 @@ pub fn contact(a: CarState, b: CarState) -> Option<Contact> {
 }
 
 /// Cars `a` and `b` after bumping into each other, if they touch. They're pushed apart until they
-/// only just touch, each going half the way (as far as the edge of the screen lets it). If they
-/// were closing on each other, they bounce apart like equal weights, at [`BUMP_RESTITUTION`]
+/// only just touch, each going half the way (as far as `bounds`, the track's edges, let it). If
+/// they were closing on each other, they bounce apart like equal weights, at [`BUMP_RESTITUTION`]
 /// times the speed they came together at.
-pub fn bump(a: CarState, b: CarState) -> Option<Bump> {
+pub fn bump(a: CarState, b: CarState, bounds: Vec2) -> Option<Bump> {
     let Contact { normal, depth } = contact(a, b)?;
     let push = normal * (depth / 2.0);
     let mut a = CarState {
-        position: on_screen(a.position + push),
+        position: in_bounds(a.position + push, bounds),
         ..a
     };
     let mut b = CarState {
-        position: on_screen(b.position - push),
+        position: in_bounds(b.position - push, bounds),
         ..b
     };
     let impact = (b.velocity() - a.velocity()).dot(*normal).max(0.0);
@@ -172,10 +173,14 @@ fn closest_points((p1, q1): (Vec2, Vec2), (p2, q2): (Vec2, Vec2)) -> (Vec2, Vec2
 /// already done that for, so they do neither.
 fn bump_cars(
     rollback: Option<Res<Rollback>>,
+    track: Option<Single<&TrackId>>,
     mut cars: Query<(Entity, &Car, &mut CarState), Without<Interpolated>>,
     mut touching: Local<Vec<(Entity, Entity)>>,
     mut commands: Commands,
 ) {
+    let Some(bounds) = track.map(|id| id.track().car_bounds()) else {
+        return;
+    };
     let mut order: Vec<(PeerId, Entity)> = cars
         .iter()
         .map(|(entity, car, _)| (car.owner, entity))
@@ -189,7 +194,7 @@ fn bump_cars(
             else {
                 continue;
             };
-            let Some(bump) = bump(*a, *b) else {
+            let Some(bump) = bump(*a, *b, bounds) else {
                 continue;
             };
             a.set_if_neq(bump.a);
@@ -222,12 +227,18 @@ mod tests {
     use bevy::prelude::*;
     use lightyear::prelude::{Interpolated, PeerId};
 
-    use super::{Bump, bump, bump_cars, contact};
+    use super::{Bump, bump_cars, contact};
     use crate::minigames::racing::car::{Car, CarState};
     use crate::minigames::racing::config::{
-        BOOST_MAX_SPEED, BUMP_RESTITUTION, CAR_LENGTH, CAR_MAX_X, CAR_WIDTH, MAX_REVERSE_SPEED,
-        MAX_SPEED,
+        BOOST_MAX_SPEED, BUMP_RESTITUTION, CAR_LENGTH, CAR_WIDTH, MAX_REVERSE_SPEED, MAX_SPEED,
     };
+    use crate::minigames::racing::track::TrackId;
+
+    const BOUNDS: Vec2 = Vec2::new(632.0, 352.0);
+
+    fn bump(a: CarState, b: CarState) -> Option<Bump> {
+        super::bump(a, b, BOUNDS)
+    }
 
     /// A car at (`x`, `y`) facing `heading`, going `speed` along it.
     fn car(x: f32, y: f32, heading: f32, speed: f32) -> CarState {
@@ -386,16 +397,17 @@ mod tests {
     }
 
     #[test]
-    fn a_bump_never_pushes_a_car_off_screen() {
-        let at_edge = car(CAR_MAX_X, 0.0, 0.0, 0.0);
-        let bumped = bump(at_edge, car(CAR_MAX_X - 12.0, 0.0, 0.0, 0.0)).unwrap();
-        assert_eq!(bumped.a.position.x, CAR_MAX_X);
+    fn a_bump_never_pushes_a_car_out_of_bounds() {
+        let at_edge = car(BOUNDS.x, 0.0, 0.0, 0.0);
+        let bumped = bump(at_edge, car(BOUNDS.x - 12.0, 0.0, 0.0, 0.0)).unwrap();
+        assert_eq!(bumped.a.position.x, BOUNDS.x);
     }
 
     /// Run `bump_cars` once on `cars`, each given as its driver's number, its state, and whether
     /// it's interpolated, and return their states after.
     fn run_bump_cars(cars: &[(u64, CarState, bool)]) -> Vec<CarState> {
         let mut world = World::new();
+        world.spawn(TrackId::default());
         let entities: Vec<Entity> = cars
             .iter()
             .map(|&(driver, state, interpolated)| {

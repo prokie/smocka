@@ -8,10 +8,10 @@ use serde::{Deserialize, Serialize};
 use super::PHASE;
 use super::RacingSystems;
 use super::config::{
-    ACCELERATION, BOOST_ACCELERATION, BOOST_MAX_SPEED, BOOST_TIME, BRAKE_DECELERATION, CAR_MAX_X,
-    CAR_MAX_Y, COAST_DECELERATION, EDGE_MAX_SPEED, FULL_STEER_SPEED, GRASS_DECELERATION,
-    MAX_REVERSE_SPEED, MAX_SPEED, OVERSPEED_DECELERATION, REVERSE_ACCELERATION, SLIDE_DECELERATION,
-    SLIPSTREAM_LINGER, SLIPSTREAM_MAX_SPEED, TURN_RATE,
+    ACCELERATION, BOOST_ACCELERATION, BOOST_MAX_SPEED, BOOST_TIME, BRAKE_DECELERATION,
+    COAST_DECELERATION, EDGE_MAX_SPEED, FULL_STEER_SPEED, GRASS_DECELERATION, MAX_REVERSE_SPEED,
+    MAX_SPEED, OVERSPEED_DECELERATION, REVERSE_ACCELERATION, SLIDE_DECELERATION, SLIPSTREAM_LINGER,
+    SLIPSTREAM_MAX_SPEED, TURN_RATE,
 };
 use super::progress::RaceProgress;
 use super::race::picked_track;
@@ -264,15 +264,22 @@ fn drive_cars(
             current,
             input,
             track.surface_at(current.position),
+            track.car_bounds(),
             time.delta_secs(),
         );
         state.set_if_neq(next);
     }
 }
 
-/// The car's state after driving for `dt` seconds with `input` on `surface`, its boost and
-/// slipstream wearing off. A pure function, so Lightyear can re-run it during rollback.
-pub fn drive(state: CarState, input: RacingInput, surface: Surface, dt: f32) -> CarState {
+/// The car's state after driving for `dt` seconds with `input` on `surface` inside `bounds`, its
+/// boost and slipstream wearing off. A pure function, so Lightyear can re-run it during rollback.
+pub fn drive(
+    state: CarState,
+    input: RacingInput,
+    surface: Surface,
+    bounds: Vec2,
+    dt: f32,
+) -> CarState {
     let boosted = state.boost > 0.0;
     // A boost pushes the car on unless the brake is held.
     let throttle = input.throttle || (boosted && !input.brake);
@@ -324,14 +331,14 @@ pub fn drive(state: CarState, input: RacingInput, surface: Surface, dt: f32) -> 
 
     let mut slide = approach_zero_vec(state.slide, SLIDE_DECELERATION * dt);
     let moved = state.position + (Vec2::from_angle(heading) * speed + slide) * dt;
-    let position = on_screen(moved);
+    let position = in_bounds(moved, bounds);
     if position != moved {
         speed = speed.clamp(-EDGE_MAX_SPEED, EDGE_MAX_SPEED);
         // The edge also stops a slide across it.
-        if moved.x.abs() > CAR_MAX_X {
+        if moved.x.abs() > bounds.x {
             slide.x = 0.0;
         }
-        if moved.y.abs() > CAR_MAX_Y {
+        if moved.y.abs() > bounds.y {
             slide.y = 0.0;
         }
     }
@@ -346,10 +353,9 @@ pub fn drive(state: CarState, input: RacingInput, surface: Surface, dt: f32) -> 
     }
 }
 
-/// `position`, moved back on screen if a car centred there would be partly off it.
-pub fn on_screen(position: Vec2) -> Vec2 {
-    let limit = Vec2::new(CAR_MAX_X, CAR_MAX_Y);
-    position.clamp(-limit, limit)
+/// `position`, clamped inside `-bounds..=bounds` so the car never leaves the track area.
+pub fn in_bounds(position: Vec2, bounds: Vec2) -> Vec2 {
+    position.clamp(-bounds, bounds)
 }
 
 fn approach_zero(speed: f32, amount: f32) -> f32 {
@@ -387,16 +393,20 @@ mod tests {
 
     use lightyear::prelude::{LocalTimeline, Tick};
 
-    use super::{CarState, RacingInput, StartTick, drive, drive_cars, lerp_angle, wrap_angle};
+    use super::{CarState, RacingInput, StartTick, drive_cars, lerp_angle, wrap_angle};
     use crate::minigames::racing::config::{
-        BOOST_MAX_SPEED, BOOST_TIME, CAR_MAX_X, EDGE_MAX_SPEED, GRASS_MAX_SPEED, MAX_REVERSE_SPEED,
-        MAX_SPEED, OVERSPEED_DECELERATION, SLIDE_DECELERATION, SLIPSTREAM_LINGER,
-        SLIPSTREAM_MAX_SPEED,
+        BOOST_MAX_SPEED, BOOST_TIME, EDGE_MAX_SPEED, GRASS_MAX_SPEED, MAX_REVERSE_SPEED, MAX_SPEED,
+        OVERSPEED_DECELERATION, SLIDE_DECELERATION, SLIPSTREAM_LINGER, SLIPSTREAM_MAX_SPEED,
     };
     use crate::minigames::racing::race::RaceStatus;
     use crate::minigames::racing::track::{Surface, TrackId};
 
     const DT: f32 = 1.0 / 128.0;
+    const BOUNDS: Vec2 = Vec2::new(632.0, 352.0);
+
+    fn drive(state: CarState, input: RacingInput, surface: Surface, dt: f32) -> CarState {
+        super::drive(state, input, surface, BOUNDS, dt)
+    }
 
     const THROTTLE: RacingInput = RacingInput {
         throttle: true,
@@ -479,13 +489,13 @@ mod tests {
     }
 
     #[test]
-    fn the_car_stays_on_screen_and_slows_at_the_edge() {
+    fn the_car_stays_in_bounds_and_slows_at_the_edge() {
         let state = CarState {
             speed: MAX_SPEED,
-            ..CarState::parked(Vec2::new(CAR_MAX_X, 0.0), 0.0)
+            ..CarState::parked(Vec2::new(BOUNDS.x, 0.0), 0.0)
         };
         let state = drive(state, THROTTLE, Surface::Road, DT);
-        assert_eq!(state.position.x, CAR_MAX_X);
+        assert_eq!(state.position.x, BOUNDS.x);
         assert_eq!(state.speed, EDGE_MAX_SPEED);
     }
 
@@ -530,10 +540,10 @@ mod tests {
     fn the_edge_stops_a_slide_across_it() {
         let state = CarState {
             slide: Vec2::new(100.0, 50.0),
-            ..CarState::parked(Vec2::new(CAR_MAX_X, 0.0), FRAC_PI_2)
+            ..CarState::parked(Vec2::new(BOUNDS.x, 0.0), FRAC_PI_2)
         };
         let state = drive(state, COAST, Surface::Road, DT);
-        assert_eq!(state.position.x, CAR_MAX_X);
+        assert_eq!(state.position.x, BOUNDS.x);
         assert_eq!(state.slide.x, 0.0);
         assert!(
             state.slide.y > 0.0,
@@ -592,10 +602,10 @@ mod tests {
         assert!(state.speed < MAX_SPEED, "{state:?}");
     }
 
-    /// A car going `speed` from the left edge of the screen, with room to go fast for a while.
+    /// A car going `speed` from the left edge of the track, with room to go fast for a while.
     fn at_the_left_edge(state: CarState) -> CarState {
         CarState {
-            position: Vec2::new(-CAR_MAX_X, 0.0),
+            position: Vec2::new(-BOUNDS.x, 0.0),
             ..state
         }
     }
@@ -796,7 +806,7 @@ mod tests {
     fn cars_drive_on_the_races_own_track() {
         // On the oval's left bend, which is grass on the figure of eight.
         let spot = CarState {
-            position: Vec2::new(-270.0, 0.0),
+            position: Vec2::new(-540.0, 0.0),
             ..moving(150.0)
         };
         let speed_on = |track: TrackId| {
