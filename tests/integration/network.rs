@@ -5,19 +5,19 @@ use std::time::Duration;
 use bevy::prelude::*;
 use lightyear::prelude::*;
 
-use crate::common::{TestApp, connected_pair, free_addr, update_until, update_until_within};
+use crate::common::{TestApp, connected_pair, update_until, update_until_within};
 
 #[test]
 fn host_connects_its_local_client() {
-    let mut host = TestApp::host(free_addr());
+    let mut host = TestApp::host();
 
     update_until(&mut [&mut host], |apps| apps[0].connected_clients() == 1);
 }
 
 #[test]
 fn client_joins_host() {
-    let addr = free_addr();
-    let mut host = TestApp::host(addr);
+    let mut host = TestApp::host();
+    let addr = host.host_addr();
     let mut client = TestApp::join(addr);
 
     // The host sees the joiner as a remote link, and the joiner's client is connected.

@@ -8,7 +8,7 @@ use smocka::app_state::AppState;
 use smocka::network::{HostSession, JoinSession};
 use smocka::session::SessionPhase;
 
-use crate::common::{TestApp, connected_pair, free_addr, update_until, update_until_within};
+use crate::common::{TestApp, connected_pair, silent_addr, update_until, update_until_within};
 
 #[test]
 fn an_app_starts_in_the_menu_without_a_session() {
@@ -21,8 +21,8 @@ fn an_app_starts_in_the_menu_without_a_session() {
 
 #[test]
 fn hosting_on_a_port_another_game_holds_stays_in_the_menu() {
-    let addr = free_addr();
-    let mut first = TestApp::host(addr);
+    let mut first = TestApp::host();
+    let addr = first.host_addr();
     update_until(&mut [&mut first], |apps| {
         apps[0].app_state() == AppState::InSession
     });
@@ -52,7 +52,7 @@ fn hosting_on_a_port_another_game_holds_stays_in_the_menu() {
 
 #[test]
 fn hosting_enters_a_session_in_the_lobby() {
-    let mut host = TestApp::host(free_addr());
+    let mut host = TestApp::host();
 
     update_until(&mut [&mut host], |apps| {
         apps[0].app_state() == AppState::InSession && apps[0].phase() == Some(SessionPhase::Lobby)
@@ -112,8 +112,8 @@ fn when_the_host_leaves_everyone_goes_back_to_the_menu() {
 
 #[test]
 fn a_host_can_leave_and_host_again_on_the_same_port() {
-    let addr = free_addr();
-    let mut host = TestApp::host(addr);
+    let mut host = TestApp::host();
+    let addr = host.host_addr();
     update_until(&mut [&mut host], |apps| {
         apps[0].app_state() == AppState::InSession && apps[0].players() == 1
     });
@@ -133,7 +133,9 @@ fn a_host_can_leave_and_host_again_on_the_same_port() {
 
 #[test]
 fn joining_where_nobody_hosts_goes_back_to_the_menu_with_an_error() {
-    let mut client = TestApp::join(free_addr());
+    // Kept until the test ends, so nobody can start hosting at `addr` meanwhile.
+    let (_silent, addr) = silent_addr();
+    let mut client = TestApp::join(addr);
     update_until(&mut [&mut client], |apps| {
         apps[0].app_state() == AppState::Connecting
     });
@@ -163,8 +165,8 @@ fn a_joiner_can_join_a_new_session_after_the_host_left() {
     });
     drop(old_host);
 
-    let addr = free_addr();
-    let mut new_host = TestApp::host(addr);
+    let mut new_host = TestApp::host();
+    let addr = new_host.host_addr();
     JoinSession { addr }.apply(client.0.world_mut()).unwrap();
     update_until(&mut [&mut new_host, &mut client], |apps| {
         apps.iter_mut()
@@ -203,8 +205,7 @@ fn a_former_joiner_can_host() {
         apps[1].app_state() == AppState::MainMenu
     });
 
-    let addr = free_addr();
-    HostSession { addr }.apply(player.0.world_mut()).unwrap();
+    let addr = player.start_hosting();
     let mut joiner = TestApp::join(addr);
     update_until(&mut [&mut player, &mut joiner], |apps| {
         apps.iter_mut()
@@ -214,7 +215,7 @@ fn a_former_joiner_can_host() {
 
 #[test]
 fn a_former_host_can_join() {
-    let mut player = TestApp::host(free_addr());
+    let mut player = TestApp::host();
     update_until(&mut [&mut player], |apps| {
         apps[0].app_state() == AppState::InSession
     });
@@ -223,8 +224,8 @@ fn a_former_host_can_join() {
         apps[0].app_state() == AppState::MainMenu
     });
 
-    let addr = free_addr();
-    let mut host = TestApp::host(addr);
+    let mut host = TestApp::host();
+    let addr = host.host_addr();
     JoinSession { addr }.apply(player.0.world_mut()).unwrap();
     update_until(&mut [&mut host, &mut player], |apps| {
         apps.iter_mut()

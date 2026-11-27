@@ -15,9 +15,7 @@ use smocka::players::Player;
 use smocka::session::SessionPhase;
 use smocka::standings::Points;
 
-use crate::common::{
-    TestApp, connected_pair, free_addr, pair_in_pong, update_until, update_until_within,
-};
+use crate::common::{TestApp, connected_pair, pair_in_pong, update_until, update_until_within};
 
 /// Number of paddles and balls this app can see.
 fn pong_entities(app: &mut TestApp) -> usize {
@@ -62,7 +60,7 @@ fn wait_a_bit(apps: &mut [&mut TestApp]) {
 
 #[test]
 fn a_lone_host_cannot_start() {
-    let mut host = TestApp::host(free_addr());
+    let mut host = TestApp::host();
     update_until(&mut [&mut host], |apps| apps[0].players() == 1);
 
     host.start_minigame(Minigame::TwoPlayerPong);

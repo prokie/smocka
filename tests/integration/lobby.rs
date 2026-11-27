@@ -7,11 +7,11 @@ use smocka::app_state::AppState;
 use smocka::players::PickColor;
 use smocka::profile::LocalProfile;
 
-use crate::common::{TestApp, connected_pair, free_addr, update_until, update_until_within};
+use crate::common::{TestApp, connected_pair, update_until, update_until_within};
 
 #[test]
 fn host_has_a_player_for_itself() {
-    let mut host = TestApp::host(free_addr());
+    let mut host = TestApp::host();
 
     update_until(&mut [&mut host], |apps| apps[0].players() == 1);
 }
@@ -113,14 +113,11 @@ fn the_host_ending_the_session_is_not_a_player_leaving() {
 
 /// Host as `host_name` and join as `joiner_name`, and wait until both see both players.
 fn named_pair(host_name: &str, joiner_name: &str) -> (TestApp, TestApp) {
-    let addr = free_addr();
     let mut host = TestApp::new();
     host.0.world_mut().insert_resource(LocalProfile {
         name: host_name.into(),
     });
-    smocka::network::HostSession { addr }
-        .apply(host.0.world_mut())
-        .unwrap();
+    let addr = host.start_hosting();
     let mut client = TestApp::join_as(addr, joiner_name);
     update_until(&mut [&mut host, &mut client], |apps| {
         apps.iter_mut().all(|app| app.players() == 2)

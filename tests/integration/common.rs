@@ -1,9 +1,10 @@
 //! Shared test harness: headless apps that run real networking over localhost UDP.
 
-use std::net::{SocketAddr, UdpSocket};
+use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
 use std::time::{Duration, Instant};
 
 use bevy::prelude::*;
+use lightyear::prelude::server::ServerUdpIo;
 use lightyear::prelude::*;
 use smocka::SmockaPlugin;
 use smocka::app_state::{AppState, SessionEndReason};
@@ -41,13 +42,37 @@ impl TestApp {
         Self(app)
     }
 
-    /// A new app hosting a session on `addr`.
-    pub fn host(addr: SocketAddr) -> Self {
+    /// A new app hosting a session on a free port. [`host_addr`](Self::host_addr) says which.
+    pub fn host() -> Self {
         let mut app = Self::new();
-        HostSession { addr }
-            .apply(app.0.world_mut())
-            .expect("failed to host session");
+        app.start_hosting();
         app
+    }
+
+    /// Host a session from this app, on a free localhost port the OS picks as the host binds it,
+    /// and return the address to join it at.
+    ///
+    /// Picking a free port first and hosting on it after would leave a moment in between when a
+    /// test running at the same time could take the port, and hosting would fail.
+    pub fn start_hosting(&mut self) -> SocketAddr {
+        let any_port = SocketAddr::from((Ipv4Addr::LOCALHOST, 0));
+        HostSession { addr: any_port }
+            .apply(self.0.world_mut())
+            .expect("failed to host session");
+        self.host_addr()
+    }
+
+    /// The address this app's host listens on: the port the OS gave it.
+    pub fn host_addr(&mut self) -> SocketAddr {
+        let addr = self
+            .0
+            .world_mut()
+            .query_filtered::<&LocalAddr, With<ServerUdpIo>>()
+            .single(self.0.world())
+            .expect("this app should be hosting")
+            .0;
+        assert_ne!(addr.port(), 0, "the host should have bound its port");
+        addr
     }
 
     /// A new app joining the session at `addr`.
@@ -197,11 +222,12 @@ impl TestApp {
     }
 }
 
-/// Ask the OS for a free localhost UDP port, so tests don't collide with each other or a running game.
-pub fn free_addr() -> SocketAddr {
-    UdpSocket::bind("127.0.0.1:0")
-        .and_then(|socket| socket.local_addr())
-        .expect("failed to find a free UDP port")
+/// A localhost address where nobody hosts, and the socket holding it: it never answers, and while
+/// it's kept, nothing else (a host in a test running at the same time, say) can take the port.
+pub fn silent_addr() -> (UdpSocket, SocketAddr) {
+    let socket = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).expect("failed to bind a UDP port");
+    let addr = socket.local_addr().expect("a bound socket has an address");
+    (socket, addr)
 }
 
 /// Update all `apps` until `done` holds, or panic after 5 seconds.
@@ -242,8 +268,8 @@ pub fn update_for(apps: &mut [&mut TestApp], duration: Duration) {
 
 /// Start a host and a joiner on a fresh port and wait until they are connected.
 pub fn connected_pair() -> (TestApp, TestApp, SocketAddr) {
-    let addr = free_addr();
-    let mut host = TestApp::host(addr);
+    let mut host = TestApp::host();
+    let addr = host.host_addr();
     let mut client = TestApp::join(addr);
     update_until(&mut [&mut host, &mut client], |apps| {
         apps[0].connected_remote_links() == 1 && apps[1].connected_clients() == 1
