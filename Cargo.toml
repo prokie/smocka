@@ -4,10 +4,7 @@ version = "0.1.1"
 edition = "2024"
 
 [dependencies]
-bevy = { version = "0.20.1", default-features = false, features = [
-    "2d",
-    "ui",
-] }
+bevy = { version = "0.20.1", default-features = false, features = ["2d", "ui"] }
 rand = "0.10.4"
 lightyear = { version = "0.31.0", features = [
     "client",
@@ -43,3 +40,9 @@ test = false
 [lints.clippy]
 # Name module files after their folder (`menu.rs` next to `menu/`), never `mod.rs`.
 mod_module_files = "warn"
+float_cmp = "warn"
+let_underscore_must_use = "warn"
+ignored_unit_patterns = "warn"
+inefficient_to_string = "warn"
+explicit_iter_loop = "warn"
+doc_markdown = "warn"

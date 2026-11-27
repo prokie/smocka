@@ -187,7 +187,8 @@ mod tests {
     /// An empty folder of its own for one test, under the system's temp folder.
     fn empty_dir(test: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("smocka-{test}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+        // Left over from an earlier run, if it's there at all.
+        std::fs::remove_dir_all(&dir).ok();
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
