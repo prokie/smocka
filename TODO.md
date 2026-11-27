@@ -118,9 +118,9 @@ same build.
 - [ ] **Find games on the local network**: the host announces itself (UDP broadcast or mDNS),
       and the menu lists games to click instead of typing an IP address.
 - [ ] **A volume setting**: there's no way to turn sound down or off in the game (Bevy's
-      `GlobalVolume` resource sets it for every sound). `tools/dev.sh` also plays everything twice,
-      once per window: a `--mute` flag for the joiner would help. For separate music/effects
-      volumes or fades, look at `bevy_kira_audio` (check it supports Bevy 0.20 first).
+      `GlobalVolume` resource sets it for every sound; `--mute` sets it to silent). For separate
+      music/effects volumes or fades, look at `bevy_kira_audio` (check it supports Bevy 0.20
+      first).
 - [ ] **Spectators don't hear bumps** in racing. Only the host and drivers work bumps out
       (`CarsBumped` in `bumps.rs`); a spectator's cars are interpolated. Spectators could check
       `contact` between the cars as they're drawn instead.

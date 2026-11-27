@@ -2,6 +2,7 @@
 // for the logs.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use bevy::audio::Volume;
 use bevy::ecs::error::warn;
 use bevy::prelude::*;
 use bevy::window::{Monitor, PrimaryMonitor, PrimaryWindow, WindowPosition};
@@ -59,6 +60,8 @@ fn main() {
         side,
         secondary: has("--secondary"),
     });
+    // `--mute` plays without sound, so two copies on one machine (`tools/dev.sh`) aren't heard twice.
+    let mute = has("--mute");
     // `--name=Ada` plays as "Ada" this time, without changing the saved name.
     let name = flags
         .iter()
@@ -90,6 +93,10 @@ fn main() {
         SmockaPlugin,
     ));
 
+    if mute {
+        info!("Sound is off (--mute)");
+        app.insert_resource(GlobalVolume::new(Volume::SILENT));
+    }
     if let Some(name) = name {
         app.insert_resource(LocalProfile { name });
     }

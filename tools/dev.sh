@@ -4,6 +4,7 @@
 # Closing the joiner (or Ctrl+C) also closes the host. Extra arguments go to `cargo build`,
 # e.g. `tools/dev.sh --release`. Shows the game's debug logs (set RUST_LOG to override), each line
 # marked [host] or [join], and keeps each player's log in logs/host.log and logs/join.log.
+# Only the host plays sound: the joiner is muted, so nothing is heard twice.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -42,4 +43,4 @@ trap 'kill "$host" 2>/dev/null || true' EXIT
 
 # Give the host a moment to start listening before the joiner knocks.
 sleep 1
-"$game" join --right --name=Joiner "${monitor[@]}" > >(log_as join) 2>&1
+"$game" join --right --name=Joiner --mute "${monitor[@]}" > >(log_as join) 2>&1

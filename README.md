@@ -47,6 +47,7 @@ cargo run -- host                # host straight away
 cargo run -- join                # join a host on this machine
 cargo run -- join 192.168.1.10   # join another machine (port 5000 unless given)
 cargo run -- host --name=Ada     # play as "Ada" this time, without changing the saved name
+cargo run -- join --mute         # play without sound
 ```
 
 To test two players on one machine, `tools/dev.sh` builds once and starts a host on the left half
@@ -55,7 +56,8 @@ the primary one); closing the joiner closes both. The halves come from `--left` 
 `--secondary`, which also work on their own. Wayland doesn't let apps place their windows,
 so the script runs the game on X11 (XWayland) there. It shows the game's debug logs from both
 players (unless `RUST_LOG` is set), each line marked `[host]` or `[join]`, and keeps each
-player's log in `logs/host.log` and `logs/join.log` until the next run.
+player's log in `logs/host.log` and `logs/join.log` until the next run. Only the host plays sound:
+the joiner runs with `--mute`.
 
 ## Controls
 
