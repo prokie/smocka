@@ -45,9 +45,14 @@ impl Plugin for PongVisualsPlugin {
         app.add_observer(add_ball_sprite);
         app.add_systems(
             PostUpdate,
-            (sync_paddle_transform, sync_ball_transform).before(TransformSystems::Propagate),
+            (sync_paddle_transform, sync_ball_transform)
+                .before(TransformSystems::Propagate)
+                .run_if(in_state(SessionPhase::TwoPlayerPong)),
         );
-        app.add_systems(Update, update_score_text);
+        app.add_systems(
+            Update,
+            update_score_text.run_if(in_state(SessionPhase::TwoPlayerPong)),
+        );
     }
 }
 

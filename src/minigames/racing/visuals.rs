@@ -90,7 +90,9 @@ impl Plugin for RacingVisualsPlugin {
         );
         app.add_systems(
             PostUpdate,
-            sync_car_transform.before(TransformSystems::Propagate),
+            sync_car_transform
+                .before(TransformSystems::Propagate)
+                .run_if(in_state(SessionPhase::Racing)),
         );
     }
 }
