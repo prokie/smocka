@@ -41,6 +41,8 @@ commit_parsers = [
   { message = "^(?i)(add|added|update|updated).*\\b(todo|claude)", skip = true },
   { message = "^(?i)merge\\b", skip = true },
   { message = "^(?i)(release|bump)\\b", skip = true },
+  # Changes to the tests alone, which players never see.
+  { message = "^(?i)tests?\\b", skip = true },
 
   { message = "^(?i)(add|added|implement|implemented|introduce|show|let|allow|support)\\b", group = "<!-- 0 -->Added" },
   { message = "^(?i)(fix|fixed|fixes)\\b", group = "<!-- 2 -->Fixed" },

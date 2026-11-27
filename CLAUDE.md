@@ -26,7 +26,7 @@ Before considering any task complete, verify that all checks pass cleanly:
   - `Fix` → **Fixed**
   - `Remove` / `Drop` → **Removed**
   - Anything else (`Improve`, `Make`, `Rename`, `Speed up`, …) → **Changed**
-- **Excluded housekeeping:** Start with `Update TODO` or `Update CLAUDE.md` so `cliff.toml` skips them.
+- **Excluded housekeeping:** Start with `Update TODO` or `Update CLAUDE.md` so `cliff.toml` skips them. Start commits that only change tests with `Test` (e.g. `Test hosting on ports the OS picks`) for the same reason.
 - Preview with `git cliff --unreleased`.
 
 ## Logging
