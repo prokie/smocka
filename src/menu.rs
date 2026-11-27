@@ -1,5 +1,6 @@
 //! All local UI: one file per screen, plus the shared widgets they are built from.
 
+mod background;
 mod controls;
 mod lobby;
 mod main_menu;
@@ -84,6 +85,7 @@ impl Plugin for MenuPlugin {
         if !app.is_plugin_added::<TabNavigationPlugin>() {
             app.add_plugins(TabNavigationPlugin);
         }
+        app.add_plugins(background::MenuBackgroundPlugin);
         // Only the real game remembers the player's name, last address, controls and volumes;
         // headless tests start with none of them.
         app.insert_resource(LocalProfile::load());

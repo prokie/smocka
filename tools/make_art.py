@@ -517,6 +517,70 @@ def draw_gear() -> None:
     print(f"Wrote {path} (64x64)")
 
 
+def draw_leaf() -> None:
+    """A stylized flat-vector leaf drawn white so the menu tints it in twilight foliage shades."""
+    size = 16.0
+    canvas = Canvas(size, size)
+    # Tapered leaf silhouette made from a smooth polygon, pointing right (+x).
+    outline: list[tuple[float, float]] = []
+    steps = 24
+    for i in range(steps + 1):
+        t = i / steps
+        x = -6.5 + 13.0 * t
+        width = 3.8 * math.sin(math.pi * t) * (1.0 - 0.15 * t)
+        outline.append((x, width))
+    for i in range(steps, -1, -1):
+        t = i / steps
+        x = -6.5 + 13.0 * t
+        width = 3.8 * math.sin(math.pi * t) * (1.0 - 0.15 * t)
+        outline.append((x, -width))
+    canvas.draw.polygon([canvas.point(x, y) for x, y in outline], fill=WHITE)
+    # Subtle centre vein.
+    canvas.line(-6.0, 0.0, 5.2, 0.0, LIGHT, 0.55)
+    MENU_ASSETS.mkdir(parents=True, exist_ok=True)
+    canvas.save(MENU_ASSETS / "leaf.png")
+
+
+def draw_frond() -> None:
+    """A stylized leafy branch silhouette for the menu corners, drawn white so the game tints
+    and sways it gently in the breeze."""
+    canvas = Canvas(64.0, 36.0)
+    # Curved stem entering from the left edge (-32, 6) arching down-right.
+    stem = [(-32.0, 6.0), (-18.0, 4.0), (-4.0, 0.5), (12.0, -4.5), (26.0, -9.5)]
+    for (x0, y0), (x1, y1) in zip(stem, stem[1:]):
+        canvas.line(x0, y0, x1, y1, WHITE, 1.8)
+    # Paired leaves along the branch, getting smaller toward the tip.
+    leaves = [
+        (-24.0, 5.0, 0.55, 8.5),
+        (-22.0, 4.5, -0.75, 7.8),
+        (-13.0, 3.0, 0.42, 8.2),
+        (-12.0, 2.5, -0.82, 7.6),
+        (-2.0, 0.0, 0.32, 7.5),
+        (-1.0, -0.5, -0.88, 7.0),
+        (9.0, -3.5, 0.22, 6.6),
+        (10.0, -4.0, -0.92, 6.2),
+        (19.0, -7.0, 0.12, 5.4),
+        (20.0, -7.5, -0.95, 5.0),
+        (26.5, -9.8, -0.35, 5.2),
+    ]
+    for lx, ly, angle, length in leaves:
+        cos_a, sin_a = math.cos(angle), math.sin(angle)
+        pts: list[tuple[float, float]] = []
+        steps = 12
+        for side in (1.0, -1.0):
+            rng = range(steps + 1) if side > 0 else range(steps, -1, -1)
+            for i in rng:
+                t = i / steps
+                local_x = t * length
+                local_y = side * (length * 0.34) * math.sin(math.pi * t)
+                px = lx + local_x * cos_a - local_y * sin_a
+                py = ly + local_x * sin_a + local_y * cos_a
+                pts.append(canvas.point(px, py))
+        canvas.draw.polygon(pts, fill=WHITE)
+    MENU_ASSETS.mkdir(parents=True, exist_ok=True)
+    canvas.save(MENU_ASSETS / "frond.png")
+
+
 def main() -> None:
     draw_track()
     draw_car()
@@ -534,6 +598,8 @@ def main() -> None:
     draw_racing_thumbnail()
     draw_shootout_thumbnail()
     draw_gear()
+    draw_leaf()
+    draw_frond()
 
 
 if __name__ == "__main__":
