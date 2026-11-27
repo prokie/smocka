@@ -67,6 +67,8 @@ Keyboard or gamepad. These are the defaults: change them with **Controls** in th
   `A` / `←` and `D` / `→` / left stick steer. `F3` draws the track's road edges over the art.
 - **Shootout:** `W` / `A` / `S` / `D` / arrows / left stick move, mouse or right stick aim,
   left click / `Space` / right trigger fire.
+- **Session:** Hold `Tab` (or gamepad Back) during a minigame, tournament wait, or results screen
+  to view the current standings. `Esc` leaves the session.
 
 ## Art
 

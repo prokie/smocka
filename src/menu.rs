@@ -111,6 +111,7 @@ impl Plugin for MenuPlugin {
                 spawn_leave_hint,
                 notices::spawn_notice_area,
                 watching::spawn_watching_text,
+                standings::spawn_standings_overlay,
             ),
         );
         app.add_systems(OnEnter(SessionPhase::Lobby), lobby::spawn_lobby_screen);
@@ -199,6 +200,7 @@ impl Plugin for MenuPlugin {
                 widgets::update_countdowns,
                 notices::expire_notices,
                 watching::update_watching_text.run_if(in_state(AppState::InSession)),
+                standings::update_standings_overlay.run_if(in_state(AppState::InSession)),
                 close_session.run_if(on_message::<WindowCloseRequested>),
             ),
         );
