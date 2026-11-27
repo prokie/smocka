@@ -19,13 +19,15 @@ pub struct Points {
     pub gained: u32,
 }
 
-/// Registers [`Points`] for replication. Must be added after
+/// Registers [`Points`] for replication, and gives every [`Player`] them. Must be added after
 /// [`PlayersPlugin`](crate::players::PlayersPlugin).
 pub struct StandingsPlugin;
 
 impl Plugin for StandingsPlugin {
     fn build(&self, app: &mut App) {
         app.component::<Points>().replicate();
+        // A player starts with none. On joiners, the host's replicated points take their place.
+        app.register_required_components::<Player, Points>();
     }
 }
 

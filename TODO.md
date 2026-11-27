@@ -89,9 +89,6 @@ They change the order replicated types are registered in, and what's sent over t
 That's safe, since `PROTOCOL_ID` comes from the version, but the host and joiners must run the
 same build.
 
-- [ ] **Points added by the standings.** `spawn_player` (`players.rs`) inserts
-      `Points::default()`, the only reason players imports standings. `StandingsPlugin` could
-      add it with a host-side `On<Add<Player>>` observer.
 - [ ] **`Controls` as a map keyed by `ControlAction`**, instead of one field per action and the
       `get` / `get_mut` matches. `#[serde(rename_all = "snake_case")]` on `ControlAction` keeps
       the saved `throttle = [...]` keys. Fill missing actions from the defaults in

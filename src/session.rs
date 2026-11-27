@@ -203,9 +203,9 @@ impl Command for BeginMinigame {
         let BeginMinigame(game) = self;
         let in_party = world.query::<&Party>().iter(world).next().is_some();
         let standings: Vec<(Player, Points)> = world
-            .query::<(&Player, Option<&Points>)>()
+            .query::<(&Player, &Points)>()
             .iter(world)
-            .map(|(player, points)| (player.clone(), points.copied().unwrap_or_default()))
+            .map(|(player, points)| (player.clone(), *points))
             .collect();
         let count = standings.len();
         if count >= game.info().min_players && needs_tournament(game, count) {
