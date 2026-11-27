@@ -5,6 +5,7 @@ pub mod progress;
 pub mod race;
 mod racing_input;
 mod skid_marks;
+pub mod sounds;
 pub mod track;
 mod visuals;
 

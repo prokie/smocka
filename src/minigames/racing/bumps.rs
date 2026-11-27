@@ -47,6 +47,16 @@ pub struct Bump {
     pub impact: f32,
 }
 
+/// Two cars just bumped into each other. Triggered locally (never sent) where bumps are worked
+/// out, on the host and on every driver's machine, once when the cars first touch. Rollbacks that
+/// replay a bump don't trigger it again.
+#[derive(Event, Debug, Clone, Copy, PartialEq)]
+pub struct CarsBumped {
+    /// How fast the cars were closing on each other, in world units per second (see
+    /// [`Bump::impact`]).
+    pub impact: f32,
+}
+
 /// Bumps cars into each other on the host and on every driver's machine.
 pub struct BumpPlugin;
 
@@ -155,12 +165,14 @@ fn closest_points((p1, q1): (Vec2, Vec2), (p2, q2): (Vec2, Vec2)) -> (Vec2, Vec2
 /// each driver's machine for the cars it predicts (all of them); spectators' cars are interpolated,
 /// so it leaves them alone.
 ///
-/// `touching` remembers which pairs touched on the last tick, so each bump is logged once, when it
-/// starts. Rollbacks replay ticks a driver's machine has already logged, so they log nothing.
+/// `touching` remembers which pairs touched on the last tick, so each bump is logged, and
+/// [`CarsBumped`] triggered, once, when it starts. Rollbacks replay ticks a driver's machine has
+/// already done that for, so they do neither.
 fn bump_cars(
     rollback: Option<Res<Rollback>>,
     mut cars: Query<(Entity, &Car, &mut CarState), Without<Interpolated>>,
     mut touching: Local<Vec<(Entity, Entity)>>,
+    mut commands: Commands,
 ) {
     let mut order: Vec<(PeerId, Entity)> = cars
         .iter()
@@ -188,6 +200,9 @@ fn bump_cars(
                     "{} ({:?}) and {} ({:?}) bumped into each other at {:.0} units/s",
                     car_a.name, car_a.owner, car_b.name, car_b.owner, bump.impact
                 );
+                commands.trigger(CarsBumped {
+                    impact: bump.impact,
+                });
             }
             now_touching.push((first, second));
         }

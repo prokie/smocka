@@ -81,6 +81,16 @@ The placeholders come from `python3 tools/make_art.py`. The racing track's art m
 shape set in `src/minigames/racing/config.rs` (`TRACK_*` constants), as must the copy of those
 constants in the script; press `F3` in a race to check.
 
+## Sound
+
+Sounds are 16-bit WAV files next to each minigame's art in `assets/minigames/<minigame>/`, plus
+`assets/minigames/minigame_won.wav` for the jingle when any minigame is won. To replace one,
+overwrite the WAV with the same name. `racing/engine.wav` loops, and the game plays it faster the
+faster your car goes, so it should be a short, steady hum that loops without a click.
+
+The placeholders come from `python3 tools/make_sounds.py`, which needs nothing outside Python's
+standard library.
+
 ## Development
 
 ```sh

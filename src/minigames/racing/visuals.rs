@@ -8,6 +8,7 @@ use super::config::{CAR_LENGTH, CAR_WIDTH, START_LINE_X, TRACK_INNER_RADIUS, TRA
 use super::progress::{RaceProgress, lap_label, position_label, running_order};
 use super::race::{RaceLaps, RaceStatus, status_label};
 use super::skid_marks::SkidMarksPlugin;
+use super::sounds::RacingSoundsPlugin;
 use super::track::{CHECKPOINTS, outline};
 use crate::camera::gameplay_camera_2d;
 use crate::config::display::{VIEW_HEIGHT, VIEW_WIDTH};
@@ -57,12 +58,12 @@ pub struct StatusText;
 #[derive(Resource, Debug, Default)]
 pub struct TrackGizmos(pub bool);
 
-/// Local-only sprites for racing.
+/// Local-only sprites, text and sounds for racing.
 pub struct RacingVisualsPlugin;
 
 impl Plugin for RacingVisualsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(SkidMarksPlugin);
+        app.add_plugins((SkidMarksPlugin, RacingSoundsPlugin));
         app.init_resource::<TrackGizmos>();
         app.add_systems(
             OnEnter(PHASE),

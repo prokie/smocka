@@ -4,6 +4,7 @@ pub mod config;
 pub mod paddles;
 mod pong_input;
 pub mod score;
+pub mod sounds;
 mod visuals;
 
 pub use pong_input::PongInput;

@@ -7,6 +7,7 @@ use super::config::{
 };
 use super::paddles::{Paddle, PaddlePosition, Side};
 use super::score::PongScore;
+use super::sounds::PongSoundsPlugin;
 use crate::camera::gameplay_camera_2d;
 use crate::config::display::{ART_SCALE, VIEW_HEIGHT, VIEW_WIDTH};
 use crate::config::network::TICK_RATE;
@@ -38,11 +39,12 @@ pub struct Arena;
 #[derive(Component)]
 pub struct ScoreText(pub Side);
 
-/// Local-only sprites and score text for Pong.
+/// Local-only sprites, score text and sounds for Pong.
 pub struct PongVisualsPlugin;
 
 impl Plugin for PongVisualsPlugin {
     fn build(&self, app: &mut App) {
+        app.add_plugins(PongSoundsPlugin);
         app.add_systems(
             OnEnter(PHASE),
             (spawn_camera, spawn_arena, spawn_score_text),

@@ -5,6 +5,7 @@
 pub mod outcome;
 pub mod racing;
 pub mod smoothing;
+pub mod sounds;
 pub mod two_player_pong;
 
 use bevy::prelude::*;
@@ -60,12 +61,13 @@ impl Plugin for MinigamesPlugin {
     }
 }
 
-/// Local-only visuals. Separate from [`MinigamesPlugin`] so tests can run headless.
+/// Local-only visuals and sounds. Separate from [`MinigamesPlugin`] so tests can run headless.
 pub struct MinigameVisualsPlugin;
 
 impl Plugin for MinigameVisualsPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((
+            sounds::MinigameSoundsPlugin,
             two_player_pong::PongVisualsPlugin,
             racing::RacingVisualsPlugin,
         ));
