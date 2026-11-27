@@ -29,7 +29,7 @@ use widgets::{HINT_COLOR, label, menu_button, screen};
 /// The font for all text.
 const UI_FONT: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/assets/fonts/FiraSans-Regular.ttf"
+    "/assets/fonts/FiraMono-Regular.ttf"
 ));
 
 /// What a menu button does when activated.

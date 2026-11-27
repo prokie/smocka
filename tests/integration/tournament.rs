@@ -82,7 +82,8 @@ fn three_players_play_a_tournament_to_one_result() {
         .insert_resource(PongRules { goals_to_win: 1 });
     host.start_minigame(Minigame::TwoPlayerPong);
 
-    // Nobody moves, so the left paddle wins each match 1-0: two matches, then the result.
+    // Nobody moves, so each match ends 1-0 to whoever the serve goes away from: two matches,
+    // then the result.
     update_until_within(
         &mut [&mut host, &mut first, &mut second],
         Duration::from_secs(30),

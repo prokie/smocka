@@ -127,13 +127,13 @@ fn the_ball_moves_on_every_peer() {
 fn a_missed_ball_scores_on_every_peer() {
     let (mut host, mut client, _) = pong_pair();
 
-    // Nobody moves, so the first serve (up and to the right) flies over the right paddle.
+    // Nobody moves, so the first serve flies past whichever paddle it goes to (random).
     update_until_within(
         &mut [&mut host, &mut client],
         Duration::from_secs(10),
         |apps| {
-            apps.iter_mut()
-                .all(|app| score(app) == Some(PongScore { left: 1, right: 0 }))
+            let first_goal = score(apps[0]).filter(|score| score.left + score.right == 1);
+            first_goal.is_some() && score(apps[1]) == first_goal
         },
     );
 }

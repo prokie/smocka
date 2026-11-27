@@ -129,7 +129,8 @@ fn winning_shows_the_result_then_the_standings_then_returns_to_the_lobby() {
     update_until(&mut [&mut host, &mut client], |apps| apps[0].players() == 2);
     host.start_minigame(Minigame::TwoPlayerPong);
 
-    // Nobody moves, so the first serve flies past the right paddle: the host (left) wins 1–0.
+    // Nobody moves, so the first serve flies past whichever paddle it goes to: a 1–0 win for the
+    // host (left) or the joiner (right), at random.
     update_until_within(
         &mut [&mut host, &mut client],
         Duration::from_secs(10),
@@ -141,14 +142,22 @@ fn winning_shows_the_result_then_the_standings_then_returns_to_the_lobby() {
             })
         },
     );
+    let host_won = matches!(
+        result(&mut host).unwrap().placements[0].player,
+        PeerId::Local(_)
+    );
     for app in [&mut host, &mut client] {
         let result = result(app).unwrap();
         let [winner, loser] = &result.placements[..] else {
             panic!("both players are placed: {result:?}");
         };
-        assert!(matches!(winner.player, PeerId::Local(_)), "the host won");
+        assert_eq!(
+            matches!(winner.player, PeerId::Local(_)),
+            host_won,
+            "every peer agrees who won: {result:?}"
+        );
         assert_eq!((winner.place, loser.place), (1, 2));
-        assert_eq!(result.summary, "1 - 0");
+        assert_eq!(result.summary, if host_won { "1 - 0" } else { "0 - 1" });
     }
 
     // Beating one player is worth one point.
@@ -160,8 +169,13 @@ fn winning_shows_the_result_then_the_standings_then_returns_to_the_lobby() {
                 .all(|app| app.phase() == Some(SessionPhase::Standings))
         },
     );
+    let expected = if host_won {
+        [(1, 1), (0, 0)]
+    } else {
+        [(0, 0), (1, 1)]
+    };
     for app in [&mut host, &mut client] {
-        assert_eq!(points(app), [(1, 1), (0, 0)]);
+        assert_eq!(points(app), expected);
     }
 
     update_until_within(
