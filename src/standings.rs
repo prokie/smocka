@@ -7,8 +7,8 @@ use bevy::prelude::*;
 use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::minigames::outcome::{MinigameResult, Placement};
 use crate::players::Player;
-use crate::session::{MinigameResult, Placement};
 
 /// A player's points this session. Kept by the host on each [`Player`] entity and replicated.
 #[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -89,8 +89,8 @@ mod tests {
     use lightyear::prelude::PeerId;
 
     use super::{Points, points_for, standings};
+    use crate::minigames::outcome::{MinigameResult, Placement};
     use crate::players::Player;
-    use crate::session::{MinigameResult, Placement};
 
     fn player(number: u32) -> Player {
         Player {

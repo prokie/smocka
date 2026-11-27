@@ -94,19 +94,6 @@ They change the order replicated types are registered in, and what's sent over t
 That's safe, since `PROTOCOL_ID` comes from the version, but the host and joiners must run the
 same build.
 
-- [ ] **A module of its own for what minigames and the session share.** `MinigameResult`,
-      `Placement`, `ordinal`, `MinigameEnded` and `Participants` live in `session.rs`, so
-      tournament, standings, Pong and Racing all import the session, and it imports them back.
-      Move them to a module that imports nothing else from the crate, such as
-      `minigames/outcome.rs`.
-- [ ] **Tournament logic out of `session.rs`.** `walk_over_leavers`, `follow_tournament`,
-      `start_next_match_timer`, and the tournament branches of `end_minigame` and
-      `BeginMinigame` (~170 lines) belong in the tournament module. Split that into
-      `tournament/bracket.rs` (the plain `Bracket` data and most of its tests) and
-      `tournament.rs` (the component, the plugin and the moved logic).
-- [ ] **A public way to time a screen.** `party.rs` uses the session's crate-internal
-      `PhaseTimer` and `Then`. Give the session one command meaning "stay on this screen for this
-      long, then go to that phase", for parties and tournaments.
 - [ ] **Points added by the standings.** `spawn_player` (`players.rs`) inserts
       `Points::default()`, the only reason players imports standings. `StandingsPlugin` could
       add it with a host-side `On<Add<Player>>` observer.

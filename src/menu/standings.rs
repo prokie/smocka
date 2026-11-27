@@ -5,9 +5,10 @@ use lightyear::prelude::*;
 
 use super::widgets::{HINT_COLOR, ShownRows, countdown, label, screen, show_rows};
 use crate::config::session::STANDINGS_DURATION;
+use crate::minigames::outcome::ordinal;
 use crate::party::Party;
 use crate::players::{Player, local_peer_id};
-use crate::session::{SessionPhase, ordinal};
+use crate::session::SessionPhase;
 use crate::standings::{Points, Standing, standings};
 
 /// One row per player: place, name, points.

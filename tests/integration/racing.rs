@@ -8,6 +8,7 @@ use lightyear::prelude::PeerId;
 use lightyear::prelude::input::native::ActionState;
 use smocka::controls::{Control, ControlAction, Controls};
 use smocka::minigames::Minigame;
+use smocka::minigames::outcome::MinigameResult;
 use smocka::minigames::racing::RacingInput;
 use smocka::minigames::racing::bumps::contact;
 use smocka::minigames::racing::car::{Car, CarState};
@@ -15,7 +16,7 @@ use smocka::minigames::racing::config::LAPS;
 use smocka::minigames::racing::progress::RaceProgress;
 use smocka::minigames::racing::race::{ChangeLaps, RaceLaps, RaceRules, RaceStatus};
 use smocka::minigames::racing::track::{CHECKPOINTS, Surface, surface_at};
-use smocka::session::{MinigameResult, SessionPhase};
+use smocka::session::SessionPhase;
 
 use crate::common::{TestApp, connected_pair, update_for, update_until};
 

@@ -6,11 +6,10 @@ use std::time::Duration;
 use bevy::prelude::*;
 use smocka::config::party::ROUNDS;
 use smocka::minigames::Minigame;
+use smocka::minigames::outcome::{MinigameEnded, MinigameResult, Participants, Placement};
 use smocka::party::{ChangeRounds, Party, PartyRounds, PartyRules, StartParty};
 use smocka::players::Player;
-use smocka::session::{
-    MinigameEnded, MinigameResult, Participants, Placement, SessionPhase, SessionRules,
-};
+use smocka::session::{SessionPhase, SessionRules};
 use smocka::standings::Points;
 use smocka::tournament::{Tournament, TournamentRules};
 
@@ -225,6 +224,45 @@ fn each_round_of_tournaments_draws_a_new_bracket() {
         apps[0].phase() == Some(SessionPhase::PartyOver)
     });
     // Each tournament's champion beat two players, its finalist one.
+    assert_eq!(totals(&mut host).iter().sum::<u32>(), 6);
+}
+
+#[test]
+fn a_round_after_a_tournament_is_played_without_it() {
+    let (mut host, mut first, addr) = connected_pair();
+    let mut second = TestApp::join(addr);
+    update_until(&mut [&mut host, &mut first, &mut second], |apps| {
+        apps.iter_mut().all(|app| app.players() == 3)
+    });
+    quick_party(
+        &mut host,
+        2,
+        &[Minigame::TwoPlayerPong],
+        Duration::ZERO,
+        Duration::from_millis(300),
+    );
+
+    StartParty.apply(host.0.world_mut());
+    // Round 1, three players: a Pong semi-final and final.
+    for _ in 0..2 {
+        update_until(&mut [&mut host, &mut first, &mut second], |apps| {
+            playing_round(apps[0], 1)
+        });
+        win(&mut host);
+    }
+    // Round 2 picks Racing, which seats everyone.
+    host.0.world_mut().resource_mut::<PartyRules>().games = vec![Minigame::Racing];
+
+    update_until(&mut [&mut host, &mut first, &mut second], |apps| {
+        playing_round(apps[0], 2) && apps.iter_mut().all(|app| tournaments(app) == 0)
+    });
+    assert_eq!(host.phase(), Some(SessionPhase::Playing(Minigame::Racing)));
+    // The race's result is the party's, not the gone tournament's.
+    win(&mut host);
+    update_until(&mut [&mut host, &mut first, &mut second], |apps| {
+        apps[0].phase() == Some(SessionPhase::PartyOver)
+    });
+    // The tournament gave 2 + 1 points, the three-car race 2 + 1 + 0.
     assert_eq!(totals(&mut host).iter().sum::<u32>(), 6);
 }
 

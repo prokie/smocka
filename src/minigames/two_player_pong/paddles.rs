@@ -7,9 +7,9 @@ use super::PHASE;
 use super::PongSystems;
 use super::config::{PADDLE_MAX_Y, PADDLE_SPEED, PADDLE_X_OFFSET};
 use super::pong_input::PongInput;
+use crate::minigames::outcome::Participants;
 use crate::network::is_host;
 use crate::players::Player;
-use crate::session::Participants;
 
 /// Which player controls this paddle. Set once at spawn.
 #[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]

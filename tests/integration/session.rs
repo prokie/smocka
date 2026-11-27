@@ -7,11 +7,12 @@ use bevy::prelude::*;
 use lightyear::prelude::PeerId;
 use smocka::config::session::{RESULTS_DURATION, STANDINGS_DURATION};
 use smocka::minigames::Minigame;
+use smocka::minigames::outcome::MinigameResult;
 use smocka::minigames::two_player_pong::ball::Ball;
 use smocka::minigames::two_player_pong::paddles::Paddle;
 use smocka::minigames::two_player_pong::score::PongRules;
 use smocka::players::Player;
-use smocka::session::{MinigameResult, SessionPhase};
+use smocka::session::SessionPhase;
 use smocka::standings::Points;
 
 use crate::common::{

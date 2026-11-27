@@ -2,6 +2,7 @@
 //! (`config.rs`), a [`MinigameInfo`] called `INFO`, and the
 //! [`SessionPhase`](crate::session::SessionPhase) it's played in, called `PHASE`.
 
+pub mod outcome;
 pub mod racing;
 pub mod smoothing;
 pub mod two_player_pong;

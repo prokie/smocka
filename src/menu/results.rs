@@ -5,8 +5,9 @@ use lightyear::prelude::*;
 
 use super::widgets::{HINT_COLOR, ShownRows, countdown, label, screen, show_rows};
 use crate::config::session::RESULTS_DURATION;
+use crate::minigames::outcome::{MinigameResult, Placement, ordinal};
 use crate::players::local_peer_id;
-use crate::session::{MinigameResult, Placement, SessionPhase, ordinal};
+use crate::session::SessionPhase;
 
 /// The headline: who won.
 #[derive(Component)]
@@ -103,7 +104,7 @@ pub fn placement_label(placement: &Placement, you: Option<PeerId>) -> String {
 #[cfg(test)]
 mod tests {
     use super::{headline, placement_label};
-    use crate::session::Placement;
+    use crate::minigames::outcome::Placement;
     use lightyear::prelude::PeerId;
 
     fn placement(id: u64, name: &str, place: u32) -> Placement {

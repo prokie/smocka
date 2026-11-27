@@ -7,9 +7,9 @@ use super::PongSystems;
 use super::ball::{BallPosition, BallVelocity, serve_velocity};
 use super::config::{GOAL_X, GOALS_TO_WIN};
 use super::paddles::{Paddle, Side};
+use crate::minigames::outcome::{MinigameEnded, MinigameResult, Placement};
 use crate::network::is_host;
 use crate::players::Player;
-use crate::session::{MinigameEnded, MinigameResult, Placement};
 
 /// Host only: how a game of Pong is won.
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]

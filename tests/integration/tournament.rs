@@ -5,10 +5,11 @@ use std::time::{Duration, Instant};
 
 use bevy::prelude::*;
 use smocka::minigames::Minigame;
+use smocka::minigames::outcome::{MinigameResult, Participants};
 use smocka::minigames::two_player_pong::paddles::Paddle;
 use smocka::minigames::two_player_pong::score::PongRules;
 use smocka::players::Player;
-use smocka::session::{MinigameResult, Participants, SessionPhase};
+use smocka::session::SessionPhase;
 use smocka::standings::Points;
 use smocka::tournament::{Tournament, TournamentRules};
 

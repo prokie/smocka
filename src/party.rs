@@ -21,7 +21,7 @@ use crate::config::session::MIN_PLAYERS;
 use crate::minigames::Minigame;
 use crate::network::is_host;
 use crate::players::Player;
-use crate::session::{CurrentPhase, PhaseTimer, SessionPhase, Then, can_start};
+use crate::session::{CurrentPhase, MoveOnAfter, SessionPhase, Then, can_start};
 use crate::standings::{Points, standings};
 
 /// A party being played. One at most, spawned by the host when it starts and replicated; it goes
@@ -270,9 +270,9 @@ fn start_round(
         party.rounds
     );
     party.next = Some(game);
-    commands.insert_resource(PhaseTimer {
-        timer: Timer::new(rules.next_round, TimerMode::Once),
+    commands.queue(MoveOnAfter {
         during: SessionPhase::NextRound,
+        wait: rules.next_round,
         then: Then::Minigame(game),
     });
 }
@@ -300,9 +300,9 @@ fn end_party(rules: Res<PartyRules>, players: Query<(&Player, &Points)>, mut com
         .max()
         .unwrap_or(0);
     info!("Party over: {} ({points} points)", winners_line(&winners));
-    commands.insert_resource(PhaseTimer {
-        timer: Timer::new(rules.winner, TimerMode::Once),
+    commands.queue(MoveOnAfter {
         during: SessionPhase::PartyOver,
+        wait: rules.winner,
         then: Then::Phase(SessionPhase::Lobby),
     });
 }

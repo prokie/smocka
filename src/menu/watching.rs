@@ -7,8 +7,9 @@ use lightyear::prelude::*;
 use super::notices::NOTICE_BACKGROUND;
 use super::widgets::{HINT_COLOR, label};
 use crate::app_state::AppState;
+use crate::minigames::outcome::Participants;
 use crate::players::{Player, local_peer_id};
-use crate::session::{Participants, SessionPhase};
+use crate::session::SessionPhase;
 use crate::tournament::Tournament;
 
 /// The line saying what this player is watching. Hidden while they play, or outside minigames.

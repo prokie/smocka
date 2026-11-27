@@ -14,8 +14,8 @@ use super::car::{Car, CarState};
 use super::config::{COUNTDOWN, FINISH_GRACE, LAPS, MAX_LAPS, MIN_LAPS};
 use super::progress::{RaceProgress, running_order};
 use crate::app_state::AppState;
+use crate::minigames::outcome::{MinigameEnded, MinigameResult, Placement};
 use crate::network::is_host;
-use crate::session::{MinigameEnded, MinigameResult, Placement};
 
 /// Where the race is. One replicated entity per race, spawned by the host.
 #[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]

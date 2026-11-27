@@ -14,8 +14,8 @@ use super::RacingSystems;
 use super::car::{Car, CarState};
 use super::race::{RaceDirector, lap_time_label};
 use super::track::{CHECKPOINTS, checkpoint_at};
+use crate::minigames::outcome::ordinal;
 use crate::network::is_host;
-use crate::session::ordinal;
 
 /// How far round the track a car has got. Replicated, not predicted: it only changes on the host.
 #[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]

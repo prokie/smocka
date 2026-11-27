@@ -16,9 +16,9 @@ use super::progress::RaceProgress;
 use super::race::RaceStatus;
 use super::racing_input::RacingInput;
 use super::track::{START_HEADING, Surface, grid_position, surface_at};
+use crate::minigames::outcome::Participants;
 use crate::network::is_host;
 use crate::players::Player;
-use crate::session::Participants;
 
 /// Who drives this car. Set once at spawn, copied from the driver's [`Player`] so the car keeps
 /// them even if the player leaves mid-race.
