@@ -6,7 +6,7 @@ use bevy::picking::Pickable;
 use bevy::prelude::*;
 use lightyear::prelude::*;
 
-use super::widgets::{HINT_COLOR, ShownRows, countdown, label, screen, show_rows};
+use super::widgets::{HINT_COLOR, ShownRows, countdown, label, screen, show_rows, skip_hint};
 use crate::app_state::AppState;
 use crate::config::session::STANDINGS_DURATION;
 use crate::minigames::outcome::ordinal;
@@ -52,6 +52,7 @@ pub(super) fn spawn_standings_screen(party: Option<Single<&Party>>, mut commands
                 },
             ),
             countdown(STANDINGS_DURATION, next),
+            skip_hint(),
         ],
     ));
 }

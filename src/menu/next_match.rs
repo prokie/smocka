@@ -4,7 +4,7 @@
 use bevy::prelude::*;
 use lightyear::prelude::*;
 
-use super::widgets::{BUTTON_COLOR, Countdown, HINT_COLOR, countdown, label, screen};
+use super::widgets::{BUTTON_COLOR, Countdown, HINT_COLOR, countdown, label, screen, skip_hint};
 use crate::config::session::NEXT_MATCH_DURATION;
 use crate::players::{Player, local_peer_id, player_color};
 use crate::session::SessionPhase;
@@ -47,6 +47,7 @@ pub(super) fn spawn_next_match_screen(mut commands: Commands) {
                 },
             ),
             countdown(NEXT_MATCH_DURATION, "Starting in"),
+            skip_hint(),
         ],
     ));
 }

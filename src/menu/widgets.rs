@@ -10,9 +10,11 @@ use bevy::prelude::*;
 use bevy::text::{EditableText, TextCursorStyle};
 use bevy::ui::{InteractionDisabled, Pressed};
 use bevy::ui_widgets::{Button, ScrollIntoView, TextInput};
+use lightyear::prelude::*;
 
 use super::MenuButton;
-use crate::players::player_color;
+use crate::players::{Player, local_peer_id, player_color};
+use crate::session::{SkipVotes, VoteSkip};
 
 pub const BUTTON_COLOR: Color = Color::srgb(0.15, 0.15, 0.18);
 pub const BUTTON_HOVERED_COLOR: Color = Color::srgb(0.25, 0.25, 0.3);
@@ -242,6 +244,79 @@ pub fn countdown(duration: Duration, prefix: &'static str) -> impl Bundle {
     )
 }
 
+/// Shows how many players have voted to skip a waiting screen, and which key/button votes.
+#[derive(Component)]
+pub struct SkipHint;
+
+/// A [`SkipHint`] line placed under a waiting screen's [`countdown`].
+pub fn skip_hint() -> impl Bundle {
+    (SkipHint, label("", 16.0, HINT_COLOR))
+}
+
+/// What a [`SkipHint`] shows: whether this player already voted, and how many of `total` players
+/// have agreed so far.
+pub fn skip_hint_label(voted: bool, agreed: usize, total: usize) -> String {
+    if voted {
+        format!("Ready to skip ({agreed}/{total})")
+    } else if agreed > 0 {
+        format!("Space / A to skip ({agreed}/{total})")
+    } else {
+        "Space / A to skip".into()
+    }
+}
+
+/// Pressing `Space`, `Enter`, or gamepad `A` (`South`) on a waiting screen votes to skip it.
+pub(super) fn vote_skip_on_input(
+    keys: Res<ButtonInput<KeyCode>>,
+    gamepads: Query<&Gamepad>,
+    votes: Option<Single<&SkipVotes>>,
+    clients: Query<&LocalId, (With<Client>, With<Connected>)>,
+    mut commands: Commands,
+) {
+    let pressed = keys.any_just_pressed([KeyCode::Space, KeyCode::Enter])
+        || gamepads
+            .iter()
+            .any(|gamepad| gamepad.just_pressed(GamepadButton::South));
+    if !pressed {
+        return;
+    }
+    let already_voted =
+        votes.is_some_and(|votes| local_peer_id(&clients).is_some_and(|you| votes.contains(you)));
+    if !already_voted {
+        commands.queue(VoteSkip);
+    }
+}
+
+/// Keep every [`SkipHint`] in sync with the host's [`SkipVotes`].
+pub(super) fn update_skip_hints(
+    votes: Option<Single<&SkipVotes>>,
+    players: Query<&Player>,
+    clients: Query<&LocalId, (With<Client>, With<Connected>)>,
+    mut hints: Query<(&mut Text, &mut TextColor), With<SkipHint>>,
+) {
+    let total = players.iter().len();
+    let you = local_peer_id(&clients);
+    let (voted, agreed) = match votes {
+        Some(votes) => (
+            you.is_some_and(|you| votes.contains(you)),
+            votes
+                .voters
+                .iter()
+                .filter(|id| players.iter().any(|player| player.id == **id))
+                .count(),
+        ),
+        None => (false, 0),
+    };
+    let shown = skip_hint_label(voted, agreed, total);
+    let color = if voted { Color::WHITE } else { HINT_COLOR };
+    for (mut text, mut text_color) in &mut hints {
+        if text.0 != shown {
+            text.0.clone_from(&shown);
+        }
+        text_color.set_if_neq(TextColor(color));
+    }
+}
+
 pub(super) fn update_countdowns(
     time: Res<Time>,
     mut countdowns: Query<(&mut Countdown, &mut Text)>,
@@ -307,7 +382,14 @@ pub(super) fn style_buttons(
 mod tests {
     use bevy::prelude::*;
 
-    use super::{ShownRows, show_rows};
+    use super::{ShownRows, show_rows, skip_hint_label};
+
+    #[test]
+    fn skip_hint_shows_prompt_then_vote_progress() {
+        assert_eq!(skip_hint_label(false, 0, 3), "Space / A to skip");
+        assert_eq!(skip_hint_label(false, 1, 3), "Space / A to skip (1/3)");
+        assert_eq!(skip_hint_label(true, 2, 3), "Ready to skip (2/3)");
+    }
 
     fn fill(world: &mut World, list: Entity, rows: &[&str], shown: &mut ShownRows) {
         let rows = rows.iter().map(|text| (text.to_string(), 0)).collect();

@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 use super::standings::StandingsList;
-use super::widgets::{HINT_COLOR, countdown, label, screen};
+use super::widgets::{HINT_COLOR, countdown, label, screen, skip_hint};
 use crate::config::party::{NEXT_ROUND_DURATION, WINNER_DURATION};
 use crate::party::{Party, party_winners, winners_line};
 use crate::players::Player;
@@ -42,6 +42,7 @@ pub(super) fn spawn_next_round_screen(mut commands: Commands) {
             (NextRoundLine::NextUp, label("", 32.0, Color::WHITE)),
             standings_list(),
             countdown(NEXT_ROUND_DURATION, "Starting in"),
+            skip_hint(),
         ],
     ));
 }
@@ -83,6 +84,7 @@ pub(super) fn spawn_party_over_screen(mut commands: Commands) {
             label("Final standings", 20.0, HINT_COLOR),
             standings_list(),
             countdown(WINNER_DURATION, "Back to the lobby in"),
+            skip_hint(),
         ],
     ));
 }

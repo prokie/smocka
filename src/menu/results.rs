@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use lightyear::prelude::*;
 
-use super::widgets::{HINT_COLOR, ShownRows, countdown, label, screen, show_rows};
+use super::widgets::{HINT_COLOR, ShownRows, countdown, label, screen, show_rows, skip_hint};
 use crate::config::session::RESULTS_DURATION;
 use crate::minigames::outcome::{MinigameResult, Placement, ordinal};
 use crate::players::local_peer_id;
@@ -36,6 +36,7 @@ pub(super) fn spawn_results_screen(mut commands: Commands) {
                 },
             ),
             countdown(RESULTS_DURATION, "Standings in"),
+            skip_hint(),
         ],
     ));
 }

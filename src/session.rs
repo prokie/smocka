@@ -1,7 +1,10 @@
 use std::time::Duration;
 
 use bevy::prelude::*;
-use lightyear::prelude::{server::Started, *};
+use lightyear::prelude::{
+    server::{ClientOf, Started},
+    *,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::app_state::AppState;
@@ -10,7 +13,7 @@ use crate::minigames::Minigame;
 use crate::minigames::outcome::{MinigameEnded, MinigameResult, Participants, Placement};
 use crate::network::is_host;
 use crate::party::Party;
-use crate::players::Player;
+use crate::players::{Player, local_peer_id};
 use crate::standings::{Points, award_points};
 use crate::tournament::{Tournament, needs_tournament, start_tournament};
 
@@ -42,6 +45,19 @@ impl SessionPhase {
     pub fn is_minigame(self) -> bool {
         matches!(self, SessionPhase::Playing(_))
     }
+
+    /// Whether this phase is a timed waiting screen between minigames that players can vote to
+    /// skip.
+    pub fn is_waiting(self) -> bool {
+        matches!(
+            self,
+            SessionPhase::Results
+                | SessionPhase::Standings
+                | SessionPhase::NextMatch
+                | SessionPhase::NextRound
+                | SessionPhase::PartyOver
+        )
+    }
 }
 
 /// The host's decision about the [`SessionPhase`], replicated to every client.
@@ -50,6 +66,123 @@ impl SessionPhase {
 /// copies it into its local [`SessionPhase`].
 #[derive(Component, Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 pub struct CurrentPhase(pub SessionPhase);
+
+/// Who has voted to skip the current waiting screen. Kept next to [`CurrentPhase`] by the host
+/// and replicated so every peer can show how many players are ready. Reset whenever a new waiting
+/// countdown starts (see [`MoveOnAfter`]).
+#[derive(Component, Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+pub struct SkipVotes {
+    /// Players who have voted to skip this waiting screen.
+    pub voters: Vec<PeerId>,
+    /// Incremented each time a new waiting countdown starts, so an in-flight [`SkipRequest`] from
+    /// the previous screen is ignored.
+    pub generation: u32,
+}
+
+impl SkipVotes {
+    /// Whether `player` has voted to skip the current waiting screen.
+    pub fn contains(&self, player: PeerId) -> bool {
+        self.voters.contains(&player)
+    }
+}
+
+/// Client to host: "I'm ready to skip waiting screen `.0` (its [`SkipVotes::generation`])".
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SkipRequest(pub u32);
+
+/// The channel session-level client requests (such as [`SkipRequest`]) travel on.
+pub struct SessionChannel;
+
+/// Command: this player votes to skip the current waiting screen. The host records its own vote
+/// straight away; a joiner sends a [`SkipRequest`] to the host.
+#[derive(Debug, Clone, Copy)]
+pub struct VoteSkip;
+
+impl Command for VoteSkip {
+    type Out = ();
+
+    fn apply(self, world: &mut World) {
+        let Some(generation) = world
+            .query::<&SkipVotes>()
+            .iter(world)
+            .next()
+            .map(|votes| votes.generation)
+        else {
+            return;
+        };
+        if world.run_system_cached(is_host).unwrap_or(false) {
+            let host = world
+                .query_filtered::<&LocalId, (With<Client>, With<Connected>)>()
+                .iter(world)
+                .next()
+                .map(|id| id.0);
+            if let Some(host) = host {
+                record_skip_vote_in_world(world, host, generation);
+            }
+            return;
+        }
+        let mut senders = world
+            .query_filtered::<&mut MessageSender<SkipRequest>, (With<Client>, With<Connected>)>();
+        if let Some(mut sender) = senders.iter_mut(world).next() {
+            debug!("Voting to skip waiting screen (generation {generation})");
+            sender.send::<SessionChannel>(SkipRequest(generation));
+        }
+    }
+}
+
+/// Whether every present player (at least one) is in `voters`.
+pub fn everyone_agreed(players: impl IntoIterator<Item = PeerId>, voters: &[PeerId]) -> bool {
+    let mut count = 0;
+    for id in players {
+        count += 1;
+        if !voters.contains(&id) {
+            return false;
+        }
+    }
+    count > 0
+}
+
+fn record_skip_vote_in_world(world: &mut World, voter: PeerId, generation: u32) {
+    let Some(during) = world.get_resource::<PhaseTimer>().map(|timer| timer.during) else {
+        return;
+    };
+    let in_phase = world
+        .query::<&CurrentPhase>()
+        .single(world)
+        .is_ok_and(|phase| phase.0 == during);
+    if !in_phase {
+        return;
+    }
+    let player_count = world.query::<&Player>().iter(world).len();
+    let is_present = world
+        .query::<&Player>()
+        .iter(world)
+        .any(|player| player.id == voter);
+    if !is_present {
+        return;
+    }
+    let Ok(mut votes) = world.query::<&mut SkipVotes>().single_mut(world) else {
+        return;
+    };
+    record_skip_vote(&mut votes, voter, generation, during, player_count);
+}
+
+fn record_skip_vote(
+    votes: &mut SkipVotes,
+    voter: PeerId,
+    generation: u32,
+    during: SessionPhase,
+    player_count: usize,
+) {
+    if votes.generation != generation || votes.voters.contains(&voter) {
+        return;
+    }
+    votes.voters.push(voter);
+    debug!(
+        "{voter:?} voted to skip {during:?} ({}/{player_count})",
+        votes.voters.len()
+    );
+}
 
 /// Command, host only: keep the session on the `during` screen for `wait`, then do `then`. It
 /// replaces a countdown already running, and is dropped if the session leaves `during` first (a
@@ -70,6 +203,10 @@ impl Command for MoveOnAfter {
             during: self.during,
             then: self.then,
         });
+        if let Ok(mut votes) = world.query::<&mut SkipVotes>().single_mut(world) {
+            votes.generation = votes.generation.wrapping_add(1);
+            votes.voters.clear();
+        }
     }
 }
 
@@ -129,7 +266,15 @@ impl Plugin for SessionPlugin {
         app.init_resource::<SessionRules>();
         app.component::<CurrentPhase>().replicate();
         app.component::<Participants>().replicate();
+        app.component::<SkipVotes>().replicate();
         app.component::<MinigameResult>().replicate();
+        app.add_channel::<SessionChannel>(ChannelSettings {
+            mode: ChannelMode::OrderedReliable(ReliableSettings::default()),
+            ..default()
+        })
+        .add_direction(NetworkDirection::ClientToServer);
+        app.register_message::<SkipRequest>()
+            .add_direction(NetworkDirection::ClientToServer);
 
         app.add_observer(spawn_current_phase);
         app.add_observer(end_minigame);
@@ -154,7 +299,8 @@ impl Plugin for SessionPlugin {
         );
         app.add_systems(
             Update,
-            move_on_when_the_timer_ends
+            (apply_skip_requests, move_on_when_the_timer_ends)
+                .chain()
                 .run_if(is_host)
                 .run_if(resource_exists::<PhaseTimer>),
         );
@@ -272,6 +418,7 @@ fn spawn_current_phase(_trigger: On<Add<Started>>, mut commands: Commands) {
         Name::from("CurrentPhase"),
         CurrentPhase(SessionPhase::Lobby),
         Participants::default(),
+        SkipVotes::default(),
         DespawnOnEnter(AppState::MainMenu),
         Replicate::to_clients(NetworkTarget::All),
     ));
@@ -344,25 +491,78 @@ fn start_standings_timer(
     });
 }
 
-/// Host only: when a screen between minigames has been up long enough, move on. A timer whose
-/// phase is over (left early, or from a session that ended on that screen) is dropped.
+/// Host only: record skip votes sent by remote clients for the current waiting countdown.
+fn apply_skip_requests(
+    timer: Res<PhaseTimer>,
+    phase: Single<&CurrentPhase>,
+    mut votes: Single<&mut SkipVotes>,
+    players: Query<&Player>,
+    mut links: Query<(&RemoteId, &mut MessageReceiver<SkipRequest>), With<ClientOf>>,
+) {
+    if phase.0 != timer.during {
+        return;
+    }
+    let present: Vec<PeerId> = players.iter().map(|player| player.id).collect();
+    for (remote_id, mut receiver) in &mut links {
+        for SkipRequest(generation) in receiver.receive() {
+            if present.contains(&remote_id.0) {
+                record_skip_vote(
+                    &mut votes,
+                    remote_id.0,
+                    generation,
+                    timer.during,
+                    present.len(),
+                );
+            }
+        }
+    }
+}
+
+/// Host only: when a screen between minigames has been up long enough — or every player in the
+/// session has voted to skip it — move on. A timer whose phase is over (left early, or from a
+/// session that ended on that screen) is dropped.
 fn move_on_when_the_timer_ends(
     time: Res<Time>,
     mut timer: ResMut<PhaseTimer>,
-    mut phase: Single<&mut CurrentPhase>,
+    mut phase: Single<(&mut CurrentPhase, &mut SkipVotes)>,
+    players: Query<&Player>,
     mut commands: Commands,
 ) {
+    let (ref mut phase, ref mut votes) = *phase;
     if phase.0 != timer.during {
+        votes.voters.clear();
         commands.remove_resource::<PhaseTimer>();
         return;
     }
-    if timer.timer.tick(time.delta()).is_finished() {
+    let present: Vec<PeerId> = players.iter().map(|player| player.id).collect();
+    if votes.voters.iter().any(|id| !present.contains(id)) {
+        votes.voters.retain(|id| present.contains(id));
+    }
+    let skipped = everyone_agreed(present.iter().copied(), &votes.voters);
+    let timed_out = timer.timer.tick(time.delta()).is_finished();
+    if timed_out || skipped {
+        if skipped && !timed_out {
+            info!(
+                "Everyone agreed to skip {:?} ({} players)",
+                timer.during,
+                present.len()
+            );
+        }
+        votes.voters.clear();
         match timer.then {
             Then::Phase(then) => phase.0 = then,
             Then::Minigame(game) => commands.queue(BeginMinigame(game)),
         }
         commands.remove_resource::<PhaseTimer>();
     }
+}
+
+/// Whether the local player has already voted to skip the current waiting screen.
+pub fn local_player_voted(
+    votes: &SkipVotes,
+    clients: &Query<&LocalId, (With<Client>, With<Connected>)>,
+) -> bool {
+    local_peer_id(clients).is_some_and(|you| votes.contains(you))
 }
 
 /// Compares instead of waiting for [`CurrentPhase`] to change: a joiner can receive it before its
@@ -383,10 +583,49 @@ fn follow_phase(
 
 #[cfg(test)]
 mod tests {
-    use super::{SessionPhase, can_start, pick_participants};
+    use super::{
+        SessionPhase, SkipVotes, can_start, everyone_agreed, pick_participants, record_skip_vote,
+    };
     use crate::minigames::Minigame;
     use crate::players::Player;
     use lightyear::prelude::PeerId;
+
+    #[test]
+    fn everyone_must_agree_to_skip() {
+        let (a, b, c) = (PeerId::Netcode(1), PeerId::Netcode(2), PeerId::Netcode(3));
+        assert!(!everyone_agreed([], &[]));
+        assert!(!everyone_agreed([a, b], &[a]));
+        assert!(everyone_agreed([a, b], &[a, b]));
+        assert!(everyone_agreed([a, b], &[b, a, c]));
+        assert!(!everyone_agreed([a, b, c], &[a, b]));
+    }
+
+    #[test]
+    fn stale_generation_and_duplicate_votes_are_ignored() {
+        let (a, b) = (PeerId::Netcode(1), PeerId::Netcode(2));
+        let mut votes = SkipVotes {
+            voters: Vec::new(),
+            generation: 3,
+        };
+        record_skip_vote(&mut votes, a, 2, SessionPhase::Results, 2);
+        assert!(votes.voters.is_empty());
+
+        record_skip_vote(&mut votes, a, 3, SessionPhase::Results, 2);
+        record_skip_vote(&mut votes, a, 3, SessionPhase::Results, 2);
+        record_skip_vote(&mut votes, b, 3, SessionPhase::Results, 2);
+        assert_eq!(votes.voters, [a, b]);
+    }
+
+    #[test]
+    fn waiting_phases_are_the_timed_screens_between_minigames() {
+        assert!(!SessionPhase::Lobby.is_waiting());
+        assert!(!SessionPhase::Playing(Minigame::Shootout).is_waiting());
+        assert!(SessionPhase::Results.is_waiting());
+        assert!(SessionPhase::Standings.is_waiting());
+        assert!(SessionPhase::NextMatch.is_waiting());
+        assert!(SessionPhase::NextRound.is_waiting());
+        assert!(SessionPhase::PartyOver.is_waiting());
+    }
 
     #[test]
     fn needs_two_players_to_start() {

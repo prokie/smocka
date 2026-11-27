@@ -7,12 +7,12 @@ use bevy::prelude::*;
 use lightyear::prelude::PeerId;
 use smocka::config::session::{RESULTS_DURATION, STANDINGS_DURATION};
 use smocka::minigames::Minigame;
-use smocka::minigames::outcome::MinigameResult;
+use smocka::minigames::outcome::{MinigameEnded, MinigameResult, Placement};
 use smocka::minigames::two_player_pong::GOALS_TO_WIN_SETTING;
 use smocka::minigames::two_player_pong::ball::Ball;
 use smocka::minigames::two_player_pong::paddles::Paddle;
 use smocka::players::Player;
-use smocka::session::SessionPhase;
+use smocka::session::{SessionPhase, SessionRules, SkipVotes, VoteSkip};
 use smocka::standings::Points;
 
 use crate::common::{TestApp, connected_pair, pair_in_pong, update_until, update_until_within};
@@ -199,5 +199,123 @@ fn a_player_leaving_mid_game_returns_everyone_to_the_lobby() {
         apps[0].phase() == Some(SessionPhase::Lobby)
             && apps[1].phase().is_none()
             && apps.iter_mut().all(|app| pong_entities(app) == 0)
+    });
+}
+
+fn skip_votes(app: &mut TestApp) -> Option<SkipVotes> {
+    let world = app.0.world_mut();
+    world.query::<&SkipVotes>().iter(world).next().cloned()
+}
+
+fn vote_skip(app: &mut TestApp) {
+    VoteSkip.apply(app.0.world_mut());
+}
+
+fn end_with_win(host: &mut TestApp) {
+    let world = host.0.world_mut();
+    let players: Vec<Player> = world.query::<&Player>().iter(world).cloned().collect();
+    let placements = players
+        .iter()
+        .zip(1..)
+        .map(|(player, place)| Placement::new(player, place))
+        .collect();
+    world.trigger(MinigameEnded::Won(MinigameResult {
+        placements,
+        summary: String::new(),
+    }));
+}
+
+#[test]
+fn a_waiting_screen_skips_early_once_everyone_agrees() {
+    let (mut host, mut client, _) = connected_pair();
+    host.0.world_mut().insert_resource(SessionRules {
+        results: Duration::from_secs(60),
+        standings: Duration::from_secs(60),
+    });
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut().all(|app| app.players() == 2)
+    });
+    host.start_minigame(Minigame::Shootout);
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter()
+            .all(|app| app.phase() == Some(SessionPhase::Playing(Minigame::Shootout)))
+    });
+
+    end_with_win(&mut host);
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut().all(|app| {
+            app.phase() == Some(SessionPhase::Results)
+                && skip_votes(app).is_some_and(|votes| votes.generation >= 1)
+        })
+    });
+
+    // One player voting is visible to everyone, but doesn't skip on its own.
+    vote_skip(&mut host);
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut()
+            .all(|app| skip_votes(app).is_some_and(|votes| votes.voters.len() == 1))
+    });
+    wait_a_bit(&mut [&mut host, &mut client]);
+    assert_eq!(host.phase(), Some(SessionPhase::Results));
+    assert_eq!(client.phase(), Some(SessionPhase::Results));
+
+    // Once the joiner also agrees, both move straight on to Standings with fresh votes.
+    let results_gen = skip_votes(&mut host).unwrap().generation;
+    vote_skip(&mut client);
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut().all(|app| {
+            app.phase() == Some(SessionPhase::Standings)
+                && skip_votes(app)
+                    .is_some_and(|votes| votes.generation > results_gen && votes.voters.is_empty())
+        })
+    });
+
+    // Both agreeing again skips Standings straight back to the lobby.
+    vote_skip(&mut client);
+    vote_skip(&mut host);
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter()
+            .all(|app| app.phase() == Some(SessionPhase::Lobby))
+    });
+}
+
+#[test]
+fn a_non_voter_leaving_lets_the_remaining_voters_skip() {
+    let (mut host, mut first, addr) = connected_pair();
+    let mut second = TestApp::join(addr);
+    host.0.world_mut().insert_resource(SessionRules {
+        results: Duration::from_secs(60),
+        standings: Duration::from_secs(60),
+    });
+    update_until(&mut [&mut host, &mut first, &mut second], |apps| {
+        apps.iter_mut().all(|app| app.players() == 3)
+    });
+    host.start_minigame(Minigame::Shootout);
+    update_until(&mut [&mut host, &mut first, &mut second], |apps| {
+        apps.iter()
+            .all(|app| app.phase() == Some(SessionPhase::Playing(Minigame::Shootout)))
+    });
+
+    end_with_win(&mut host);
+    update_until(&mut [&mut host, &mut first, &mut second], |apps| {
+        apps.iter_mut().all(|app| {
+            app.phase() == Some(SessionPhase::Results)
+                && skip_votes(app).is_some_and(|votes| votes.generation >= 1)
+        })
+    });
+
+    vote_skip(&mut host);
+    vote_skip(&mut first);
+    update_until(&mut [&mut host, &mut first, &mut second], |apps| {
+        skip_votes(apps[0]).is_some_and(|votes| votes.voters.len() == 2)
+    });
+    wait_a_bit(&mut [&mut host, &mut first, &mut second]);
+    assert_eq!(host.phase(), Some(SessionPhase::Results));
+
+    // Once the third player leaves, the two remaining players already agree and move on.
+    second.leave();
+    update_until(&mut [&mut host, &mut first, &mut second], |apps| {
+        apps[0].phase() == Some(SessionPhase::Standings)
+            && apps[1].phase() == Some(SessionPhase::Standings)
     });
 }

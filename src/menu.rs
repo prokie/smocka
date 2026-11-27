@@ -198,9 +198,14 @@ impl Plugin for MenuPlugin {
                 )
                     .run_if(in_state(SessionPhase::NextMatch)),
                 widgets::update_countdowns,
+                (widgets::vote_skip_on_input, widgets::update_skip_hints)
+                    .run_if(any_with_component::<widgets::SkipHint>),
                 notices::expire_notices,
-                watching::update_watching_text.run_if(in_state(AppState::InSession)),
-                standings::update_standings_overlay.run_if(in_state(AppState::InSession)),
+                (
+                    watching::update_watching_text,
+                    standings::update_standings_overlay,
+                )
+                    .run_if(in_state(AppState::InSession)),
                 close_session.run_if(on_message::<WindowCloseRequested>),
             ),
         );
