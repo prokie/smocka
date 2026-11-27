@@ -1,6 +1,6 @@
-//! This player's own profile: the name they picked in the main menu, and the address they last
-//! joined, both remembered between launches in `smocka/settings.toml` in the system's settings
-//! folder.
+//! This player's own profile: the name they picked in the main menu, the address they last
+//! joined, and their [`Controls`], all remembered between launches in `smocka/settings.toml` in the
+//! system's settings folder.
 //!
 //! A joiner sends the name to the host inside its netcode connect token (the token's "user data"),
 //! so the host knows it the moment the player connects. The host uses its own profile directly.
@@ -11,6 +11,7 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::config::network::SERVER_ADDR;
+use crate::controls::Controls;
 
 /// The longest name allowed, in characters.
 pub const MAX_NAME_CHARS: usize = 16;
@@ -74,6 +75,19 @@ impl LastAddress {
     }
 }
 
+impl Controls {
+    /// The controls saved by an earlier run (made safe, see [`Controls::sanitized`]), or the
+    /// defaults. Like [`LocalProfile`], only the main menu loads and saves them.
+    pub fn load() -> Self {
+        SavedSettings::load().controls.sanitized()
+    }
+
+    /// Save the controls for the next run. Failing to save is logged, not fatal.
+    pub fn save(&self) {
+        SavedSettings::update("controls", |saved| saved.controls.clone_from(self));
+    }
+}
+
 /// The file everything is saved to, in [`settings_dir`].
 const SETTINGS_FILE: &str = "settings.toml";
 /// Where versions up to 0.1.1 saved the name, read when there's no [`SETTINGS_FILE`] yet.
@@ -88,6 +102,8 @@ struct SavedSettings {
     name: String,
     /// The address last joined from the main menu, as typed.
     last_address: Option<String>,
+    /// What each action in each minigame is bound to.
+    controls: Controls,
 }
 
 impl SavedSettings {
@@ -126,7 +142,7 @@ impl SavedSettings {
             }),
             Err(_) => Self {
                 name: std::fs::read_to_string(dir.join(LEGACY_NAME_FILE)).unwrap_or_default(),
-                last_address: None,
+                ..Self::default()
             },
         }
     }
@@ -182,6 +198,8 @@ mod tests {
         LEGACY_NAME_FILE, MAX_NAME_CHARS, SETTINGS_FILE, SavedSettings, clean_name,
         name_from_user_data, name_to_user_data,
     };
+    use crate::controls::{Control, ControlAction, Controls};
+    use bevy::prelude::GamepadButton;
     use std::path::PathBuf;
 
     /// An empty folder of its own for one test, under the system's temp folder.
@@ -196,9 +214,16 @@ mod tests {
     #[test]
     fn settings_survive_a_save() {
         let dir = empty_dir("settings-round-trip");
+        let mut controls = Controls::default();
+        controls.bind(
+            ControlAction::Throttle,
+            0,
+            Control::Button(GamepadButton::South),
+        );
         let saved = SavedSettings {
             name: "Åsa \"Ö\"".into(),
             last_address: Some("192.168.1.42".into()),
+            controls,
         };
         saved.write(&dir).unwrap();
         assert_eq!(SavedSettings::read(&dir), saved);

@@ -5,6 +5,7 @@ mod pong_input;
 pub mod score;
 mod visuals;
 
+pub use pong_input::PongInput;
 pub use visuals::PongVisualsPlugin;
 
 use bevy::prelude::*;

@@ -72,6 +72,7 @@ pub(super) fn spawn_main_menu(
                     menu_button(MenuButton::Join, "Join"),
                 ],
             ),
+            menu_button(MenuButton::Controls, "Controls"),
             menu_button(MenuButton::Quit, "Quit"),
             (
                 MenuMessage,

@@ -56,15 +56,21 @@ pub fn label(text: impl Into<String>, size: f32, color: Color) -> impl Bundle {
 
 /// A button reading `text` that does `action` when activated.
 pub fn menu_button(action: MenuButton, text: &str) -> impl Bundle {
-    button(action, text, 200.0)
+    button(action, text, 200.0, 24.0)
 }
 
 /// A square [`menu_button`] for a single character, such as "+".
 pub fn small_button(action: MenuButton, text: &str) -> impl Bundle {
-    button(action, text, 48.0)
+    button(action, text, 48.0, 24.0)
 }
 
-fn button(action: MenuButton, text: &str, width: f32) -> impl Bundle {
+/// A narrower [`menu_button`] with smaller text, for one binding on the Controls screen. It starts
+/// empty: the screen fills its text in.
+pub fn control_button(action: MenuButton) -> impl Bundle {
+    button(action, "", 140.0, 18.0)
+}
+
+fn button(action: MenuButton, text: &str, width: f32, text_size: f32) -> impl Bundle {
     (
         action,
         Button,
@@ -80,7 +86,7 @@ fn button(action: MenuButton, text: &str, width: f32) -> impl Bundle {
             ..default()
         },
         BackgroundColor(BUTTON_COLOR),
-        children![label(text, 24.0, Color::WHITE)],
+        children![label(text, text_size, Color::WHITE)],
     )
 }
 

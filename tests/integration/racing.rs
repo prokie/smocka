@@ -7,6 +7,7 @@ use bevy::prelude::*;
 use lightyear::prelude::PeerId;
 use lightyear::prelude::input::native::ActionState;
 use smocka::config::minigames::racing::LAPS;
+use smocka::controls::{Control, ControlAction, Controls};
 use smocka::minigames::Minigame;
 use smocka::minigames::racing::RacingInput;
 use smocka::minigames::racing::bumps::contact;
@@ -16,7 +17,7 @@ use smocka::minigames::racing::race::{ChangeLaps, RaceLaps, RaceRules, RaceStatu
 use smocka::minigames::racing::track::{CHECKPOINTS, Surface, surface_at};
 use smocka::session::{MinigameResult, SessionPhase};
 
-use crate::common::{TestApp, connected_pair, update_until};
+use crate::common::{TestApp, connected_pair, update_for, update_until};
 
 /// The state of the car whose driver matches `is_driver`, if this app has it yet.
 fn car(app: &mut TestApp, is_driver: impl Fn(PeerId) -> bool) -> Option<CarState> {
@@ -154,7 +155,27 @@ fn race_pair() -> (TestApp, TestApp) {
 
 /// [`race_pair`], with the host using `rules`.
 fn race_pair_with(rules: RaceRules) -> (TestApp, TestApp) {
-    let (mut host, mut client, _) = connected_pair();
+    let (host, client, _) = connected_pair();
+    start_race(host, client, rules)
+}
+
+/// [`race_pair`], with the joiner playing with `controls`.
+fn race_pair_with_joiner_controls(controls: Controls) -> (TestApp, TestApp) {
+    let (host, mut client, _) = connected_pair();
+    client.0.world_mut().insert_resource(controls);
+    start_race(
+        host,
+        client,
+        RaceRules {
+            countdown: Duration::ZERO,
+            ..default()
+        },
+    )
+}
+
+/// Start a race between a connected host and joiner, the host using `rules`, and wait until both
+/// see both cars.
+fn start_race(mut host: TestApp, mut client: TestApp, rules: RaceRules) -> (TestApp, TestApp) {
     host.0.world_mut().insert_resource(rules);
     update_until(&mut [&mut host, &mut client], |apps| apps[0].players() == 2);
     host.start_minigame(Minigame::Racing);
@@ -199,6 +220,54 @@ fn joiner_drives_their_car_on_every_peer() {
     });
     // Nobody touched the host's car.
     assert_eq!(car(&mut host, hosts).unwrap().speed, 0.0);
+}
+
+#[test]
+fn a_joiner_drives_with_the_controls_they_picked() {
+    let mut controls = Controls::default();
+    controls.bind(ControlAction::Throttle, 0, Control::Key(KeyCode::KeyI));
+    let (mut host, mut client) = race_pair_with_joiner_controls(controls);
+    let start = car(&mut host, joiners).unwrap().position;
+
+    // W isn't the throttle any more. The joiner's own car would move at once (it's predicted),
+    // long before the host sees it.
+    hold(&mut client, KeyCode::KeyW);
+    update_for(&mut [&mut host, &mut client], Duration::from_millis(100));
+    assert_eq!(car(&mut client, joiners).unwrap().speed, 0.0);
+
+    hold(&mut client, KeyCode::KeyI);
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut()
+            .all(|app| car(app, joiners).is_some_and(|car| car.position.x > start.x + 20.0))
+    });
+}
+
+#[test]
+fn a_joiner_drives_and_steers_with_a_gamepad_on_every_peer() {
+    let (mut host, mut client) = race_pair();
+    // The default gamepad controls: the right trigger accelerates, the left stick steers.
+    let mut gamepad = Gamepad::default();
+    gamepad.digital_mut().press(GamepadButton::RightTrigger2);
+    gamepad.analog_mut().set(GamepadButton::RightTrigger2, 1.0);
+    gamepad.analog_mut().set(GamepadAxis::LeftStickX, -0.8);
+    client.0.world_mut().spawn(gamepad);
+
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut()
+            .all(|app| car(app, joiners).is_some_and(|car| car.speed > 50.0 && car.heading > 0.3))
+    });
+}
+
+#[test]
+fn a_trigger_pressed_only_a_little_doesnt_accelerate() {
+    let (mut host, mut client) = race_pair();
+    let mut gamepad = Gamepad::default();
+    gamepad.analog_mut().set(GamepadButton::RightTrigger2, 0.2);
+    client.0.world_mut().spawn(gamepad);
+
+    // The joiner's own car would move at once (it's predicted), long before the host sees it.
+    update_for(&mut [&mut host, &mut client], Duration::from_millis(100));
+    assert_eq!(car(&mut client, joiners).unwrap().speed, 0.0);
 }
 
 #[test]

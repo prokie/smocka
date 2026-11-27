@@ -86,9 +86,6 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
 
 ## Later
 
-- [ ] **Gamepads and rebindable controls**: replace the hard-coded `KeyCode`s in
-      `pong_input.rs` and `racing_input.rs` with `bevy_enhanced_input`. Lightyear supports it
-      through its `lightyear_inputs_bei` crate. Matters more with every minigame added.
 - [ ] **Find games on the local network**: the host announces itself (UDP broadcast or mDNS),
       and the menu lists games to click instead of typing an IP address.
 - [ ] **Sound**, for every minigame at once: add Bevy's `audio` feature back to `Cargo.toml`.

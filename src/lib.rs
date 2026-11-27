@@ -1,6 +1,7 @@
 pub mod app_state;
 pub mod camera;
 pub mod config;
+pub mod controls;
 pub mod menu;
 pub mod minigames;
 pub mod network;
@@ -26,6 +27,8 @@ impl Plugin for SmockaPlugin {
             standings::StandingsPlugin,
             tournament::TournamentPlugin,
             party::PartyPlugin,
+            // Before the minigames, which register their input contexts with it.
+            controls::ControlsPlugin,
             minigames::MinigamesPlugin,
         ));
     }

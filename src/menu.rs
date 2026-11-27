@@ -1,5 +1,6 @@
 //! All local UI: one file per screen, plus the shared widgets they are built from.
 
+mod controls;
 mod lobby;
 mod main_menu;
 mod next_match;
@@ -22,6 +23,7 @@ use bevy::window::WindowCloseRequested;
 
 use crate::app_state::AppState;
 use crate::config::network::HOST_ADDR;
+use crate::controls::{ControlAction, Controls};
 use crate::minigames::Minigame;
 use crate::minigames::racing::race::ChangeLaps;
 use crate::network::{HostSession, LeaveSession, close_session};
@@ -49,6 +51,14 @@ pub enum MenuButton {
     ChangeLaps(i32),
     /// Change how many rounds the next party has by this many.
     ChangeRounds(i32),
+    /// Open the Controls screen.
+    Controls,
+    /// Close the Controls screen.
+    CloseControls,
+    /// Put every control back to its default.
+    ResetControls,
+    /// Bind the next key, gamepad button or stick push to this action's binding (from 0).
+    Rebind(ControlAction, usize),
 }
 
 /// All local UI. Needs a renderer, so headless tests leave it out.
@@ -60,10 +70,11 @@ impl Plugin for MenuPlugin {
         if !app.is_plugin_added::<TabNavigationPlugin>() {
             app.add_plugins(TabNavigationPlugin);
         }
-        // Only the real game remembers the player's name and last address; headless tests start
-        // with neither.
+        // Only the real game remembers the player's name, last address and controls; headless
+        // tests start with none of them.
         app.insert_resource(LocalProfile::load());
         app.insert_resource(LastAddress::load());
+        app.insert_resource(Controls::load());
         app.add_systems(PreStartup, use_ui_font);
         app.init_resource::<main_menu::NameEdited>();
         app.add_systems(OnEnter(AppState::MainMenu), main_menu::spawn_main_menu);
@@ -120,6 +131,16 @@ impl Plugin for MenuPlugin {
                     main_menu::follow_name_input,
                 )
                     .run_if(in_state(AppState::MainMenu)),
+                (
+                    controls::close_controls_on_escape
+                        .run_if(not(resource_exists::<controls::Rebinding>)),
+                    controls::capture_control.run_if(resource_exists::<controls::Rebinding>),
+                    controls::update_control_labels,
+                )
+                    .chain()
+                    .run_if(any_with_component::<controls::ControlsScreen>),
+                save_controls
+                    .run_if(resource_changed::<Controls>.and_then(not(resource_added::<Controls>))),
                 leave_on_escape.run_if(not(in_state(AppState::MainMenu))),
                 (
                     lobby::update_player_list,
@@ -192,7 +213,21 @@ fn on_menu_button(
         MenuButton::StartParty => commands.queue(StartParty),
         MenuButton::ChangeLaps(change) => commands.queue(ChangeLaps(*change)),
         MenuButton::ChangeRounds(change) => commands.queue(ChangeRounds(*change)),
+        MenuButton::Controls => commands.queue(controls::OpenControls),
+        MenuButton::CloseControls => commands.queue(controls::CloseControls),
+        MenuButton::ResetControls => commands.queue(controls::ResetControls),
+        MenuButton::Rebind(action, slot) => commands.queue(controls::StartRebinding {
+            action: *action,
+            slot: *slot,
+            button: trigger.entity,
+        }),
     }
+}
+
+/// Remember changed controls for the next launch. Separate from changing them, so tests of the
+/// Controls screen never write to the developer's settings.
+fn save_controls(controls: Res<Controls>) {
+    controls.save();
 }
 
 fn spawn_connecting_screen(mut commands: Commands) {

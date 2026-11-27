@@ -90,6 +90,20 @@ fn joiner_moves_their_paddle_on_every_peer() {
 }
 
 #[test]
+fn joiner_moves_their_paddle_with_a_gamepad_stick_on_every_peer() {
+    let (mut host, mut client, _) = pong_pair();
+    // Pushed down: the default gamepad control for moving down.
+    let mut gamepad = Gamepad::default();
+    gamepad.analog_mut().set(GamepadAxis::LeftStickY, -0.9);
+    client.0.world_mut().spawn(gamepad);
+
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut()
+            .all(|app| paddle_y(app, joiners).is_some_and(|y| y < -10.0))
+    });
+}
+
+#[test]
 fn host_moves_their_paddle_on_every_peer() {
     let (mut host, mut client, _) = pong_pair();
 

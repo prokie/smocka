@@ -23,8 +23,14 @@ struct Departures(Vec<u32>);
 impl TestApp {
     pub fn new() -> Self {
         let mut app = App::new();
-        app.init_resource::<ButtonInput<KeyCode>>();
-        app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin, SmockaPlugin));
+        // Keyboard and gamepad input, which the game reads through `bevy_enhanced_input`. Tests
+        // press keys in its `ButtonInput<KeyCode>`.
+        app.add_plugins((
+            MinimalPlugins,
+            bevy::input::InputPlugin,
+            bevy::state::app::StatesPlugin,
+            SmockaPlugin,
+        ));
         // `App::run` normally calls these; lightyear inserts resources in `finish`.
         app.init_resource::<Departures>();
         app.add_observer(|trigger: On<PlayerLeft>, mut seen: ResMut<Departures>| {
@@ -218,6 +224,18 @@ pub fn update_until_within(
             return;
         }
         assert!(Instant::now() < deadline, "timed out waiting for condition");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+/// Update all `apps` for `duration` of real time, at the pace [`update_until`] keeps. For checking
+/// that something doesn't happen.
+pub fn update_for(apps: &mut [&mut TestApp], duration: Duration) {
+    let deadline = Instant::now() + duration;
+    while Instant::now() < deadline {
+        for app in apps.iter_mut() {
+            app.0.update();
+        }
         std::thread::sleep(Duration::from_millis(5));
     }
 }

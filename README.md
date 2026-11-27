@@ -62,9 +62,11 @@ player's log in `logs/host.log` and `logs/join.log` until the next run.
 
 ## Controls
 
-- **Pong:** `W` / `↑` up, `S` / `↓` down.
-- **Racing:** `W` / `↑` accelerate, `S` / `↓` brake and reverse, `A` / `←` and `D` / `→` steer.
-  `F3` draws the track's road edges over the art.
+Keyboard or gamepad. These are the defaults: change them with **Controls** in the main menu.
+
+- **Pong:** `W` / `↑` / left stick up, `S` / `↓` / left stick down.
+- **Racing:** `W` / `↑` / right trigger accelerate, `S` / `↓` / left trigger brake and reverse,
+  `A` / `←` and `D` / `→` / left stick steer. `F3` draws the track's road edges over the art.
 
 ## Art
 
