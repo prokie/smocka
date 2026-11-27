@@ -6,8 +6,10 @@ use super::score::PongScore;
 use crate::camera::gameplay_camera_2d;
 use crate::config::display::{ART_SCALE, VIEW_HEIGHT, VIEW_WIDTH};
 use crate::config::minigames::two_player_pong::{
-    BALL_SIZE, PADDLE_HEIGHT, PADDLE_WIDTH, SCORE_FONT_SIZE, WALL_THICKNESS,
+    BALL_MAX_SPEED, BALL_SIZE, PADDLE_HEIGHT, PADDLE_WIDTH, SCORE_FONT_SIZE, WALL_THICKNESS,
 };
+use crate::config::network::TICK_RATE;
+use crate::minigames::smoothing::{PreviousTick, Smoothed, remember_previous_tick, smoothed};
 use crate::players::player_color;
 use crate::session::SessionPhase;
 
@@ -21,6 +23,10 @@ const ARENA_Z: f32 = 0.0;
 const PADDLE_Z: f32 = 1.0;
 const BALL_Z: f32 = 2.0;
 const SCORE_Z: f32 = 3.0;
+
+/// A ball further than this from where the tick before left it was put back in the centre after a
+/// goal. Twice as far as it can move in a tick.
+const BALL_RESET_STEP: f32 = 2.0 * BALL_MAX_SPEED / TICK_RATE as f32;
 
 const SCORE_X_OFFSET: f32 = 40.0;
 const SCORE_Y: f32 = VIEW_HEIGHT / 2.0 - WALL_THICKNESS - SCORE_FONT_SIZE / 2.0 - 4.0;
@@ -43,6 +49,14 @@ impl Plugin for PongVisualsPlugin {
         );
         app.add_observer(add_paddle_sprite);
         app.add_observer(add_ball_sprite);
+        app.add_systems(
+            FixedFirst,
+            (
+                remember_previous_tick::<PaddlePosition>,
+                remember_previous_tick::<BallPosition>,
+            )
+                .run_if(in_state(SessionPhase::TwoPlayerPong)),
+        );
         app.add_systems(
             PostUpdate,
             (sync_paddle_transform, sync_ball_transform)
@@ -97,10 +111,15 @@ fn add_paddle_sprite(
     ));
 }
 
-fn sync_paddle_transform(mut paddles: Query<(&PaddlePosition, &mut Transform), With<Paddle>>) {
-    for (position, mut transform) in &mut paddles {
-        transform.translation.x = position.0.x;
-        transform.translation.y = position.0.y;
+/// Draw each paddle between its last two ticks (see [`smoothing`](crate::minigames::smoothing)).
+fn sync_paddle_transform(
+    time: Res<Time<Fixed>>,
+    mut paddles: Query<Smoothed<PaddlePosition>, With<Paddle>>,
+) {
+    for (position, previous, mut transform) in &mut paddles {
+        let shown = smoothed(position, previous, time.overstep_fraction());
+        transform.translation.x = shown.0.x;
+        transform.translation.y = shown.0.y;
     }
 }
 
@@ -114,11 +133,28 @@ fn add_ball_sprite(trigger: On<Add<Ball>>, assets: Res<AssetServer>, mut command
     ));
 }
 
-fn sync_ball_transform(mut balls: Query<(&BallPosition, &mut Transform), With<Ball>>) {
-    for (position, mut transform) in &mut balls {
-        transform.translation.x = position.0.x;
-        transform.translation.y = position.0.y;
+fn sync_ball_transform(
+    time: Res<Time<Fixed>>,
+    mut balls: Query<Smoothed<BallPosition>, With<Ball>>,
+) {
+    for (position, previous, mut transform) in &mut balls {
+        let shown = shown_ball_position(*position, previous, time.overstep_fraction());
+        transform.translation.x = shown.x;
+        transform.translation.y = shown.y;
     }
+}
+
+/// Where to draw the ball: between its last two ticks (see
+/// [`smoothing`](crate::minigames::smoothing)), except right after a goal put it back in the
+/// centre, so it doesn't slide back across the arena.
+fn shown_ball_position(
+    position: BallPosition,
+    previous: Option<&PreviousTick<BallPosition>>,
+    overstep: f32,
+) -> Vec2 {
+    let previous = previous
+        .filter(|PreviousTick(previous)| previous.0.distance(position.0) <= BALL_RESET_STEP);
+    smoothed(&position, previous, overstep).0
 }
 
 fn spawn_score_text(mut commands: Commands) {
@@ -155,5 +191,34 @@ fn update_score_text(
         if let Some(paddle) = paddles.iter().find(|paddle| paddle.side == *side) {
             color.set_if_neq(TextColor(player_color(paddle.color)));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bevy::prelude::*;
+
+    use super::{BallPosition, shown_ball_position};
+    use crate::config::minigames::two_player_pong::{BALL_MAX_SPEED, GOAL_X};
+    use crate::config::network::TICK_RATE;
+    use crate::minigames::smoothing::PreviousTick;
+
+    #[test]
+    fn the_ball_is_drawn_between_its_last_two_ticks() {
+        let step = BALL_MAX_SPEED / TICK_RATE as f32;
+        let previous = PreviousTick(BallPosition(Vec2::new(100.0, 0.0)));
+        let shown = shown_ball_position(
+            BallPosition(Vec2::new(100.0 + step, 0.0)),
+            Some(&previous),
+            0.5,
+        );
+        assert_eq!(shown, Vec2::new(100.0 + step / 2.0, 0.0));
+    }
+
+    #[test]
+    fn a_ball_put_back_after_a_goal_is_drawn_in_the_centre() {
+        let previous = PreviousTick(BallPosition(Vec2::new(GOAL_X, 40.0)));
+        let shown = shown_ball_position(BallPosition(Vec2::ZERO), Some(&previous), 0.5);
+        assert_eq!(shown, Vec2::ZERO);
     }
 }

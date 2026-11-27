@@ -12,6 +12,7 @@ use crate::config::display::{VIEW_HEIGHT, VIEW_WIDTH};
 use crate::config::minigames::racing::{
     CAR_LENGTH, CAR_WIDTH, START_LINE_X, TRACK_INNER_RADIUS, TRACK_OUTER_RADIUS,
 };
+use crate::minigames::smoothing::{Smoothed, remember_previous_tick, smoothed};
 use crate::players::player_color;
 use crate::session::SessionPhase;
 
@@ -87,6 +88,10 @@ impl Plugin for RacingVisualsPlugin {
             )
                 .chain()
                 .run_if(in_state(SessionPhase::Racing)),
+        );
+        app.add_systems(
+            FixedFirst,
+            remember_previous_tick::<CarState>.run_if(in_state(SessionPhase::Racing)),
         );
         app.add_systems(
             PostUpdate,
@@ -302,10 +307,12 @@ fn add_car_sprite(
     ));
 }
 
-fn sync_car_transform(mut cars: Query<(&CarState, &mut Transform), With<Car>>) {
-    for (state, mut transform) in &mut cars {
-        transform.translation.x = state.position.x;
-        transform.translation.y = state.position.y;
-        transform.rotation = Quat::from_rotation_z(state.heading);
+/// Draw each car between its last two ticks (see [`smoothing`](crate::minigames::smoothing)).
+fn sync_car_transform(time: Res<Time<Fixed>>, mut cars: Query<Smoothed<CarState>, With<Car>>) {
+    for (state, previous, mut transform) in &mut cars {
+        let shown = smoothed(state, previous, time.overstep_fraction());
+        transform.translation.x = shown.position.x;
+        transform.translation.y = shown.position.y;
+        transform.rotation = Quat::from_rotation_z(shown.heading);
     }
 }

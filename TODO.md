@@ -4,30 +4,19 @@
 
 APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.cargo/registry`.
 
-- [ ] **Smooth rendering between ticks, and blend out rollback snaps.** The `sync_*_transform`
-      systems copy the latest fixed-tick state into `Transform`. At 128 Hz on a 60/144/165 Hz
-      screen that can stutter a little. Calling `.add_correction()` on the predicted
-      `PaddlePosition` and `CarState` eases mispredictions out over a few frames instead of
-      snapping, and adds `FrameInterpolationPlugin` by itself (`lightyear_prediction`
-      `registry.rs`). Entities opt in to frame interpolation with the `FrameInterpolate` marker.
-      `add_correction` needs the component to implement `Default` and `Diffable`, which
-      `CarState` and `PaddlePosition` don't yet. Insert `SkipFrameInterpolation` on intentional
-      teleports, such as Pong's ball going back to the centre after a goal, so it doesn't smear
-      across the screen. Matters more for racing since bumping came in: every driver predicts
-      every car from rebroadcast inputs, which arrive late, so other players' cars snap a little
-      each time their driver changes input.
 - [ ] **Test under bad network conditions.** Everything is tested over clean localhost.
       `Link::with_conditioner(LinkConditionerConfig { .. })` (`lightyear_link`) adds latency,
       jitter and packet loss. Add a CLI flag (e.g. `--lag`) for manual play, and one
       integration test with a conditioned link. Racing needs it most: other players' cars are
       predicted from their rebroadcast inputs, and are wrong for longer the higher the latency.
-- [ ] **Reconsider `TICK_RATE` (128 Hz) and `SEND_INTERVAL` (64 Hz)** once frame interpolation is
-      in. 64 Hz ticks and a 20–32 Hz send rate would roughly halve CPU and bandwidth. Measure
+- [ ] **Reconsider `TICK_RATE` (128 Hz) and `SEND_INTERVAL` (64 Hz)** now that movement is
+      smoothed between ticks (`minigames/smoothing.rs`). 64 Hz ticks and a 20–32 Hz send rate would roughly halve CPU and bandwidth. Measure
       first. A lower tick rate also tightens three limits that are written in terms of it: the
       ball's tunnelling limit (`BALL_MAX_SPEED`, see its doc in `src/config.rs`), how thick racing
       checkpoints must be, and how fast cars can drive at each other without passing through
       (checked when `bumps.rs` compiles). A lower send rate makes other players' paddles, and cars
-      for spectators, show slightly later.
+      for spectators, show slightly later, and smoothing draws things a tick late (15.6 ms at
+      64 Hz instead of 7.8 ms).
 - [ ] **Lightyear's debug tools, when chasing a desync**: `lightyear_tools` has a structured
       tracing layer and a debug UI covering sync, input buffering, rollbacks and correction.
       Check which `lightyear` feature enables it.
@@ -69,7 +58,9 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
       frame make it swing between 0.9× and 1.4×. Moving the system to `FixedUpdate` would break
       interpolated cars (every car, for a spectator), which change every frame. Divide by
       the time the change covers instead: ticks run × the fixed timestep for driven cars, the
-      frame time for interpolated ones.
+      frame time for interpolated ones. Or read the state the car is drawn at
+      (`smoothed`, in `minigames/smoothing.rs`): it moves on by exactly the frame's time for
+      every car, so dividing by `delta_secs` is right, and marks line up with the drawn car.
 - [ ] **"Esc: leave" and the watching line overlap on narrow windows.** Both sit 8 px from the
       bottom: the hint on the left (`spawn_leave_hint` in `menu.rs`), `WatchingText` centred
       (`menu/watching.rs`). In Bevy's default monospace font, "Watching: Player 1 vs Player 2
@@ -94,6 +85,20 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
       rollback problem: `drive_cars` reads `RaceStatus`, which isn't predicted. A rollback that
       replays ticks from before the start sees the current `Racing` and lets the car move early.
       Comparing the tick being simulated with the start tick fixes both.
+- [ ] **Blend out rollback snaps on drivers' screens**, if playtests show they look bad. Every
+      driver predicts every car from inputs the host rebroadcasts, which arrive late, so a
+      rollback snaps other players' cars to the corrected spot in one frame. On a LAN that's a
+      few degrees of heading when a driver's steering arrives late, and more when a bump came
+      out differently. Over the internet (~100 ms) a late steer would be ~20°.
+      `.add_linear_correction::<D>()` on `CarState` eases snaps out over a few frames. It needs
+      `CarState: Diffable<D>` (`lightyear_replication`'s `diffable.rs`), with a heading
+      difference that goes the short way round (`add_correction()` would also need `Default`).
+      Correction adds Lightyear's `FrameInterpolationPlugin` and needs `FrameInterpolate` on the
+      corrected cars, which then takes over from `PreviousTick` smoothing
+      (`minigames/smoothing.rs`): drop `PreviousTick` for those cars, or they're blended twice.
+      Only give it to predicted cars, never the host's: it writes the blend into `CarState`,
+      marking it changed every frame, so the host would re-send idle cars. Pong paddles don't
+      need it: only the owner predicts one, and nobody else's input moves it.
 - [ ] **More interesting tracks**: describe the track as data (a centre line plus width) instead of
       an oval.
 - [ ] **Tournament matches at the same time.** Today matches run one after another, with

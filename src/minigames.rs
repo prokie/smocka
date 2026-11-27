@@ -1,4 +1,5 @@
 pub mod racing;
+pub mod smoothing;
 pub mod two_player_pong;
 
 use bevy::prelude::*;
