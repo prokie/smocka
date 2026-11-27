@@ -59,6 +59,11 @@ const THUMBNAIL_WIDTH: f32 = 176.0;
 /// A tile's size, in pixels: its thumbnail, name and settings summary.
 const TILE_WIDTH: f32 = THUMBNAIL_WIDTH + 2.0 * TILE_PADDING;
 const TILE_HEIGHT: f32 = THUMBNAIL_WIDTH * 9.0 / 16.0 + 2.0 * TILE_PADDING + 52.0;
+/// How many rows of tiles the lobby's grid shows whole before it scrolls.
+const GRID_ROWS_SHOWN: usize = 2;
+/// How much of the next row the grid's box shows below the whole rows: only the top of its
+/// thumbnails, so the cut-off row shows there's more to scroll to without cutting through a name.
+const ROW_PEEK: f32 = TILE_PADDING + 30.0;
 /// The settings icon on a tile.
 const GEAR_ICON: &str = "menu/gear.png";
 
@@ -166,8 +171,8 @@ fn column() -> Node {
     }
 }
 
-/// The minigames, as a grid of tiles under `parent`, in a box that scrolls once there are more than
-/// [`GRID_COLUMNS`] of them. Each tile has the minigame's thumbnail, its name and a summary of its
+/// The minigames, as a grid of tiles under `parent`, [`GRID_COLUMNS`] to a row, in a box that
+/// scrolls once there are more than [`GRID_ROWS_SHOWN`] rows. Each tile has the minigame's thumbnail, its name and a summary of its
 /// settings. On the host the whole tile is a button that starts it, with a gear in the corner
 /// that opens its settings. Joiners see the same tiles, to see what can be played and the host's
 /// picks. `image` loads an image by its path under `assets/`.
@@ -204,9 +209,9 @@ fn spawn_games(
         .spawn((
             ScrollArea,
             Node {
-                // Most of a second row, so a cut-off row shows there's more to scroll to. As tall
-                // as the players column with eight players.
-                max_height: px(TILE_HEIGHT * 1.75 + GRID_GAP),
+                // Whole rows, then a peek at the next one, if there is one. Still short enough to
+                // fit, with eight players, in a 720-pixel-high window.
+                max_height: px(GRID_ROWS_SHOWN as f32 * (TILE_HEIGHT + GRID_GAP) + ROW_PEEK),
                 overflow: Overflow::scroll_y(),
                 ..default()
             },
@@ -602,13 +607,15 @@ pub fn lobby_hint(hosting: bool, startable: bool) -> &'static str {
 #[cfg(test)]
 mod tests {
     use bevy::prelude::*;
-    use bevy::ui::InteractionDisabled;
+    use bevy::ui::{InteractionDisabled, UiGlobalTransform};
     use bevy::ui_widgets::ScrollArea;
 
     use super::{
-        SettingsSummary, Thumbnail, lobby_hint, player_label, spawn_games, update_thumbnails,
+        GRID_COLUMNS, GRID_ROWS_SHOWN, SettingsSummary, Thumbnail, lobby_hint, player_label,
+        spawn_games, update_thumbnails,
     };
     use crate::menu::MenuButton;
+    use crate::menu::widgets::tests::layout_app;
     use crate::minigames::Minigame;
     use crate::minigames::racing::TRACK_SETTING;
     use crate::minigames::racing::track::TrackId;
@@ -753,5 +760,64 @@ mod tests {
             tile_picture(&mut app, Minigame::Racing),
             (figure_eight, figure_eight.into())
         );
+    }
+
+    /// Where `entity` was laid out: its top and bottom edges, in pixels down from the window's top.
+    fn top_and_bottom(world: &World, entity: Entity) -> (f32, f32) {
+        let node = world.get::<ComputedNode>(entity).unwrap();
+        let at = world.get::<UiGlobalTransform>(entity).unwrap();
+        let half = node.size().y / 2.0;
+        (at.translation.y - half, at.translation.y + half)
+    }
+
+    #[test]
+    fn the_grid_shows_whole_rows_and_never_cuts_through_a_name() {
+        let mut app = layout_app(1280, 720);
+        let root = app
+            .world_mut()
+            .spawn(Node {
+                width: percent(100),
+                height: percent(100),
+                ..default()
+            })
+            .id();
+        spawn_games(
+            root,
+            true,
+            &|_| Handle::default(),
+            &mut app.world_mut().commands(),
+        );
+        app.update();
+
+        let world = app.world_mut();
+        let area = world
+            .query_filtered::<Entity, With<ScrollArea>>()
+            .single(world)
+            .unwrap();
+        let tiles: Vec<(Minigame, Entity, Entity)> = world
+            .query::<(&Thumbnail, Entity, &ChildOf)>()
+            .iter(world)
+            .map(|(thumbnail, entity, face)| (thumbnail.game, entity, face.parent()))
+            .collect();
+        assert_eq!(tiles.len(), Minigame::ALL.len());
+        let (_, shown_to) = top_and_bottom(world, area);
+        for (game, thumbnail, face) in tiles {
+            let name = game.info().name;
+            let row = Minigame::ALL.iter().position(|&g| g == game).unwrap() / GRID_COLUMNS;
+            let (tile_top, tile_bottom) = top_and_bottom(world, face);
+            let (_, picture_bottom) = top_and_bottom(world, thumbnail);
+            if row < GRID_ROWS_SHOWN {
+                assert!(
+                    tile_bottom <= shown_to,
+                    "{name}'s tile ends at {tile_bottom}, under the grid's box at {shown_to}"
+                );
+            } else if tile_top < shown_to {
+                // Only peeked at, so the tile's name is cut off whole.
+                assert!(
+                    shown_to <= picture_bottom,
+                    "{name}'s tile is cut at {shown_to}, under its picture at {picture_bottom}"
+                );
+            }
+        }
     }
 }

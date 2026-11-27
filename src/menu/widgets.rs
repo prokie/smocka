@@ -499,7 +499,7 @@ pub(super) fn style_buttons(
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use bevy::app::{HierarchyPropagatePlugin, PropagateSet};
     use bevy::camera::{ComputedCameraValues, RenderTargetInfo, Viewport};
     use bevy::ecs::system::RunSystemOnce;
@@ -521,7 +521,7 @@ mod tests {
 
     /// An app that lays out UI on a `width` × `height` pixel window, set up as Bevy's own layout
     /// tests do. It has no fonts, so these tests use boxes of a set size rather than text.
-    fn layout_app(width: u32, height: u32) -> App {
+    pub(in crate::menu) fn layout_app(width: u32, height: u32) -> App {
         let mut app = App::new();
         app.add_plugins((
             TaskPoolPlugin::default(),
