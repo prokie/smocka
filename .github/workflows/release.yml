@@ -33,7 +33,7 @@ jobs:
             binary: smocka
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check the tag matches the version in Cargo.toml
         shell: bash
@@ -76,7 +76,7 @@ jobs:
             zip -r "$dir.zip" "$dir"
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.platform }}
           path: smocka-*.zip
@@ -86,7 +86,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # The whole history and its tags, so git-cliff can find the commits since the last release.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -94,7 +94,7 @@ jobs:
         with:
           tool: git-cliff
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
