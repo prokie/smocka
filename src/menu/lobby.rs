@@ -42,6 +42,8 @@ pub struct SettingsSummary(pub Minigame);
 #[derive(Component)]
 pub struct Thumbnail;
 
+/// Space between the lobby's two columns, in pixels.
+const COLUMN_GAP: f32 = 64.0;
 /// How many minigames each row of the lobby's grid holds.
 const GRID_COLUMNS: usize = 3;
 /// Space between tiles, in pixels.
@@ -64,6 +66,9 @@ pub struct RoundsText;
 #[derive(Component, Debug, Clone, Copy)]
 pub struct ColorSwatch(pub u8);
 
+/// The lobby: the title, then two columns, then the hint. On the left, who's here and the colour
+/// you pick. On the right, what to play: a party, or one minigame from a grid. Two columns keep
+/// it short enough for eight players in a 720-pixel-high window.
 pub(super) fn spawn_lobby_screen(
     hosting: Hosting,
     assets: Res<AssetServer>,
@@ -72,8 +77,23 @@ pub(super) fn spawn_lobby_screen(
     let root = commands
         .spawn((
             screen(SessionPhase::Lobby),
+            children![label("Lobby", 48.0, Color::WHITE)],
+        ))
+        .id();
+    let columns = commands
+        .spawn(Node {
+            column_gap: px(COLUMN_GAP),
+            align_items: AlignItems::FlexStart,
+            ..default()
+        })
+        .id();
+    commands.entity(root).add_child(columns);
+
+    let players = commands
+        .spawn((
+            column(),
             children![
-                label("Lobby", 48.0, Color::WHITE),
+                label("Players", 20.0, HINT_COLOR),
                 (
                     PlayerList,
                     Node {
@@ -95,9 +115,18 @@ pub(super) fn spawn_lobby_screen(
     for index in 0..PLAYER_COLORS.len() as u8 {
         commands.entity(swatches).with_child(swatch(index));
     }
-    commands.entity(root).add_child(swatches);
+    commands.entity(players).add_child(swatches);
+
+    let play = commands.spawn(column()).id();
+    let party = commands
+        .spawn(Node {
+            column_gap: px(24),
+            align_items: AlignItems::Center,
+            ..default()
+        })
+        .id();
     if hosting.is_hosting() {
-        commands.entity(root).with_child((
+        commands.entity(party).with_child((
             menu_button(MenuButton::StartParty, "Start party"),
             InteractionDisabled,
         ));
@@ -108,25 +137,38 @@ pub(super) fn spawn_lobby_screen(
         hosting.is_hosting().then_some(MenuButton::ChangeRounds),
         &mut commands,
     );
-    commands.entity(root).add_child(rounds);
+    commands.entity(party).add_child(rounds);
+    commands.entity(play).add_child(party);
     spawn_games(
-        root,
+        play,
         hosting.is_hosting(),
         &|path| assets.load(path),
         &mut commands,
     );
+
+    commands.entity(columns).add_children(&[players, play]);
     commands
         .entity(root)
         .with_child((LobbyHint, label("", 20.0, HINT_COLOR)));
 }
 
-/// The minigames, as a grid of tiles under `root`, in a box that scrolls once there are more than
+/// One of the lobby's two columns: its parts stacked, lined up on the left.
+fn column() -> Node {
+    Node {
+        flex_direction: FlexDirection::Column,
+        align_items: AlignItems::FlexStart,
+        row_gap: px(12),
+        ..default()
+    }
+}
+
+/// The minigames, as a grid of tiles under `parent`, in a box that scrolls once there are more than
 /// [`GRID_COLUMNS`] of them. Each tile has the minigame's thumbnail, its name and a summary of its
 /// settings. On the host the whole tile is a button that starts it, with a gear in the corner
 /// that opens its settings. Joiners see the same tiles, to see what can be played and the host's
 /// picks. `image` loads an image by its path under `assets/`.
 fn spawn_games(
-    root: Entity,
+    parent: Entity,
     hosting: bool,
     image: &impl Fn(&'static str) -> Handle<Image>,
     commands: &mut Commands,
@@ -137,7 +179,7 @@ fn spawn_games(
         "Minigames"
     };
     commands
-        .entity(root)
+        .entity(parent)
         .with_child(label(heading, 20.0, HINT_COLOR));
     // Only as many columns as there are minigames, so a short first row stays centred.
     let columns = Minigame::ALL.len().clamp(1, GRID_COLUMNS) as u16;
@@ -158,15 +200,16 @@ fn spawn_games(
         .spawn((
             ScrollArea,
             Node {
-                // A row and a half, so a cut-off row shows there's more to scroll to.
-                max_height: px(TILE_HEIGHT * 1.5 + GRID_GAP),
+                // Most of a second row, so a cut-off row shows there's more to scroll to. As tall
+                // as the players column with eight players.
+                max_height: px(TILE_HEIGHT * 1.75 + GRID_GAP),
                 overflow: Overflow::scroll_y(),
                 ..default()
             },
         ))
         .add_child(grid)
         .id();
-    commands.entity(root).add_child(scroll);
+    commands.entity(parent).add_child(scroll);
 }
 
 /// `game`'s tile in the lobby's grid (see [`spawn_games`]).
