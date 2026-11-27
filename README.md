@@ -31,17 +31,6 @@ Download the zip for your system from the
 cargo run
 ```
 
-Type your name at the top of the main menu; it's remembered for next time (in
-`smocka/settings.toml` in your system's settings folder, with your controls and volumes). One player picks **Host game**. The others type the host's
-address (for example `192.168.1.10`, or `192.168.1.10:5000`) and press **Join**. The host listens
-on UDP port 5000 on every interface.
-
-In the lobby, everyone picks a colour: each colour can belong to only one player, and it's used
-for your car, your Pong paddle and your score. Once at least two players are there, the host
-picks a minigame. Next to each minigame, the host's **Settings** button opens its own settings,
-such as how many goals win Pong or how many laps a race has; everyone sees the picks there.
-`Esc` leaves the session (or closes a settings screen).
-
 To skip the menu while developing:
 
 ```sh
@@ -89,7 +78,11 @@ name, at 3× its size in world units (e.g. a 16×10 car is 48×30 pixels; a full
 1920×1080), keeping the same proportions. Draw player-coloured parts in white or grey: the game
 tints them.
 
-The placeholders come from `python3 tools/make_art.py`. The racing track's art must match the
+Each minigame also has a `thumbnail.png` (480×270) for its tile in the lobby, and
+`assets/menu/gear.png` is the settings icon on the tiles.
+
+The placeholders come from `python3 tools/make_art.py`, which makes the thumbnails from the
+minigames' art, so replacing the art and running it again updates them. The racing track's art must match the
 shape set in `src/minigames/racing/config.rs` (`TRACK_*` constants), as must the copy of those
 constants in the script; press `F3` in a race to check.
 

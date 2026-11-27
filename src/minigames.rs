@@ -38,6 +38,9 @@ pub struct MinigameInfo {
     /// for a minigame that seats two, it's played as a
     /// [`Tournament`](crate::tournament::Tournament).
     pub max_players: usize,
+    /// The picture on its tile in the lobby: a 16:9 image under `assets/`, made by
+    /// `tools/make_art.py`.
+    pub thumbnail: &'static str,
     /// What the host can pick before it's played, in the order its settings screen shows them.
     /// The minigame names each with a [`SettingId`](settings::SettingId) const.
     pub settings: &'static [settings::Setting],

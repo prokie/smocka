@@ -28,6 +28,7 @@ pub const INFO: MinigameInfo = MinigameInfo {
     name: "Racing",
     min_players: 2,
     max_players: GRID_SLOTS,
+    thumbnail: "minigames/racing/thumbnail.png",
     settings: &[Setting {
         name: "Laps",
         min: MIN_LAPS,

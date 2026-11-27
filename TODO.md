@@ -102,9 +102,10 @@ same build.
       observer spawning it on `Started`, a system keeping it up to date, and a lobby picker.
       `SettingId` names a minigame's setting; letting it name the party's too would remove the
       copy and `MenuButton::ChangeRounds`.
-- [ ] **Many minigames in the lobby.** Each one is a row (start button, settings summary,
-      Settings button), so the lobby grows by a row per minigame and runs off a 720-pixel-high
-      window after about three more. Past that it needs columns or scrolling.
+- [ ] **The lobby is too tall for a full party in a 720-pixel-high window.** With one player and
+      the minigame grid it spans about 580 of 720 pixels (680 once a second row of tiles
+      scrolls), and each player adds a row of about 30. The players and colours on the left and
+      the minigame grid on the right would fit eight players.
 - [ ] **Small duplications.** `mark_controlled_car` and `mark_controlled_paddle` could be one
       generic observer. `spawn_cars` and `spawn_paddles` repeat a "participants still here"
       lookup that could be a `Participants` method.

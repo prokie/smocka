@@ -3,12 +3,13 @@ use bevy::input_focus::{InputFocus, InputFocusVisible};
 use bevy::picking::hover::Hovered;
 use bevy::prelude::*;
 use bevy::ui::InteractionDisabled;
-use bevy::ui_widgets::{Activate, Button};
+use bevy::ui_widgets::{Activate, Button, ScrollArea};
 use lightyear::prelude::*;
 
 use super::MenuButton;
 use super::widgets::{
-    HINT_COLOR, ShownRows, label, menu_button, screen, settings_button, show_rows, small_button,
+    BUTTON_COLOR, HINT_COLOR, ShownRows, icon_button, icon_button_node, label, menu_button, screen,
+    show_rows, small_button,
 };
 use crate::config::party::{MAX_ROUNDS, MIN_ROUNDS};
 use crate::minigames::Minigame;
@@ -37,8 +38,23 @@ pub struct LobbyHint;
 #[derive(Component)]
 pub struct SettingsSummary(pub Minigame);
 
-/// How wide a minigame's settings summary is, in pixels, so the Settings buttons line up.
-const SUMMARY_WIDTH: f32 = 220.0;
+/// A minigame's thumbnail on its tile in the lobby.
+#[derive(Component)]
+pub struct Thumbnail;
+
+/// How many minigames each row of the lobby's grid holds.
+const GRID_COLUMNS: usize = 3;
+/// Space between tiles, in pixels.
+const GRID_GAP: f32 = 12.0;
+/// Space around a tile's insides, in pixels.
+const TILE_PADDING: f32 = 6.0;
+/// A tile's thumbnail is this wide, in pixels, and 16:9.
+const THUMBNAIL_WIDTH: f32 = 176.0;
+/// A tile's size, in pixels: its thumbnail, name and settings summary.
+const TILE_WIDTH: f32 = THUMBNAIL_WIDTH + 2.0 * TILE_PADDING;
+const TILE_HEIGHT: f32 = THUMBNAIL_WIDTH * 9.0 / 16.0 + 2.0 * TILE_PADDING + 52.0;
+/// The settings icon on a tile.
+const GEAR_ICON: &str = "menu/gear.png";
 
 /// The host's pick of how many rounds the next party has.
 #[derive(Component)]
@@ -48,7 +64,11 @@ pub struct RoundsText;
 #[derive(Component, Debug, Clone, Copy)]
 pub struct ColorSwatch(pub u8);
 
-pub(super) fn spawn_lobby_screen(hosting: Hosting, mut commands: Commands) {
+pub(super) fn spawn_lobby_screen(
+    hosting: Hosting,
+    assets: Res<AssetServer>,
+    mut commands: Commands,
+) {
     let root = commands
         .spawn((
             screen(SessionPhase::Lobby),
@@ -89,76 +109,154 @@ pub(super) fn spawn_lobby_screen(hosting: Hosting, mut commands: Commands) {
         &mut commands,
     );
     commands.entity(root).add_child(rounds);
-    spawn_games(root, hosting.is_hosting(), &mut commands);
+    spawn_games(
+        root,
+        hosting.is_hosting(),
+        &|path| assets.load(path),
+        &mut commands,
+    );
     commands
         .entity(root)
         .with_child((LobbyHint, label("", 20.0, HINT_COLOR)));
 }
 
-/// One row per minigame, under `root`. The host gets a button to start it, a summary of its
-/// settings, and a button to change them. Joiners see the minigames with settings, and the host's
-/// picks.
-fn spawn_games(root: Entity, hosting: bool, commands: &mut Commands) {
-    let games: Vec<Minigame> = Minigame::ALL
-        .into_iter()
-        .filter(|game| hosting || !game.info().settings.is_empty())
-        .collect();
-    if games.is_empty() {
-        return;
-    }
+/// The minigames, as a grid of tiles under `root`, in a box that scrolls once there are more than
+/// [`GRID_COLUMNS`] of them. Each tile has the minigame's thumbnail, its name and a summary of its
+/// settings. On the host the whole tile is a button that starts it, with a gear in the corner
+/// that opens its settings. Joiners see the same tiles, to see what can be played and the host's
+/// picks. `image` loads an image by its path under `assets/`.
+fn spawn_games(
+    root: Entity,
+    hosting: bool,
+    image: &impl Fn(&'static str) -> Handle<Image>,
+    commands: &mut Commands,
+) {
     let heading = if hosting {
         "Or play one game:"
     } else {
-        "Minigame settings"
+        "Minigames"
     };
     commands
         .entity(root)
         .with_child(label(heading, 20.0, HINT_COLOR));
-    let list = commands
+    // Only as many columns as there are minigames, so a short first row stays centred.
+    let columns = Minigame::ALL.len().clamp(1, GRID_COLUMNS) as u16;
+    let grid = commands
         .spawn(Node {
-            flex_direction: FlexDirection::Column,
-            row_gap: px(8),
+            display: Display::Grid,
+            grid_template_columns: RepeatedGridTrack::px(columns, TILE_WIDTH),
+            column_gap: px(GRID_GAP),
+            row_gap: px(GRID_GAP),
             ..default()
         })
         .id();
-    for game in games {
-        let row = commands
-            .spawn(Node {
-                column_gap: px(12),
-                align_items: AlignItems::Center,
+    for game in Minigame::ALL {
+        let tile = spawn_tile(game, hosting, image, commands);
+        commands.entity(grid).add_child(tile);
+    }
+    let scroll = commands
+        .spawn((
+            ScrollArea,
+            Node {
+                // A row and a half, so a cut-off row shows there's more to scroll to.
+                max_height: px(TILE_HEIGHT * 1.5 + GRID_GAP),
+                overflow: Overflow::scroll_y(),
                 ..default()
-            })
-            .id();
-        if hosting {
-            commands.entity(row).with_child((
-                menu_button(MenuButton::Start(game), game.info().name),
-                InteractionDisabled,
-            ));
-        } else {
-            commands.entity(row).with_child((
-                label(game.info().name, 24.0, Color::WHITE),
+            },
+        ))
+        .add_child(grid)
+        .id();
+    commands.entity(root).add_child(scroll);
+}
+
+/// `game`'s tile in the lobby's grid (see [`spawn_games`]).
+fn spawn_tile(
+    game: Minigame,
+    hosting: bool,
+    image: &impl Fn(&'static str) -> Handle<Image>,
+    commands: &mut Commands,
+) -> Entity {
+    let info = game.info();
+    let look = (
+        Node {
+            width: px(TILE_WIDTH),
+            height: px(TILE_HEIGHT),
+            flex_direction: FlexDirection::Column,
+            align_items: AlignItems::Center,
+            padding: px(TILE_PADDING).all(),
+            row_gap: px(4),
+            border_radius: BorderRadius::all(px(8)),
+            ..default()
+        },
+        BackgroundColor(BUTTON_COLOR),
+    );
+    let face = commands
+        .spawn(look)
+        .with_children(|face| {
+            face.spawn((
+                Thumbnail,
+                ImageNode::new(image(info.thumbnail)),
                 Node {
-                    width: px(120),
+                    width: px(THUMBNAIL_WIDTH),
+                    height: px(THUMBNAIL_WIDTH * 9.0 / 16.0),
+                    border_radius: BorderRadius::all(px(4)),
                     ..default()
                 },
             ));
-        }
-        commands.entity(row).with_child((
-            SettingsSummary(game),
-            label("", 18.0, HINT_COLOR),
+            face.spawn(label(info.name, 20.0, Color::WHITE));
+            face.spawn((SettingsSummary(game), label("", 14.0, HINT_COLOR)));
+        })
+        .id();
+    if !hosting {
+        return face;
+    }
+    // The tile is the start button. The gear is laid over its corner, not inside it, so
+    // clicking the gear is never also a click on the tile.
+    commands.entity(face).insert((
+        MenuButton::Start(game),
+        Button,
+        Hovered::default(),
+        TabIndex(0),
+        InteractionDisabled,
+    ));
+    let tile = commands
+        .spawn(Node {
+            width: px(TILE_WIDTH),
+            height: px(TILE_HEIGHT),
+            ..default()
+        })
+        .add_child(face)
+        .id();
+    if !info.settings.is_empty() {
+        commands.entity(tile).with_child((
+            icon_button(MenuButton::MinigameSettings(game), image(GEAR_ICON)),
             Node {
-                width: px(SUMMARY_WIDTH),
-                ..default()
+                position_type: PositionType::Absolute,
+                top: px(TILE_PADDING + 4.0),
+                right: px(TILE_PADDING + 4.0),
+                ..icon_button_node()
             },
         ));
-        if hosting && !game.info().settings.is_empty() {
-            commands
-                .entity(row)
-                .with_child(settings_button(MenuButton::MinigameSettings(game)));
-        }
-        commands.entity(list).add_child(row);
     }
-    commands.entity(root).add_child(list);
+    tile
+}
+
+/// Dim a thumbnail while its tile can't be started (too few players), as the tile itself is.
+pub(super) fn dim_disabled_thumbnails(
+    mut thumbnails: Query<(&ChildOf, &mut ImageNode), With<Thumbnail>>,
+    tiles: Query<Has<InteractionDisabled>, With<MenuButton>>,
+) {
+    for (parent, mut image) in &mut thumbnails {
+        let disabled = tiles.get(parent.parent()).unwrap_or(false);
+        let color = if disabled {
+            Color::srgb(0.45, 0.45, 0.45)
+        } else {
+            Color::WHITE
+        };
+        if image.color != color {
+            image.color = color;
+        }
+    }
 }
 
 /// A row showing one of the host's picks: `name`, then the value in a text marked with `marker`.
@@ -432,9 +530,64 @@ pub fn lobby_hint(hosting: bool, startable: bool) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{lobby_hint, player_label};
+    use bevy::prelude::*;
+    use bevy::ui::InteractionDisabled;
+    use bevy::ui_widgets::ScrollArea;
+
+    use super::{SettingsSummary, Thumbnail, lobby_hint, player_label, spawn_games};
+    use crate::menu::MenuButton;
+    use crate::minigames::Minigame;
     use crate::players::Player;
     use lightyear::prelude::PeerId;
+
+    /// The lobby's minigame grid, as the host (`hosting`) or a joiner sees it.
+    fn games(hosting: bool) -> World {
+        let mut world = World::new();
+        let root = world.spawn(Node::default()).id();
+        spawn_games(root, hosting, &|_| Handle::default(), &mut world.commands());
+        world.flush();
+        world
+    }
+
+    fn count<F: bevy::ecs::query::QueryFilter>(world: &mut World) -> usize {
+        world.query_filtered::<(), F>().iter(world).count()
+    }
+
+    fn buttons(world: &mut World) -> Vec<MenuButton> {
+        world.query::<&MenuButton>().iter(world).copied().collect()
+    }
+
+    #[test]
+    fn the_host_gets_a_tile_per_minigame_that_starts_it_and_a_gear_for_its_settings() {
+        let mut world = games(true);
+        let buttons = buttons(&mut world);
+        for game in Minigame::ALL {
+            assert!(buttons.contains(&MenuButton::Start(game)), "{buttons:?}");
+            assert_eq!(
+                buttons.contains(&MenuButton::MinigameSettings(game)),
+                !game.info().settings.is_empty(),
+                "{buttons:?}"
+            );
+        }
+        // Until enough players are here (see `update_lobby_hint`).
+        assert_eq!(
+            count::<(With<MenuButton>, With<InteractionDisabled>)>(&mut world),
+            Minigame::ALL.len()
+        );
+        assert_eq!(count::<With<Thumbnail>>(&mut world), Minigame::ALL.len());
+        assert_eq!(count::<With<ScrollArea>>(&mut world), 1);
+    }
+
+    #[test]
+    fn joiners_see_every_minigame_and_its_settings_but_cant_start_or_change_them() {
+        let mut world = games(false);
+        assert_eq!(buttons(&mut world), []);
+        assert_eq!(count::<With<Thumbnail>>(&mut world), Minigame::ALL.len());
+        assert_eq!(
+            count::<With<SettingsSummary>>(&mut world),
+            Minigame::ALL.len()
+        );
+    }
 
     fn player(id: PeerId, number: u32, name: &str) -> Player {
         Player {

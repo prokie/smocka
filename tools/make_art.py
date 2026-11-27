@@ -1,4 +1,5 @@
-"""Draw the placeholder art for every minigame, in the game's flat style, for a 1080p screen.
+"""Draw the placeholder art for every minigame, in the game's flat style, for a 1080p screen, plus
+each minigame's thumbnail for its tile in the lobby, and the menus' icons.
 
 Everything is laid out in world units (the 640x360 virtual screen, y up, (0, 0) in the middle) and
 drawn at ART_SCALE texture pixels per unit. Shapes are drawn SUPERSAMPLE times bigger still and
@@ -17,7 +18,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Final, TypeAlias
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageChops, ImageDraw
 
 RGBA: TypeAlias = tuple[int, int, int, int]
 
@@ -65,6 +66,21 @@ ARENA_WALL: Final[RGBA] = (96, 100, 124, 255)
 ARENA_MARK: Final[RGBA] = (52, 54, 70, 255)
 
 ASSETS: Final[Path] = Path("assets/minigames")
+MENU_ASSETS: Final[Path] = Path("assets/menu")
+
+# A minigame's tile in the lobby shows a 16:9 thumbnail, made from its art at a quarter of 1080p.
+THUMBNAIL_SIZE: Final[tuple[int, int]] = (480, 270)
+# Keep in step with players::PLAYER_COLORS: the first four, to tint players' things in thumbnails.
+PLAYER_TINTS: Final[list[tuple[float, float, float]]] = [
+    (0.35, 0.65, 1.0),  # blue
+    (1.0, 0.4, 0.4),  # red
+    (0.45, 0.9, 0.45),  # green
+    (1.0, 0.85, 0.3),  # yellow
+]
+PADDLE_X_OFFSET: Final[float] = 296.0  # minigames::two_player_pong::config::PADDLE_X_OFFSET
+# Players' things are drawn this much bigger in thumbnails, which the lobby shows small, so they
+# still read: true to size, a car would be 4 pixels long on its tile.
+THUMBNAIL_SPRITE_SCALE: Final[float] = 2.5
 
 
 class Canvas:
@@ -262,12 +278,96 @@ def draw_ball() -> None:
     canvas.save(ASSETS / "two_player_pong/ball.png")
 
 
+# Thumbnails: a minigame's art with a few players' things on it, as if mid-game.
+
+
+def tinted(sprite: Image.Image, tint: tuple[float, float, float]) -> Image.Image:
+    """`sprite` multiplied by `tint`, as the game tints a sprite with its player's colour."""
+    colour = Image.new("RGBA", sprite.size, tuple(round(c * 255) for c in tint) + (255,))
+    return ImageChops.multiply(sprite, colour)
+
+
+def place(base: Image.Image, sprite: Image.Image, x: float, y: float, degrees: float = 0.0) -> None:
+    """Draw `sprite` on `base` (a full-screen piece of art) centred on world point (`x`, `y`),
+    turned `degrees` anticlockwise, and THUMBNAIL_SPRITE_SCALE times its size."""
+    size = (round(sprite.width * THUMBNAIL_SPRITE_SCALE), round(sprite.height * THUMBNAIL_SPRITE_SCALE))
+    sprite = sprite.resize(size, Image.Resampling.LANCZOS)
+    if degrees:
+        sprite = sprite.rotate(degrees, resample=Image.Resampling.BICUBIC, expand=True)
+    left = (x + VIEW_W / 2) * ART_SCALE - sprite.width / 2
+    top = (VIEW_H / 2 - y) * ART_SCALE - sprite.height / 2
+    base.alpha_composite(sprite, (round(left), round(top)))
+
+
+def save_thumbnail(base: Image.Image, path: Path) -> None:
+    base.resize(THUMBNAIL_SIZE, Image.Resampling.LANCZOS).save(path)
+    print(f"Wrote {path} ({THUMBNAIL_SIZE[0]}x{THUMBNAIL_SIZE[1]})")
+
+
+def draw_pong_thumbnail() -> None:
+    """Needs arena.png, paddle.png and ball.png."""
+    folder = ASSETS / "two_player_pong"
+    base = Image.open(folder / "arena.png").convert("RGBA")
+    paddle = Image.open(folder / "paddle.png").convert("RGBA")
+    ball = Image.open(folder / "ball.png").convert("RGBA")
+    place(base, tinted(paddle, PLAYER_TINTS[0]), -PADDLE_X_OFFSET, 40.0)
+    place(base, tinted(paddle, PLAYER_TINTS[1]), PADDLE_X_OFFSET, -70.0)
+    place(base, ball, 150.0, -20.0)
+    save_thumbnail(base, folder / "thumbnail.png")
+
+
+def draw_racing_thumbnail() -> None:
+    """Needs track.png and car.png. Four cars racing along the bottom straight, past the line."""
+    folder = ASSETS / "racing"
+    base = Image.open(folder / "track.png").convert("RGBA")
+    car = Image.open(folder / "car.png").convert("RGBA")
+    lanes = (BOTTOM_Y + GRID_LANE, BOTTOM_Y - GRID_LANE)
+    for i, (tint, x) in enumerate(zip(PLAYER_TINTS, (110.0, 60.0, 5.0, -50.0))):
+        place(base, tinted(car, tint), x, lanes[i % 2])
+    save_thumbnail(base, folder / "thumbnail.png")
+
+
+# Menu icons
+
+
+def draw_gear() -> None:
+    """The settings icon on a minigame's tile in the lobby. White, on nothing."""
+    size = 256
+    image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    centre = size / 2
+    outer, body, hole = size * 0.47, size * 0.35, size * 0.14
+    teeth = 8
+    half_tooth = math.pi / teeth * 0.5
+    for i in range(teeth):
+        angle = 2 * math.pi * i / teeth
+        corners = [
+            (body, angle - half_tooth * 1.4),
+            (outer, angle - half_tooth),
+            (outer, angle + half_tooth),
+            (body, angle + half_tooth * 1.4),
+        ]
+        draw.polygon(
+            [(centre + r * math.cos(a), centre + r * math.sin(a)) for r, a in corners], fill=WHITE
+        )
+    draw.ellipse([centre - body, centre - body, centre + body, centre + body], fill=WHITE)
+    draw.ellipse([centre - hole, centre - hole, centre + hole, centre + hole], fill=(0, 0, 0, 0))
+    MENU_ASSETS.mkdir(parents=True, exist_ok=True)
+    path = MENU_ASSETS / "gear.png"
+    image.resize((64, 64), Image.Resampling.LANCZOS).save(path)
+    print(f"Wrote {path} (64x64)")
+
+
 def main() -> None:
     draw_track()
     draw_car()
     draw_arena()
     draw_paddle()
     draw_ball()
+    # After the art they're made from.
+    draw_pong_thumbnail()
+    draw_racing_thumbnail()
+    draw_gear()
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ use bevy::picking::hover::Hovered;
 use bevy::prelude::*;
 use bevy::text::{EditableText, TextCursorStyle};
 use bevy::ui::{InteractionDisabled, Pressed};
-use bevy::ui_widgets::{Button, TextInput};
+use bevy::ui_widgets::{Button, ScrollIntoView, TextInput};
 
 use super::MenuButton;
 use crate::players::player_color;
@@ -20,6 +20,10 @@ pub const BUTTON_PRESSED_COLOR: Color = Color::srgb(0.35, 0.55, 0.85);
 pub const BUTTON_DISABLED_COLOR: Color = Color::srgb(0.1, 0.1, 0.1);
 pub const ERROR_COLOR: Color = Color::srgb(1.0, 0.45, 0.45);
 pub const HINT_COLOR: Color = Color::srgb(0.7, 0.7, 0.75);
+
+/// An [`icon_button`]'s size, and its icon's, in pixels.
+const ICON_BUTTON_SIZE: f32 = 32.0;
+const ICON_SIZE: f32 = 22.0;
 
 /// Size of the colour square next to each player's name.
 const ROW_SWATCH_SIZE: f32 = 18.0;
@@ -64,9 +68,36 @@ pub fn small_button(action: MenuButton, text: &str) -> impl Bundle {
     button(action, text, 48.0, 24.0)
 }
 
-/// A narrower [`menu_button`] reading "Settings", next to a minigame in the lobby.
-pub fn settings_button(action: MenuButton) -> impl Bundle {
-    button(action, "Settings", 120.0, 20.0)
+/// A small square button showing `icon` (a white image, on the button's colour), that does
+/// `action`. Give it a `Node` of its own (from [`icon_button_node`]) to place it.
+pub fn icon_button(action: MenuButton, icon: Handle<Image>) -> impl Bundle {
+    (
+        action,
+        Button,
+        Hovered::default(),
+        TabIndex(0),
+        BackgroundColor(BUTTON_COLOR),
+        children![(
+            ImageNode::new(icon),
+            Node {
+                width: px(ICON_SIZE),
+                height: px(ICON_SIZE),
+                ..default()
+            },
+        )],
+    )
+}
+
+/// The size and shape of an [`icon_button`].
+pub fn icon_button_node() -> Node {
+    Node {
+        width: px(ICON_BUTTON_SIZE),
+        height: px(ICON_BUTTON_SIZE),
+        justify_content: JustifyContent::Center,
+        align_items: AlignItems::Center,
+        border_radius: BorderRadius::all(px(6)),
+        ..default()
+    }
 }
 
 /// A narrower [`menu_button`] with smaller text, for one binding on the Controls screen. It starts
@@ -238,6 +269,23 @@ type ButtonLook = (
 
 /// Buttons light up when hovered, or when reached with `Tab` (focus from the keyboard is
 /// "visible"; focus from a click isn't, so a clicked button doesn't stay lit).
+/// When `Tab` or a gamepad moves keyboard focus to something scrolled out of sight in a
+/// [`ScrollArea`](bevy::ui_widgets::ScrollArea), such as a minigame tile in the lobby, scroll it
+/// into view. Bevy doesn't do this by itself. Clicks are left alone: what's clicked is in view.
+pub(super) fn scroll_focus_into_view(
+    focus: Res<InputFocus>,
+    focus_visible: Res<InputFocusVisible>,
+    nodes: Query<(), With<Node>>,
+    mut commands: Commands,
+) {
+    if !focus.is_changed() || !focus_visible.0 {
+        return;
+    }
+    if let Some(entity) = focus.get().filter(|entity| nodes.contains(*entity)) {
+        commands.trigger(ScrollIntoView { entity });
+    }
+}
+
 pub(super) fn style_buttons(
     mut buttons: Query<ButtonLook, With<MenuButton>>,
     focus: Res<InputFocus>,

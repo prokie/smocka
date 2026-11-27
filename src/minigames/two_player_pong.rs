@@ -26,6 +26,7 @@ pub const INFO: MinigameInfo = MinigameInfo {
     name: "Pong",
     min_players: 2,
     max_players: 2,
+    thumbnail: "minigames/two_player_pong/thumbnail.png",
     settings: &[Setting {
         name: "Goals to win",
         min: MIN_GOALS_TO_WIN,

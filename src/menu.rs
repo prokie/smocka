@@ -140,6 +140,7 @@ impl Plugin for MenuPlugin {
             Update,
             (
                 widgets::style_buttons,
+                widgets::scroll_focus_into_view,
                 (
                     main_menu::join_on_enter.run_if(main_menu::address_input_focused),
                     main_menu::show_session_end_reason,
@@ -176,6 +177,7 @@ impl Plugin for MenuPlugin {
                     lobby::update_swatches,
                     lobby::update_lobby_hint,
                     lobby::update_settings_summaries,
+                    lobby::dim_disabled_thumbnails,
                     lobby::update_round_picker,
                 )
                     .run_if(in_state(SessionPhase::Lobby)),
