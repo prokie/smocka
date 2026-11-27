@@ -7,8 +7,11 @@
 //! `--mute` silences everything for one run through Bevy's [`GlobalVolume`], leaving the saved
 //! settings alone.
 
+use std::ops::RangeInclusive;
+
 use bevy::audio::Volume;
 use bevy::prelude::*;
+use rand::RngExt;
 use serde::{Deserialize, Serialize};
 
 /// Each volume goes from 0 (off) up to this many steps (full).
@@ -182,19 +185,37 @@ impl Sound {
     }
 }
 
+/// The speeds [`play_varied_sound`] picks from: up to 3% faster or slower, which raises or lowers
+/// the pitch by about half a semitone. Enough that repeats don't sound identical, not enough to
+/// sound out of tune.
+pub const VARIED_SPEEDS: RangeInclusive<f32> = 0.97..=1.03;
+
 /// Everything needed to play `sound` once as an effect at `volume` (1 is as loud as the file). The
 /// entity despawns when it's done, so the sound carries on over a change of phase.
 pub fn sound_effect(sound: &Handle<AudioSource>, volume: f32) -> impl Bundle {
+    sound_effect_at_speed(sound, volume, 1.0)
+}
+
+/// [`sound_effect`], played `speed` times as fast, which also raises its pitch that much.
+fn sound_effect_at_speed(sound: &Handle<AudioSource>, volume: f32, speed: f32) -> impl Bundle {
     (
         Sound::effect(volume),
         AudioPlayer::new(sound.clone()),
-        PlaybackSettings::DESPAWN,
+        PlaybackSettings::DESPAWN.with_speed(speed),
     )
 }
 
 /// Play `sound` once as an effect: see [`sound_effect`].
 pub fn play_sound(commands: &mut Commands, sound: &Handle<AudioSource>, volume: f32) {
     commands.spawn(sound_effect(sound, volume));
+}
+
+/// Play `sound` like [`play_sound`], but at a random speed from [`VARIED_SPEEDS`], so its pitch
+/// is a little different each time. For sounds heard over and over, like a ball bouncing, that
+/// would otherwise sound mechanical. Leave tunes and beeps alone: they should stay in tune.
+pub fn play_varied_sound(commands: &mut Commands, sound: &Handle<AudioSource>, volume: f32) {
+    let speed = rand::rng().random_range(VARIED_SPEEDS);
+    commands.spawn(sound_effect_at_speed(sound, volume, speed));
 }
 
 /// The music playing. There's at most one: [`PlayMusic`] replaces it.
@@ -295,7 +316,8 @@ mod tests {
 
     use super::{
         ChangeVolume, MusicTrack, PlayMusic, Sound, SoundKind, SoundPlugin, StopMusic,
-        VOLUME_STEPS, VolumeControl, VolumeSettings, sound_effect, volume_label,
+        VARIED_SPEEDS, VOLUME_STEPS, VolumeControl, VolumeSettings, play_varied_sound,
+        sound_effect, volume_label,
     };
 
     #[test]
@@ -416,6 +438,29 @@ mod tests {
             ))
             .id();
         assert_eq!(starting_volume(&mut app, music), 0.0);
+    }
+
+    #[test]
+    fn varied_sounds_play_at_a_different_speed_each_time_within_the_range() {
+        let mut app = app(VolumeSettings::default());
+        for _ in 0..50 {
+            let mut commands = app.world_mut().commands();
+            play_varied_sound(&mut commands, &Handle::default(), 1.0);
+        }
+        app.world_mut().flush();
+        let speeds: Vec<f32> = app
+            .world_mut()
+            .query::<&PlaybackSettings>()
+            .iter(app.world())
+            .map(|playback| playback.speed)
+            .collect();
+        assert_eq!(speeds.len(), 50);
+        assert!(speeds.iter().all(|speed| VARIED_SPEEDS.contains(speed)));
+        // 50 random speeds bunched up in less than a sixth of the range would mean they aren't
+        // random: that's about as likely as a 1 in 10^30 event.
+        let spread = speeds.iter().copied().fold(f32::MIN, f32::max)
+            - speeds.iter().copied().fold(f32::MAX, f32::min);
+        assert!(spread > 0.01, "{speeds:?}");
     }
 
     #[test]

@@ -10,7 +10,7 @@ use super::PHASE;
 use super::ball::Ball;
 use super::config::{BALL_MAX_Y, PADDLE_X_OFFSET};
 use super::score::PongScore;
-use crate::sound::play_sound;
+use crate::sound::{play_sound, play_varied_sound};
 
 const PADDLE_HIT_SOUND: &str = "minigames/two_player_pong/paddle_hit.wav";
 const WALL_BOUNCE_SOUND: &str = "minigames/two_player_pong/wall_bounce.wav";
@@ -107,7 +107,8 @@ fn load_sounds(assets: Res<AssetServer>, mut commands: Commands) {
     });
 }
 
-/// Follow where the ball is drawn (its `Transform`) and play a sound when it bounces.
+/// Follow where the ball is drawn (its `Transform`) and play a sound when it bounces, a little
+/// higher or lower each time so a long rally doesn't repeat one sound.
 fn play_bounce_sounds(
     mut balls: Query<(Entity, &Transform, Option<&mut BallTrack>), With<Ball>>,
     sounds: Res<PongSounds>,
@@ -123,10 +124,10 @@ fn play_bounce_sounds(
         (*track, bounce) = track.moved_to(position);
         match bounce {
             Some(Bounce::Paddle) => {
-                play_sound(&mut commands, &sounds.paddle_hit, PADDLE_HIT_VOLUME);
+                play_varied_sound(&mut commands, &sounds.paddle_hit, PADDLE_HIT_VOLUME);
             }
             Some(Bounce::Wall) => {
-                play_sound(&mut commands, &sounds.wall_bounce, WALL_BOUNCE_VOLUME);
+                play_varied_sound(&mut commands, &sounds.wall_bounce, WALL_BOUNCE_VOLUME);
             }
             None => {}
         }

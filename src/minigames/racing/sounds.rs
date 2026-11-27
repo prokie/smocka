@@ -15,7 +15,7 @@ use super::car::CarState;
 use super::config::MAX_SPEED;
 use super::progress::RaceProgress;
 use super::race::RaceStatus;
-use crate::sound::{Sound, play_sound};
+use crate::sound::{Sound, play_sound, play_varied_sound};
 
 const COUNTDOWN_SOUND: &str = "minigames/racing/countdown.wav";
 const GO_SOUND: &str = "minigames/racing/go.wav";
@@ -187,13 +187,14 @@ fn play_progress_sounds(
     *seen = now;
 }
 
+/// Thud when two cars bump, louder the harder they hit, and a little higher or lower each time.
 fn play_bump_sound(
     bumped: On<CarsBumped>,
     sounds: Option<Res<RacingSounds>>,
     mut commands: Commands,
 ) {
     if let (Some(sounds), Some(volume)) = (sounds, bump_volume(bumped.impact)) {
-        play_sound(&mut commands, &sounds.bump, volume);
+        play_varied_sound(&mut commands, &sounds.bump, volume);
     }
 }
 
