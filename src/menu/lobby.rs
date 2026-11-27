@@ -8,9 +8,9 @@ use lightyear::prelude::*;
 
 use super::MenuButton;
 use super::widgets::{HINT_COLOR, ShownRows, label, menu_button, screen, show_rows, small_button};
-use crate::config::minigames::racing::{MAX_LAPS, MIN_LAPS};
 use crate::config::party::{MAX_ROUNDS, MIN_ROUNDS};
 use crate::minigames::Minigame;
+use crate::minigames::racing::config::{MAX_LAPS, MIN_LAPS};
 use crate::minigames::racing::race::RaceLaps;
 use crate::network::Hosting;
 use crate::party::PartyRounds;
@@ -97,7 +97,7 @@ pub(super) fn spawn_lobby_screen(hosting: Hosting, mut commands: Commands) {
             .id();
         for game in Minigame::ALL {
             commands.entity(games).with_child((
-                menu_button(MenuButton::Start(game), game.name()),
+                menu_button(MenuButton::Start(game), game.info().name),
                 InteractionDisabled,
             ));
         }
@@ -266,7 +266,7 @@ pub(super) fn update_lobby_hint(
     }
     for (button, action, disabled) in &buttons {
         let startable = match action {
-            MenuButton::Start(game) => players.iter().len() >= game.min_players(),
+            MenuButton::Start(game) => players.iter().len() >= game.info().min_players,
             MenuButton::StartParty => startable,
             _ => continue,
         };

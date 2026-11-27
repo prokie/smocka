@@ -12,11 +12,12 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
 - [ ] **Reconsider `TICK_RATE` (128 Hz) and `SEND_INTERVAL` (64 Hz)** now that movement is
       smoothed between ticks (`minigames/smoothing.rs`). 64 Hz ticks and a 20–32 Hz send rate would roughly halve CPU and bandwidth. Measure
       first. A lower tick rate also tightens three limits that are written in terms of it: the
-      ball's tunnelling limit (`BALL_MAX_SPEED`, see its doc in `src/config.rs`), how thick racing
-      checkpoints must be, and how fast cars can drive at each other without passing through
-      (checked when `bumps.rs` compiles). A lower send rate makes other players' paddles, and cars
-      for spectators, show slightly later, and smoothing draws things a tick late (15.6 ms at
-      64 Hz instead of 7.8 ms).
+      ball's tunnelling limit (`BALL_MAX_SPEED`, see its doc in
+      `minigames/two_player_pong/config.rs`), how thick racing checkpoints must be, and how
+      fast cars can drive at each other without passing through (checked when `bumps.rs`
+      compiles). A lower send rate makes other players' paddles, and cars for spectators, show
+      slightly later, and smoothing draws things a tick late (15.6 ms at 64 Hz instead of
+      7.8 ms).
 - [ ] **Lightyear's debug tools, when chasing a desync**: `lightyear_tools` has a structured
       tracing layer and a debug UI covering sync, input buffering, rollbacks and correction.
       Check which `lightyear` feature enables it.
@@ -61,6 +62,18 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
       frame time for interpolated ones. Or read the state the car is drawn at
       (`smoothed`, in `minigames/smoothing.rs`): it moves on by exactly the frame's time for
       every car, so dividing by `delta_secs` is right, and marks line up with the drawn car.
+
+      How many marks there are, and how dark they look, depends on the frame rate too.
+      `leave_skid_marks` spawns one sprite per rear wheel per frame, and `fade_skid_marks`
+      rewrites every mark's colour every frame: up to ~3,500 live sprites with 4 skidding cars
+      at 144 Hz, ~11,500 with 8 at 240 Hz. Each strip reaches `WIDTH / 4` past both ends, so
+      neighbours overlap by 0.8 units. At 240 Hz a car at top speed moves ~0.83 units a frame,
+      so almost the whole mark is drawn twice (alpha ~0.70 instead of 0.45), and slower skids
+      three times. At 60 Hz only ~24% is. Lay a strip only once the wheel has moved a set
+      distance (2–3 units, keeping the last point per wheel in `SkidTrail`), and cap how many
+      there are.
+- [ ] **The log says "Using Fira Sans for all text"** (`use_ui_font` in `menu.rs`), but the font
+      has been Fira Mono since `b319578`.
 - [ ] **"Esc: leave" and the watching line overlap on narrow windows.** Both sit 8 px from the
       bottom: the hint on the left (`spawn_leave_hint` in `menu.rs`), `WatchingText` centred
       (`menu/watching.rs`). In Bevy's default monospace font, "Watching: Player 1 vs Player 2
@@ -71,6 +84,47 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
       hit but leaves it where the step ended: up to `BALL_MAX_SPEED / TICK_RATE` ≈ 4.7 units
       inside the paddle (the ball is 8 wide), for one tick. When it bounces, put it back in
       front of the face (or mirror the overshoot). Cosmetic.
+
+## Code structure
+
+From a review on 2026-11-27, so that adding a minigame, a control or a lobby setting touches
+fewer shared files. None of these change what players see.
+
+They change the order replicated types are registered in, and what's sent over the network.
+That's safe, since `PROTOCOL_ID` comes from the version, but the host and joiners must run the
+same build.
+
+- [ ] **A module of its own for what minigames and the session share.** `MinigameResult`,
+      `Placement`, `ordinal`, `MinigameEnded` and `Participants` live in `session.rs`, so
+      tournament, standings, Pong and Racing all import the session, and it imports them back.
+      Move them to a module that imports nothing else from the crate, such as
+      `minigames/outcome.rs`.
+- [ ] **Tournament logic out of `session.rs`.** `walk_over_leavers`, `follow_tournament`,
+      `start_next_match_timer`, and the tournament branches of `end_minigame` and
+      `BeginMinigame` (~170 lines) belong in the tournament module. Split that into
+      `tournament/bracket.rs` (the plain `Bracket` data and most of its tests) and
+      `tournament.rs` (the component, the plugin and the moved logic).
+- [ ] **A public way to time a screen.** `party.rs` uses the session's crate-internal
+      `PhaseTimer` and `Then`. Give the session one command meaning "stay on this screen for this
+      long, then go to that phase", for parties and tournaments.
+- [ ] **Points added by the standings.** `spawn_player` (`players.rs`) inserts
+      `Points::default()`, the only reason players imports standings. `StandingsPlugin` could
+      add it with a host-side `On<Add<Player>>` observer.
+- [ ] **`Controls` as a map keyed by `ControlAction`**, instead of one field per action and the
+      `get` / `get_mut` matches. `#[serde(rename_all = "snake_case")]` on `ControlAction` keeps
+      the saved `throttle = [...]` keys. Fill missing actions from the defaults in
+      `sanitized()`. The settings-file tests in `controls.rs` check both.
+- [ ] **One generic host setting.** `RaceLaps` / `ChangeLaps` (`race.rs`) and `PartyRounds` /
+      `ChangeRounds` (`party.rs`) are the same feature written twice: a replicated number, a
+      command that changes it within limits, an observer spawning it on `Started`, a system
+      keeping it up to date, and a lobby picker (`update_lap_picker` / `update_round_picker` in
+      `menu/lobby.rs`). Written once, generic over the setting, the lobby can list settings
+      without importing racing, and `MenuButton::ChangeLaps` goes away.
+- [ ] **Small duplications.** `mark_controlled_car` and `mark_controlled_paddle` could be one
+      generic observer. `spawn_cars` and `spawn_paddles` repeat a "participants still here"
+      lookup that could be a `Participants` method.
+- [ ] Optional: move the key, button and stick names (~75 lines) out of `controls.rs` into
+      `controls/names.rs`.
 
 ## Later
 

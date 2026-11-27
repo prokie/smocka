@@ -171,7 +171,7 @@ pub fn pick_minigame(
     let playable: Vec<Minigame> = games
         .iter()
         .copied()
-        .filter(|game| players >= game.min_players())
+        .filter(|game| players >= game.info().min_players)
         .collect();
     let fresh: Vec<Minigame> = playable
         .iter()

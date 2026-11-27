@@ -4,9 +4,9 @@
 
 use bevy::prelude::*;
 
+use super::PHASE;
 use super::car::{Car, CarState};
 use super::track::{Surface, surface_at};
-use crate::session::SessionPhase;
 
 /// Cornering this hard (speed × turn rate, world units/s²) leaves marks. At full steering that's
 /// from about two thirds of top speed.
@@ -51,7 +51,7 @@ impl Plugin for SkidMarksPlugin {
         app.add_observer(track_car);
         app.add_systems(
             Update,
-            (leave_skid_marks, fade_skid_marks).run_if(in_state(SessionPhase::Racing)),
+            (leave_skid_marks, fade_skid_marks).run_if(in_state(PHASE)),
         );
     }
 }
@@ -109,7 +109,7 @@ fn spawn_mark(commands: &mut Commands, from: Vec2, to: Vec2) {
         SkidMark {
             fade: Timer::from_seconds(FADE_SECONDS, TimerMode::Once),
         },
-        DespawnOnExit(SessionPhase::Racing),
+        DespawnOnExit(PHASE),
         Sprite::from_color(COLOR, Vec2::new(length, WIDTH)),
         Transform::from_translation(((from + to) / 2.0).extend(Z))
             .with_rotation(Quat::from_rotation_z(along.to_angle())),
@@ -136,8 +136,8 @@ mod tests {
     use bevy::math::Vec2;
 
     use super::is_skidding;
-    use crate::config::minigames::racing::{MAX_SPEED, TURN_RATE};
     use crate::minigames::racing::car::CarState;
+    use crate::minigames::racing::config::{MAX_SPEED, TURN_RATE};
 
     const DT: f32 = 1.0 / 60.0;
 

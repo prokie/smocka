@@ -2,13 +2,14 @@ use bevy::prelude::*;
 use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use super::PHASE;
 use super::PongSystems;
 use super::ball::{BallPosition, BallVelocity, serve_velocity};
+use super::config::{GOAL_X, GOALS_TO_WIN};
 use super::paddles::{Paddle, Side};
-use crate::config::minigames::two_player_pong::{GOAL_X, GOALS_TO_WIN};
 use crate::network::is_host;
 use crate::players::Player;
-use crate::session::{MinigameEnded, MinigameResult, Placement, SessionPhase};
+use crate::session::{MinigameEnded, MinigameResult, Placement};
 
 /// Host only: how a game of Pong is won.
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,22 +65,19 @@ impl Plugin for ScorePlugin {
         app.component::<PongScore>().replicate();
         app.init_resource::<PongRules>();
 
-        app.add_systems(
-            OnEnter(SessionPhase::TwoPlayerPong),
-            spawn_score.run_if(is_host),
-        );
+        app.add_systems(OnEnter(PHASE), spawn_score.run_if(is_host));
         app.add_systems(
             FixedUpdate,
             score_goals
                 .in_set(PongSystems::Score)
                 .run_if(is_host)
-                .run_if(in_state(SessionPhase::TwoPlayerPong)),
+                .run_if(in_state(PHASE)),
         );
         app.add_systems(
             Update,
             abandon_without_both_players
                 .run_if(is_host)
-                .run_if(in_state(SessionPhase::TwoPlayerPong)),
+                .run_if(in_state(PHASE)),
         );
     }
 }
@@ -87,7 +85,7 @@ impl Plugin for ScorePlugin {
 fn spawn_score(mut commands: Commands) {
     commands.spawn((
         PongScore::default(),
-        DespawnOnExit(SessionPhase::TwoPlayerPong),
+        DespawnOnExit(PHASE),
         Replicate::to_clients(NetworkTarget::All),
     ));
 }
@@ -156,7 +154,7 @@ pub fn scorer(position: Vec2) -> Option<Side> {
 #[cfg(test)]
 mod tests {
     use super::{PongScore, scorer};
-    use crate::config::minigames::two_player_pong::GOAL_X;
+    use crate::minigames::two_player_pong::config::GOAL_X;
     use crate::minigames::two_player_pong::paddles::Side;
     use bevy::math::Vec2;
 

@@ -6,12 +6,12 @@ use std::time::Duration;
 use bevy::prelude::*;
 use lightyear::prelude::PeerId;
 use lightyear::prelude::input::native::ActionState;
-use smocka::config::minigames::racing::LAPS;
 use smocka::controls::{Control, ControlAction, Controls};
 use smocka::minigames::Minigame;
 use smocka::minigames::racing::RacingInput;
 use smocka::minigames::racing::bumps::contact;
 use smocka::minigames::racing::car::{Car, CarState};
+use smocka::minigames::racing::config::LAPS;
 use smocka::minigames::racing::progress::RaceProgress;
 use smocka::minigames::racing::race::{ChangeLaps, RaceLaps, RaceRules, RaceStatus};
 use smocka::minigames::racing::track::{CHECKPOINTS, Surface, surface_at};
@@ -181,7 +181,7 @@ fn start_race(mut host: TestApp, mut client: TestApp, rules: RaceRules) -> (Test
     host.start_minigame(Minigame::Racing);
     update_until(&mut [&mut host, &mut client], |apps| {
         apps.iter_mut().all(|app| {
-            app.phase() == Some(SessionPhase::Racing)
+            app.phase() == Some(SessionPhase::Playing(Minigame::Racing))
                 && car(app, hosts).is_some()
                 && car(app, joiners).is_some()
         })
@@ -505,8 +505,9 @@ fn the_race_goes_on_while_two_cars_are_left() {
     });
     host.start_minigame(Minigame::Racing);
     update_until(&mut [&mut host, &mut first, &mut second], |apps| {
-        apps.iter_mut()
-            .all(|app| app.phase() == Some(SessionPhase::Racing) && cars(app) == 3)
+        apps.iter_mut().all(|app| {
+            app.phase() == Some(SessionPhase::Playing(Minigame::Racing)) && cars(app) == 3
+        })
     });
 
     second.leave();
@@ -517,7 +518,7 @@ fn the_race_goes_on_while_two_cars_are_left() {
         host.0.update();
         first.0.update();
     }
-    assert_eq!(host.phase(), Some(SessionPhase::Racing));
+    assert_eq!(host.phase(), Some(SessionPhase::Playing(Minigame::Racing)));
 }
 
 #[test]

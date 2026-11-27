@@ -1,5 +1,6 @@
 pub mod bumps;
 pub mod car;
+pub mod config;
 pub mod progress;
 pub mod race;
 mod racing_input;
@@ -11,6 +12,21 @@ pub use racing_input::RacingInput;
 pub use visuals::RacingVisualsPlugin;
 
 use bevy::prelude::*;
+
+use super::{Minigame, MinigameInfo};
+use crate::session::SessionPhase;
+use config::GRID_SLOTS;
+
+/// The phase a race is played in.
+pub const PHASE: SessionPhase = SessionPhase::Playing(Minigame::Racing);
+
+/// What the session and the menus need to know about racing. Every player can race, up to the
+/// starting grid's [`GRID_SLOTS`].
+pub const INFO: MinigameInfo = MinigameInfo {
+    name: "Racing",
+    min_players: 2,
+    max_players: GRID_SLOTS,
+};
 
 /// The order racing's game logic runs in each `FixedUpdate` tick.
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]

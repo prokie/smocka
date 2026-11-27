@@ -1,20 +1,18 @@
 use bevy::prelude::*;
 use lightyear::prelude::input::native::InputMarker;
 
+use super::PHASE;
 use super::RacingInput;
 use super::car::{Car, CarState};
+use super::config::{CAR_LENGTH, CAR_WIDTH, START_LINE_X, TRACK_INNER_RADIUS, TRACK_OUTER_RADIUS};
 use super::progress::{RaceProgress, lap_label, position_label, running_order};
 use super::race::{RaceLaps, RaceStatus, status_label};
 use super::skid_marks::SkidMarksPlugin;
 use super::track::{CHECKPOINTS, outline};
 use crate::camera::gameplay_camera_2d;
 use crate::config::display::{VIEW_HEIGHT, VIEW_WIDTH};
-use crate::config::minigames::racing::{
-    CAR_LENGTH, CAR_WIDTH, START_LINE_X, TRACK_INNER_RADIUS, TRACK_OUTER_RADIUS,
-};
 use crate::minigames::smoothing::{Smoothed, remember_previous_tick, smoothed};
 use crate::players::player_color;
-use crate::session::SessionPhase;
 
 /// Points right. Drawn in white/grey and tinted per player.
 const CAR_IMAGE: &str = "minigames/racing/car.png";
@@ -67,7 +65,7 @@ impl Plugin for RacingVisualsPlugin {
         app.add_plugins(SkidMarksPlugin);
         app.init_resource::<TrackGizmos>();
         app.add_systems(
-            OnEnter(SessionPhase::Racing),
+            OnEnter(PHASE),
             (
                 spawn_camera,
                 spawn_track,
@@ -87,17 +85,17 @@ impl Plugin for RacingVisualsPlugin {
                 update_status_text,
             )
                 .chain()
-                .run_if(in_state(SessionPhase::Racing)),
+                .run_if(in_state(PHASE)),
         );
         app.add_systems(
             FixedFirst,
-            remember_previous_tick::<CarState>.run_if(in_state(SessionPhase::Racing)),
+            remember_previous_tick::<CarState>.run_if(in_state(PHASE)),
         );
         app.add_systems(
             PostUpdate,
             sync_car_transform
                 .before(TransformSystems::Propagate)
-                .run_if(in_state(SessionPhase::Racing)),
+                .run_if(in_state(PHASE)),
         );
     }
 }
@@ -105,17 +103,13 @@ impl Plugin for RacingVisualsPlugin {
 /// The whole track fits on screen.
 fn spawn_camera(mut commands: Commands) {
     debug!("Spawning the racing camera");
-    commands.spawn(gameplay_camera_2d(
-        SessionPhase::Racing,
-        VIEW_WIDTH,
-        VIEW_HEIGHT,
-    ));
+    commands.spawn(gameplay_camera_2d(PHASE, VIEW_WIDTH, VIEW_HEIGHT));
 }
 
 fn spawn_track(assets: Res<AssetServer>, mut commands: Commands) {
     commands.spawn((
         TrackSprite,
-        DespawnOnExit(SessionPhase::Racing),
+        DespawnOnExit(PHASE),
         Sprite {
             custom_size: Some(Vec2::new(VIEW_WIDTH, VIEW_HEIGHT)),
             ..Sprite::from_image(assets.load(TRACK_IMAGE))
@@ -127,7 +121,7 @@ fn spawn_track(assets: Res<AssetServer>, mut commands: Commands) {
 fn spawn_lap_text(mut commands: Commands) {
     commands.spawn((
         LapText,
-        DespawnOnExit(SessionPhase::Racing),
+        DespawnOnExit(PHASE),
         Text::new(""),
         TextFont {
             font_size: FontSize::Px(LAP_TEXT_SIZE),
@@ -166,7 +160,7 @@ fn update_lap_text(
 fn spawn_position_text(mut commands: Commands) {
     commands.spawn((
         PositionText,
-        DespawnOnExit(SessionPhase::Racing),
+        DespawnOnExit(PHASE),
         Text::new(""),
         TextFont {
             font_size: FontSize::Px(LAP_TEXT_SIZE),
@@ -218,7 +212,7 @@ fn update_position_text(
 
 fn spawn_status_text(mut commands: Commands) {
     commands.spawn((
-        DespawnOnExit(SessionPhase::Racing),
+        DespawnOnExit(PHASE),
         Node {
             position_type: PositionType::Absolute,
             width: percent(100),

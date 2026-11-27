@@ -5,11 +5,11 @@ use std::f32::consts::{FRAC_PI_2, PI};
 
 use bevy::prelude::*;
 
-use crate::config::display::{VIEW_HEIGHT, VIEW_WIDTH};
-use crate::config::minigames::racing::{
+use super::config::{
     CAR_LENGTH, CHECKPOINT_DEPTH, GRASS_MAX_SPEED, GRID_LANE_OFFSET, GRID_ROW_SPACING, MAX_SPEED,
     START_LINE_X, TRACK_HALF_LENGTH, TRACK_INNER_RADIUS, TRACK_OUTER_RADIUS,
 };
+use crate::config::display::{VIEW_HEIGHT, VIEW_WIDTH};
 use crate::config::network::TICK_RATE;
 
 // The whole road, plus room for a car on it, must fit on the screen.
@@ -132,7 +132,7 @@ mod tests {
     use super::{
         BOTTOM_STRAIGHT_Y, CHECKPOINTS, Surface, checkpoint_at, grid_position, outline, surface_at,
     };
-    use crate::config::minigames::racing::{
+    use crate::minigames::racing::config::{
         CAR_LENGTH, GRID_SLOTS, START_LINE_X, TRACK_HALF_LENGTH, TRACK_INNER_RADIUS,
         TRACK_OUTER_RADIUS,
     };

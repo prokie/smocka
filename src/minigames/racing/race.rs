@@ -8,13 +8,14 @@ use bevy::prelude::*;
 use lightyear::prelude::{server::Started, *};
 use serde::{Deserialize, Serialize};
 
+use super::PHASE;
 use super::RacingSystems;
 use super::car::{Car, CarState};
+use super::config::{COUNTDOWN, FINISH_GRACE, LAPS, MAX_LAPS, MIN_LAPS};
 use super::progress::{RaceProgress, running_order};
 use crate::app_state::AppState;
-use crate::config::minigames::racing::{COUNTDOWN, FINISH_GRACE, LAPS, MAX_LAPS, MIN_LAPS};
 use crate::network::is_host;
-use crate::session::{MinigameEnded, MinigameResult, Placement, SessionPhase};
+use crate::session::{MinigameEnded, MinigameResult, Placement};
 
 /// Where the race is. One replicated entity per race, spawned by the host.
 #[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -202,8 +203,8 @@ impl Plugin for RacePlugin {
         app.add_systems(Update, publish_race_laps.run_if(is_host));
         app.init_resource::<RaceRules>();
 
-        app.add_systems(OnEnter(SessionPhase::Racing), start_race.run_if(is_host));
-        app.add_systems(OnExit(SessionPhase::Racing), |mut commands: Commands| {
+        app.add_systems(OnEnter(PHASE), start_race.run_if(is_host));
+        app.add_systems(OnExit(PHASE), |mut commands: Commands| {
             commands.remove_resource::<RaceDirector>();
         });
         app.add_systems(
@@ -214,7 +215,7 @@ impl Plugin for RacePlugin {
             )
                 .run_if(is_host)
                 .run_if(resource_exists::<RaceDirector>)
-                .run_if(in_state(SessionPhase::Racing)),
+                .run_if(in_state(PHASE)),
         );
     }
 }
@@ -243,7 +244,7 @@ fn start_race(rules: Res<RaceRules>, mut commands: Commands) {
     );
     commands.spawn((
         RaceStatus::Countdown(whole_seconds(rules.countdown)),
-        DespawnOnExit(SessionPhase::Racing),
+        DespawnOnExit(PHASE),
         Replicate::to_clients(NetworkTarget::All),
     ));
     commands.insert_resource(RaceDirector::new(&rules));
@@ -405,7 +406,7 @@ mod tests {
 
     #[test]
     fn the_host_picks_laps_within_the_limits() {
-        use crate::config::minigames::racing::{LAPS, MAX_LAPS, MIN_LAPS};
+        use crate::minigames::racing::config::{LAPS, MAX_LAPS, MIN_LAPS};
         use bevy::ecs::world::World;
 
         let mut world = World::new();

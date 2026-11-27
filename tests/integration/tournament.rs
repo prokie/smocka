@@ -111,7 +111,7 @@ fn leave_mid_match(host: &mut TestApp, first: TestApp, second: TestApp) -> (Test
     host.start_minigame(Minigame::TwoPlayerPong);
     update_until(&mut [host, &mut first, &mut second], |apps| {
         apps.iter_mut().all(|app| {
-            app.phase() == Some(SessionPhase::TwoPlayerPong)
+            app.phase() == Some(SessionPhase::Playing(Minigame::TwoPlayerPong))
                 && paddles(app) == 2
                 && has_tournament(app)
         })
@@ -200,7 +200,7 @@ fn a_walkover_on_the_next_match_screen_restarts_the_countdown() {
     });
     assert_eq!(host.phase(), Some(SessionPhase::NextMatch));
     update_until(&mut [&mut host], |apps| {
-        apps[0].phase() == Some(SessionPhase::TwoPlayerPong)
+        apps[0].phase() == Some(SessionPhase::Playing(Minigame::TwoPlayerPong))
     });
 }
 

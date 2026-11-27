@@ -185,7 +185,7 @@ impl Plugin for TournamentPlugin {
 /// Whether `game` is played as a tournament with `players` players: it seats two, and there are
 /// more. (Minigames that seat more than two just seat the first players.)
 pub fn needs_tournament(game: Minigame, players: usize) -> bool {
-    game.max_players() == 2 && players > 2
+    game.info().max_players == 2 && players > 2
 }
 
 /// `players` in seed order: most points first, and in random order among equal points.

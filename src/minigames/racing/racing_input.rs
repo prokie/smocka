@@ -7,9 +7,9 @@ use lightyear::prelude::input::native::{ActionState, InputMarker};
 use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use super::PHASE;
 use super::car::Car;
 use crate::controls::{ControlAction, Controls, fired, spawn_action};
-use crate::session::SessionPhase;
 
 /// What a player is doing with their car this tick.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default, Reflect)]
@@ -65,12 +65,12 @@ pub struct RacingInputPlugin;
 impl Plugin for RacingInputPlugin {
     fn build(&self, app: &mut App) {
         app.add_input_context::<RacingControls>();
-        app.add_systems(OnEnter(SessionPhase::Racing), spawn_racing_controls);
+        app.add_systems(OnEnter(PHASE), spawn_racing_controls);
         app.add_systems(
             FixedPreUpdate,
             buffer_racing_input
                 .in_set(InputSystems::WriteClientInputs)
-                .run_if(in_state(SessionPhase::Racing)),
+                .run_if(in_state(PHASE)),
         );
         app.add_plugins(input::native::InputPlugin::<RacingInput> {
             config: InputConfig {
@@ -89,7 +89,7 @@ fn spawn_racing_controls(controls: Res<Controls>, mut commands: Commands) {
         .spawn((
             Name::new("RacingControls"),
             RacingControls,
-            DespawnOnExit(SessionPhase::Racing),
+            DespawnOnExit(PHASE),
         ))
         .id();
     let bound = |action| controls.get(action);

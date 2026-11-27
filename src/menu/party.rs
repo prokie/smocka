@@ -69,7 +69,7 @@ pub fn next_round_line(line: NextRoundLine, party: &Party) -> String {
         NextRoundLine::Round if party.round() == party.rounds => "Final round".into(),
         NextRoundLine::Round => format!("Round {} of {}", party.round(), party.rounds),
         NextRoundLine::NextUp => match party.next {
-            Some(game) => format!("Next up: {}", game.name()),
+            Some(game) => format!("Next up: {}", game.info().name),
             None => "Picking a game...".into(),
         },
     }

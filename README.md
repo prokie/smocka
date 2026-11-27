@@ -81,7 +81,7 @@ name, at 3× its size in world units (e.g. a 16×10 car is 48×30 pixels; a full
 tints them.
 
 The placeholders come from `python3 tools/make_art.py`. The racing track's art must match the
-shape set in `config::minigames::racing` (`TRACK_*` constants), as must the copy of those
+shape set in `src/minigames/racing/config.rs` (`TRACK_*` constants), as must the copy of those
 constants in the script; press `F3` in a race to check.
 
 ## Development

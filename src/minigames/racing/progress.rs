@@ -9,12 +9,12 @@ use bevy::prelude::*;
 use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use super::PHASE;
 use super::RacingSystems;
 use super::car::{Car, CarState};
 use super::race::{RaceDirector, lap_time_label};
 use super::track::{CHECKPOINTS, checkpoint_at};
 use crate::network::is_host;
-use crate::session::SessionPhase;
 use crate::session::ordinal;
 
 /// How far round the track a car has got. Replicated, not predicted: it only changes on the host.
@@ -101,7 +101,7 @@ impl Plugin for ProgressPlugin {
                 .in_set(RacingSystems::Checkpoints)
                 .run_if(is_host)
                 .run_if(resource_exists::<RaceDirector>)
-                .run_if(in_state(SessionPhase::Racing)),
+                .run_if(in_state(PHASE)),
         );
     }
 }

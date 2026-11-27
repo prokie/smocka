@@ -3,12 +3,13 @@ use lightyear::prelude::input::native::ActionState;
 use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use super::PHASE;
 use super::PongSystems;
+use super::config::{PADDLE_MAX_Y, PADDLE_SPEED, PADDLE_X_OFFSET};
 use super::pong_input::PongInput;
-use crate::config::minigames::two_player_pong::{PADDLE_MAX_Y, PADDLE_SPEED, PADDLE_X_OFFSET};
 use crate::network::is_host;
 use crate::players::Player;
-use crate::session::{Participants, SessionPhase};
+use crate::session::Participants;
 
 /// Which player controls this paddle. Set once at spawn.
 #[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
@@ -48,15 +49,12 @@ impl Plugin for PaddlePlugin {
             .predict()
             .add_linear_interpolation();
 
-        app.add_systems(
-            OnEnter(SessionPhase::TwoPlayerPong),
-            spawn_paddles.run_if(is_host),
-        );
+        app.add_systems(OnEnter(PHASE), spawn_paddles.run_if(is_host));
         app.add_systems(
             FixedUpdate,
             move_paddles
                 .in_set(PongSystems::MovePaddles)
-                .run_if(in_state(SessionPhase::TwoPlayerPong)),
+                .run_if(in_state(PHASE)),
         );
     }
 }
@@ -111,7 +109,7 @@ fn spawn_paddle(commands: &mut Commands, player: &Player, link: Entity, side: Si
             side,
             color: player.color,
         },
-        DespawnOnExit(SessionPhase::TwoPlayerPong),
+        DespawnOnExit(PHASE),
         PaddlePosition(Vec2::new(side.x_pos(), 0.0)),
         Replicate::to_clients(NetworkTarget::All),
         PredictionTarget::to_clients(NetworkTarget::Single(owner)),
@@ -148,7 +146,7 @@ fn step(y: f32, input: PongInput, dt: f32) -> f32 {
 mod tests {
     use super::{PongInput, Side, step};
     use crate::config::display::VIEW_WIDTH;
-    use crate::config::minigames::two_player_pong::{PADDLE_MAX_Y, PADDLE_SPEED};
+    use crate::minigames::two_player_pong::config::{PADDLE_MAX_Y, PADDLE_SPEED};
 
     #[test]
     fn paddles_are_inside_the_view() {

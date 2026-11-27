@@ -9,13 +9,11 @@
 use bevy::prelude::*;
 use lightyear::prelude::{Interpolated, PeerId, Rollback};
 
+use super::PHASE;
 use super::RacingSystems;
 use super::car::{Car, CarState, on_screen};
-use crate::config::minigames::racing::{
-    BUMP_RESTITUTION, CAR_LENGTH, CAR_WIDTH, MAX_REVERSE_SPEED, MAX_SPEED,
-};
+use super::config::{BUMP_RESTITUTION, CAR_LENGTH, CAR_WIDTH, MAX_REVERSE_SPEED, MAX_SPEED};
 use crate::config::network::TICK_RATE;
-use crate::session::SessionPhase;
 
 // A car's outline is a capsule along its length, so it must be longer than it is wide.
 const _: () = assert!(CAR_LENGTH > CAR_WIDTH);
@@ -58,7 +56,7 @@ impl Plugin for BumpPlugin {
             FixedUpdate,
             bump_cars
                 .in_set(RacingSystems::Bump)
-                .run_if(in_state(SessionPhase::Racing)),
+                .run_if(in_state(PHASE)),
         );
     }
 }
@@ -208,10 +206,10 @@ mod tests {
     use lightyear::prelude::{Interpolated, PeerId};
 
     use super::{Bump, bump, bump_cars, contact};
-    use crate::config::minigames::racing::{
+    use crate::minigames::racing::car::{Car, CarState};
+    use crate::minigames::racing::config::{
         BUMP_RESTITUTION, CAR_LENGTH, CAR_MAX_X, CAR_WIDTH, MAX_REVERSE_SPEED, MAX_SPEED,
     };
-    use crate::minigames::racing::car::{Car, CarState};
 
     /// A car at (`x`, `y`) facing `heading`, going `speed` along it.
     fn car(x: f32, y: f32, heading: f32, speed: f32) -> CarState {

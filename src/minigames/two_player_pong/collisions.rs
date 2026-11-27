@@ -1,9 +1,7 @@
 use bevy::math::Vec2;
 use bevy::shape::{Aabb2d, IntersectsVolume};
 
-use crate::config::minigames::two_player_pong::{
-    BALL_MAX_BOUNCE_ANGLE, BALL_MAX_Y, BALL_SIZE, PADDLE_HEIGHT, PADDLE_WIDTH,
-};
+use super::config::{BALL_MAX_BOUNCE_ANGLE, BALL_MAX_Y, BALL_SIZE, PADDLE_HEIGHT, PADDLE_WIDTH};
 
 /// Bounce the ball off the top and bottom walls. The left and right edges are open (goals).
 pub fn bounce_off_walls(mut position: Vec2, mut velocity: Vec2) -> (Vec2, Vec2) {
@@ -48,7 +46,7 @@ pub fn bounce_off_paddle(ball: Vec2, velocity: Vec2, paddle: Vec2) -> Vec2 {
 #[cfg(test)]
 mod tests {
     use super::{bounce_off_paddle, bounce_off_walls, hits_paddle};
-    use crate::config::minigames::two_player_pong::{
+    use crate::minigames::two_player_pong::config::{
         BALL_MAX_BOUNCE_ANGLE, BALL_MAX_Y, BALL_SIZE, GOAL_X, PADDLE_HEIGHT, PADDLE_WIDTH,
         PADDLE_X_OFFSET,
     };

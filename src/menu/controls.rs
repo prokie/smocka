@@ -102,7 +102,7 @@ impl Command for OpenControls {
             .with_children(|screen| {
                 screen.spawn(label("Controls", 48.0, Color::WHITE));
                 for game in Minigame::ALL {
-                    screen.spawn(label(game.name(), 24.0, HINT_COLOR));
+                    screen.spawn(label(game.info().name, 24.0, HINT_COLOR));
                     for action in ControlAction::ALL {
                         if action.minigame() != game {
                             continue;
@@ -228,7 +228,7 @@ impl Command for StartRebinding {
 fn describe(action: ControlAction, slot: usize) -> String {
     format!(
         "{}: {}, binding {}",
-        action.minigame().name(),
+        action.minigame().info().name,
         action.name(),
         slot + 1
     )

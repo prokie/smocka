@@ -85,7 +85,7 @@ fn players_wait_in_the_lobby_until_the_host_starts() {
 
     update_until(&mut [&mut host, &mut client], |apps| {
         apps.iter()
-            .all(|app| app.phase() == Some(SessionPhase::TwoPlayerPong))
+            .all(|app| app.phase() == Some(SessionPhase::Playing(Minigame::TwoPlayerPong)))
     });
 }
 
@@ -100,7 +100,7 @@ fn the_host_picks_which_minigame_to_start() {
 
     update_until(&mut [&mut host, &mut client], |apps| {
         apps.iter()
-            .all(|app| app.phase() == Some(SessionPhase::Racing))
+            .all(|app| app.phase() == Some(SessionPhase::Playing(Minigame::Racing)))
     });
     assert_eq!(pong_entities(&mut host), 0);
 }

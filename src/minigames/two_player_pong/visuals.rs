@@ -1,17 +1,17 @@
 use bevy::prelude::*;
 
+use super::PHASE;
 use super::ball::{Ball, BallPosition};
+use super::config::{
+    BALL_MAX_SPEED, BALL_SIZE, PADDLE_HEIGHT, PADDLE_WIDTH, SCORE_FONT_SIZE, WALL_THICKNESS,
+};
 use super::paddles::{Paddle, PaddlePosition, Side};
 use super::score::PongScore;
 use crate::camera::gameplay_camera_2d;
 use crate::config::display::{ART_SCALE, VIEW_HEIGHT, VIEW_WIDTH};
-use crate::config::minigames::two_player_pong::{
-    BALL_MAX_SPEED, BALL_SIZE, PADDLE_HEIGHT, PADDLE_WIDTH, SCORE_FONT_SIZE, WALL_THICKNESS,
-};
 use crate::config::network::TICK_RATE;
 use crate::minigames::smoothing::{PreviousTick, Smoothed, remember_previous_tick, smoothed};
 use crate::players::player_color;
-use crate::session::SessionPhase;
 
 const ARENA_IMAGE: &str = "minigames/two_player_pong/arena.png";
 /// Drawn in white/grey and tinted with its player's colour.
@@ -44,7 +44,7 @@ pub struct PongVisualsPlugin;
 impl Plugin for PongVisualsPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
-            OnEnter(SessionPhase::TwoPlayerPong),
+            OnEnter(PHASE),
             (spawn_camera, spawn_arena, spawn_score_text),
         );
         app.add_observer(add_paddle_sprite);
@@ -55,35 +55,28 @@ impl Plugin for PongVisualsPlugin {
                 remember_previous_tick::<PaddlePosition>,
                 remember_previous_tick::<BallPosition>,
             )
-                .run_if(in_state(SessionPhase::TwoPlayerPong)),
+                .run_if(in_state(PHASE)),
         );
         app.add_systems(
             PostUpdate,
             (sync_paddle_transform, sync_ball_transform)
                 .before(TransformSystems::Propagate)
-                .run_if(in_state(SessionPhase::TwoPlayerPong)),
+                .run_if(in_state(PHASE)),
         );
-        app.add_systems(
-            Update,
-            update_score_text.run_if(in_state(SessionPhase::TwoPlayerPong)),
-        );
+        app.add_systems(Update, update_score_text.run_if(in_state(PHASE)));
     }
 }
 
 /// The arena fills the screen.
 fn spawn_camera(mut commands: Commands) {
     debug!("Spawning the Pong camera");
-    commands.spawn(gameplay_camera_2d(
-        SessionPhase::TwoPlayerPong,
-        VIEW_WIDTH,
-        VIEW_HEIGHT,
-    ));
+    commands.spawn(gameplay_camera_2d(PHASE, VIEW_WIDTH, VIEW_HEIGHT));
 }
 
 fn spawn_arena(assets: Res<AssetServer>, mut commands: Commands) {
     commands.spawn((
         Arena,
-        DespawnOnExit(SessionPhase::TwoPlayerPong),
+        DespawnOnExit(PHASE),
         Sprite {
             custom_size: Some(Vec2::new(VIEW_WIDTH, VIEW_HEIGHT)),
             ..Sprite::from_image(assets.load(ARENA_IMAGE))
@@ -161,7 +154,7 @@ fn spawn_score_text(mut commands: Commands) {
     for side in [Side::Left, Side::Right] {
         commands.spawn((
             ScoreText(side),
-            DespawnOnExit(SessionPhase::TwoPlayerPong),
+            DespawnOnExit(PHASE),
             Text2d::new("0"),
             // Text2d is drawn at the window's scale factor, not the camera's zoom, so draw it
             // ART_SCALE times bigger and shrink it back down, or it blurs when the camera zooms in.
@@ -199,9 +192,9 @@ mod tests {
     use bevy::prelude::*;
 
     use super::{BallPosition, shown_ball_position};
-    use crate::config::minigames::two_player_pong::{BALL_MAX_SPEED, GOAL_X};
     use crate::config::network::TICK_RATE;
     use crate::minigames::smoothing::PreviousTick;
+    use crate::minigames::two_player_pong::config::{BALL_MAX_SPEED, GOAL_X};
 
     #[test]
     fn the_ball_is_drawn_between_its_last_two_ticks() {

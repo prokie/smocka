@@ -4,8 +4,8 @@ Everything is laid out in world units (the 640x360 virtual screen, y up, (0, 0) 
 drawn at ART_SCALE texture pixels per unit. Shapes are drawn SUPERSAMPLE times bigger still and
 then shrunk, for smooth edges.
 
-Shapes that gameplay depends on (the racing track, Pong's walls) use the same constants as
-src/config.rs: keep them in step. Run from the repository root:
+Shapes that gameplay depends on (the racing track, Pong's walls) use the same constants as each
+minigame's config.rs (src/minigames/<minigame>/config.rs): keep them in step. Run from the repository root:
 
     python3 tools/make_art.py
 
@@ -26,7 +26,7 @@ SUPERSAMPLE: Final[int] = 4
 VIEW_W: Final[float] = 640.0  # config::display::VIEW_WIDTH
 VIEW_H: Final[float] = 360.0  # config::display::VIEW_HEIGHT
 
-# Keep in step with config::minigames::racing.
+# Keep in step with minigames::racing::config.
 HALF_LENGTH: Final[float] = 140.0  # TRACK_HALF_LENGTH
 INNER: Final[float] = 100.0  # TRACK_INNER_RADIUS
 OUTER: Final[float] = 160.0  # TRACK_OUTER_RADIUS
@@ -36,7 +36,7 @@ GRID_LANE: Final[float] = 14.0  # GRID_LANE_OFFSET
 CAR_LENGTH: Final[float] = 16.0  # CAR_LENGTH
 CAR_WIDTH: Final[float] = 10.0  # CAR_WIDTH
 
-# Keep in step with config::minigames::two_player_pong.
+# Keep in step with minigames::two_player_pong::config.
 WALL_THICKNESS: Final[float] = 4.0  # WALL_THICKNESS
 PADDLE_WIDTH: Final[float] = 8.0  # PADDLE_WIDTH
 PADDLE_HEIGHT: Final[float] = 48.0  # PADDLE_HEIGHT

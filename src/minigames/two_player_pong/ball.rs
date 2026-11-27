@@ -3,14 +3,14 @@ use lightyear::prelude::*;
 use rand::RngExt;
 use serde::{Deserialize, Serialize};
 
+use super::PHASE;
 use super::PongSystems;
 use super::collisions::{bounce_off_paddle, bounce_off_walls, hits_paddle};
-use super::paddles::{Paddle, PaddlePosition, Side};
-use crate::config::minigames::two_player_pong::{
+use super::config::{
     BALL_HIT_SPEEDUP, BALL_MAX_SPEED, BALL_SERVE_MAX_ANGLE, BALL_SERVE_MIN_ANGLE, BALL_SERVE_SPEED,
 };
+use super::paddles::{Paddle, PaddlePosition, Side};
 use crate::network::is_host;
-use crate::session::SessionPhase;
 
 /// Marker for the Pong ball.
 #[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
@@ -43,16 +43,13 @@ impl Plugin for BallPlugin {
             .replicate()
             .add_linear_interpolation();
 
-        app.add_systems(
-            OnEnter(SessionPhase::TwoPlayerPong),
-            spawn_ball.run_if(is_host),
-        );
+        app.add_systems(OnEnter(PHASE), spawn_ball.run_if(is_host));
         app.add_systems(
             FixedUpdate,
             move_ball
                 .in_set(PongSystems::MoveBall)
                 .run_if(is_host)
-                .run_if(in_state(SessionPhase::TwoPlayerPong)),
+                .run_if(in_state(PHASE)),
         );
     }
 }
@@ -68,7 +65,7 @@ fn spawn_ball(mut commands: Commands) {
     debug!("Pong: first serve goes to {side:?}");
     commands.spawn((
         Ball,
-        DespawnOnExit(SessionPhase::TwoPlayerPong),
+        DespawnOnExit(PHASE),
         BallPosition(Vec2::ZERO),
         BallVelocity(serve_velocity(side, &mut rng)),
         Replicate::to_clients(NetworkTarget::All),
@@ -123,11 +120,11 @@ fn step_ball(
 #[cfg(test)]
 mod tests {
     use super::{serve_velocity, step_ball};
-    use crate::config::minigames::two_player_pong::{
+    use crate::config::network::TICK_RATE;
+    use crate::minigames::two_player_pong::config::{
         BALL_HIT_SPEEDUP, BALL_MAX_SPEED, BALL_MAX_Y, BALL_SERVE_MAX_ANGLE, BALL_SERVE_MIN_ANGLE,
         BALL_SERVE_SPEED, GOAL_X, PADDLE_HEIGHT, PADDLE_X_OFFSET,
     };
-    use crate::config::network::TICK_RATE;
     use crate::minigames::two_player_pong::paddles::Side;
     use bevy::math::Vec2;
 

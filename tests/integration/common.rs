@@ -258,7 +258,7 @@ pub fn pair_in_pong() -> (TestApp, TestApp, SocketAddr) {
     host.start_minigame(Minigame::TwoPlayerPong);
     update_until(&mut [&mut host, &mut client], |apps| {
         apps.iter()
-            .all(|app| app.phase() == Some(SessionPhase::TwoPlayerPong))
+            .all(|app| app.phase() == Some(SessionPhase::Playing(Minigame::TwoPlayerPong)))
     });
     (host, client, addr)
 }

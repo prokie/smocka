@@ -5,19 +5,20 @@ use lightyear::prelude::input::native::ActionState;
 use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use super::PHASE;
 use super::RacingSystems;
-use super::progress::RaceProgress;
-use super::race::RaceStatus;
-use super::racing_input::RacingInput;
-use super::track::{START_HEADING, Surface, grid_position, surface_at};
-use crate::config::minigames::racing::{
+use super::config::{
     ACCELERATION, BRAKE_DECELERATION, CAR_MAX_X, CAR_MAX_Y, COAST_DECELERATION, EDGE_MAX_SPEED,
     FULL_STEER_SPEED, GRASS_DECELERATION, MAX_REVERSE_SPEED, MAX_SPEED, REVERSE_ACCELERATION,
     SLIDE_DECELERATION, TURN_RATE,
 };
+use super::progress::RaceProgress;
+use super::race::RaceStatus;
+use super::racing_input::RacingInput;
+use super::track::{START_HEADING, Surface, grid_position, surface_at};
 use crate::network::is_host;
 use crate::players::Player;
-use crate::session::{Participants, SessionPhase};
+use crate::session::Participants;
 
 /// Who drives this car. Set once at spawn, copied from the driver's [`Player`] so the car keeps
 /// them even if the player leaves mid-race.
@@ -86,12 +87,12 @@ impl Plugin for CarPlugin {
             .predict()
             .add_linear_interpolation();
 
-        app.add_systems(OnEnter(SessionPhase::Racing), spawn_cars.run_if(is_host));
+        app.add_systems(OnEnter(PHASE), spawn_cars.run_if(is_host));
         app.add_systems(
             FixedUpdate,
             drive_cars
                 .in_set(RacingSystems::Drive)
-                .run_if(in_state(SessionPhase::Racing)),
+                .run_if(in_state(PHASE)),
         );
     }
 }
@@ -128,7 +129,7 @@ fn spawn_cars(
             },
             CarState::parked(grid_position(slot), START_HEADING),
             RaceProgress::on_grid(),
-            DespawnOnExit(SessionPhase::Racing),
+            DespawnOnExit(PHASE),
             Replicate::to_clients(NetworkTarget::All),
             PredictionTarget::to_clients(NetworkTarget::from(drivers.clone())),
             InterpolationTarget::to_clients(NetworkTarget::from_exclude(drivers.iter().copied())),
@@ -255,7 +256,7 @@ mod tests {
     use lightyear::prelude::input::native::ActionState;
 
     use super::{CarState, RaceStatus, RacingInput, drive, drive_cars, lerp_angle, wrap_angle};
-    use crate::config::minigames::racing::{
+    use crate::minigames::racing::config::{
         CAR_MAX_X, EDGE_MAX_SPEED, GRASS_MAX_SPEED, MAX_REVERSE_SPEED, MAX_SPEED,
         SLIDE_DECELERATION,
     };

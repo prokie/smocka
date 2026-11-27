@@ -23,10 +23,9 @@ pub enum SessionPhase {
     Lobby,
     /// In a [`Party`], before each round: which round it is, and the minigame picked for it.
     NextRound,
-    /// Playing two-player Pong.
-    TwoPlayerPong,
-    /// Playing the racing minigame.
-    Racing,
+    /// Playing a minigame. Each minigame's module has its own as `PHASE`, for example
+    /// [`racing::PHASE`](crate::minigames::racing::PHASE).
+    Playing(Minigame),
     /// Between a tournament's matches: who plays next, and how the last match went.
     NextMatch,
     /// Showing how everyone placed in the last minigame.
@@ -40,15 +39,7 @@ pub enum SessionPhase {
 impl SessionPhase {
     /// Whether this phase is a minigame being played.
     pub fn is_minigame(self) -> bool {
-        match self {
-            SessionPhase::TwoPlayerPong | SessionPhase::Racing => true,
-            SessionPhase::Lobby
-            | SessionPhase::NextRound
-            | SessionPhase::NextMatch
-            | SessionPhase::Results
-            | SessionPhase::Standings
-            | SessionPhase::PartyOver => false,
-        }
+        matches!(self, SessionPhase::Playing(_))
     }
 }
 
@@ -253,7 +244,7 @@ impl Plugin for SessionPlugin {
 /// Command: the host starts a [`Minigame`] from the lobby, with the [`Participants`] chosen by
 /// [`pick_participants`], or as a [`Tournament`] if it seats fewer than are here (see
 /// [`needs_tournament`]). Refused unless hosting, in the lobby, with at least
-/// [`Minigame::min_players`] players.
+/// [`min_players`](crate::minigames::MinigameInfo::min_players) players.
 #[derive(Debug, Clone, Copy)]
 pub struct StartMinigame(pub Minigame);
 
@@ -279,8 +270,9 @@ impl Command for StartMinigame {
 
 /// Host only: start a [`Minigame`] with everyone here, as the [`Participants`] chosen by
 /// [`pick_participants`], or as a [`Tournament`] if it seats fewer than are here (see
-/// [`needs_tournament`]). With fewer than [`Minigame::min_players`] players it isn't started; in
-/// a [`Party`] that ends the party.
+/// [`needs_tournament`]). With fewer than
+/// [`min_players`](crate::minigames::MinigameInfo::min_players) players it isn't started; in a
+/// [`Party`] that ends the party.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct BeginMinigame(pub Minigame);
 
@@ -311,18 +303,18 @@ impl Command for BeginMinigame {
         else {
             return;
         };
-        if players.len() < game.min_players() {
+        if players.len() < game.info().min_players {
             if in_party {
                 info!(
                     "Ending the party: {game:?} needs at least {} players, {} are left",
-                    game.min_players(),
+                    game.info().min_players,
                     players.len()
                 );
                 phase.0 = SessionPhase::Lobby;
             } else {
                 warn!(
                     "{game:?} needs at least {} players, have {}",
-                    game.min_players(),
+                    game.info().min_players,
                     players.len()
                 );
             }
@@ -370,18 +362,18 @@ impl Command for BeginMinigame {
             names.join(", "),
             players.len() - names.len()
         );
-        phase.0 = game.phase();
+        phase.0 = SessionPhase::Playing(game);
     }
 }
 
 /// Who plays `game` out of `players`: the lowest-numbered (earliest to join), up to
-/// [`Minigame::max_players`].
+/// [`max_players`](crate::minigames::MinigameInfo::max_players).
 pub fn pick_participants(game: Minigame, players: &[Player]) -> Vec<PeerId> {
     let mut players: Vec<&Player> = players.iter().collect();
     players.sort_by_key(|player| player.number);
     players
         .into_iter()
-        .take(game.max_players())
+        .take(game.info().max_players)
         .map(|player| player.id)
         .collect()
 }
@@ -487,7 +479,8 @@ fn walk_over_leavers(
     let mut tournament = tournament.into_inner();
     let (mut phase, mut participants) = session.into_inner();
     let PlayerLeft(leaver) = trigger.event();
-    let in_play = phase.0 == SessionPhase::NextMatch || phase.0 == tournament.game.phase();
+    let in_play =
+        phase.0 == SessionPhase::NextMatch || phase.0 == SessionPhase::Playing(tournament.game);
     if !in_play || !participants.contains(leaver.id) {
         return;
     }
@@ -594,7 +587,7 @@ fn start_next_match_timer(
     commands.insert_resource(PhaseTimer {
         timer: Timer::new(rules.next_match, TimerMode::Once),
         during: SessionPhase::NextMatch,
-        then: Then::Phase(tournament.game.phase()),
+        then: Then::Phase(SessionPhase::Playing(tournament.game)),
     });
 }
 
@@ -721,8 +714,9 @@ mod tests {
 
     #[test]
     fn only_minigames_are_minigames() {
-        assert!(SessionPhase::TwoPlayerPong.is_minigame());
-        assert!(SessionPhase::Racing.is_minigame());
+        for game in Minigame::ALL {
+            assert!(SessionPhase::Playing(game).is_minigame(), "{game:?}");
+        }
         assert!(!SessionPhase::Lobby.is_minigame());
         assert!(!SessionPhase::Results.is_minigame());
         assert!(!SessionPhase::Standings.is_minigame());

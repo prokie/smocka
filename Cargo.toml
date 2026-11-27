@@ -1,11 +1,17 @@
 [package]
 name = "smocka"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 
 [dependencies]
-bevy = { version = "0.20.1", default-features = false, features = ["2d", "ui", "serialize"] }
-bevy_enhanced_input = { version = "0.27.2", default-features = false, features = ["serialize"] }
+bevy = { version = "0.20.1", default-features = false, features = [
+    "2d",
+    "ui",
+    "serialize",
+] }
+bevy_enhanced_input = { version = "0.27.2", default-features = false, features = [
+    "serialize",
+] }
 rand = "0.10.4"
 lightyear = { version = "0.31.0", features = [
     "client",

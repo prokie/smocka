@@ -6,9 +6,9 @@ use lightyear::prelude::input::native::{ActionState, InputMarker};
 use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use super::PHASE;
 use crate::controls::{ControlAction, Controls, fired, spawn_action};
 use crate::minigames::two_player_pong::paddles::Paddle;
-use crate::session::SessionPhase;
 
 /// The input a player sends each tick to control their paddle.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Default, Reflect)]
@@ -53,12 +53,12 @@ pub struct PongInputPlugin;
 impl Plugin for PongInputPlugin {
     fn build(&self, app: &mut App) {
         app.add_input_context::<PongControls>();
-        app.add_systems(OnEnter(SessionPhase::TwoPlayerPong), spawn_pong_controls);
+        app.add_systems(OnEnter(PHASE), spawn_pong_controls);
         app.add_systems(
             FixedPreUpdate,
             buffer_pong_input
                 .in_set(InputSystems::WriteClientInputs)
-                .run_if(in_state(SessionPhase::TwoPlayerPong)),
+                .run_if(in_state(PHASE)),
         );
         app.add_plugins(input::native::InputPlugin::<PongInput>::default());
 
@@ -72,7 +72,7 @@ fn spawn_pong_controls(controls: Res<Controls>, mut commands: Commands) {
         .spawn((
             Name::new("PongControls"),
             PongControls,
-            DespawnOnExit(SessionPhase::TwoPlayerPong),
+            DespawnOnExit(PHASE),
         ))
         .id();
     spawn_action::<PongControls, PaddleUp>(

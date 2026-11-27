@@ -1,5 +1,6 @@
 pub mod ball;
 mod collisions;
+pub mod config;
 pub mod paddles;
 mod pong_input;
 pub mod score;
@@ -9,6 +10,20 @@ pub use pong_input::PongInput;
 pub use visuals::PongVisualsPlugin;
 
 use bevy::prelude::*;
+
+use super::{Minigame, MinigameInfo};
+use crate::session::SessionPhase;
+
+/// The phase a game of Pong is played in.
+pub const PHASE: SessionPhase = SessionPhase::Playing(Minigame::TwoPlayerPong);
+
+/// What the session and the menus need to know about Pong. It seats two: with more players
+/// here, it's played as a [`Tournament`](crate::tournament::Tournament).
+pub const INFO: MinigameInfo = MinigameInfo {
+    name: "Pong",
+    min_players: 2,
+    max_players: 2,
+};
 
 /// The order Pong's game logic runs in each `FixedUpdate` tick.
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]

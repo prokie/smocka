@@ -1,3 +1,7 @@
+//! The minigames. Each one lives in its own folder, with its own plugins, constants
+//! (`config.rs`), a [`MinigameInfo`] called `INFO`, and the
+//! [`SessionPhase`](crate::session::SessionPhase) it's played in, called `PHASE`.
+
 pub mod racing;
 pub mod smoothing;
 pub mod two_player_pong;
@@ -5,10 +9,12 @@ pub mod two_player_pong;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::config::minigames::racing::GRID_SLOTS;
-use crate::session::SessionPhase;
-
-/// A minigame the host can start from the lobby.
+/// A minigame the host can start from the lobby. This is also how peers name it to each other.
+///
+/// It's played in [`SessionPhase::Playing`](crate::session::SessionPhase::Playing). Adding a
+/// minigame takes a variant here (and in [`ALL`](Self::ALL)), its module's `INFO` in
+/// [`info`](Self::info), its plugins in [`MinigamesPlugin`] and [`MinigameVisualsPlugin`], and
+/// the [`ControlAction`](crate::controls::ControlAction)s players bind for it.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Minigame {
     /// Two-player Pong: the two lowest-numbered players play, everyone else watches.
@@ -17,38 +23,29 @@ pub enum Minigame {
     Racing,
 }
 
+/// What the session and the menus need to know about a minigame. Each minigame's module has one,
+/// called `INFO`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MinigameInfo {
+    /// The name shown to players, for example on the lobby's start buttons.
+    pub name: &'static str,
+    /// The fewest players it can be started with.
+    pub min_players: usize,
+    /// The most players who can play it at once. With more in the session, the rest watch, or
+    /// for a minigame that seats two, it's played as a
+    /// [`Tournament`](crate::tournament::Tournament).
+    pub max_players: usize,
+}
+
 impl Minigame {
     /// Every minigame, in the order the lobby offers them.
     pub const ALL: [Minigame; 2] = [Minigame::TwoPlayerPong, Minigame::Racing];
 
-    /// The [`SessionPhase`] this minigame is played in.
-    pub fn phase(self) -> SessionPhase {
+    /// What the session and the menus need to know about this minigame.
+    pub const fn info(self) -> MinigameInfo {
         match self {
-            Minigame::TwoPlayerPong => SessionPhase::TwoPlayerPong,
-            Minigame::Racing => SessionPhase::Racing,
-        }
-    }
-
-    /// The fewest players this minigame can be started with.
-    pub fn min_players(self) -> usize {
-        match self {
-            Minigame::TwoPlayerPong | Minigame::Racing => 2,
-        }
-    }
-
-    /// The most players who can play it at once. With more in the session, the rest watch.
-    pub fn max_players(self) -> usize {
-        match self {
-            Minigame::TwoPlayerPong => 2,
-            Minigame::Racing => GRID_SLOTS,
-        }
-    }
-
-    /// The name shown to players, for example on the lobby's start buttons.
-    pub fn name(self) -> &'static str {
-        match self {
-            Minigame::TwoPlayerPong => "Pong",
-            Minigame::Racing => "Racing",
+            Minigame::TwoPlayerPong => two_player_pong::INFO,
+            Minigame::Racing => racing::INFO,
         }
     }
 }
@@ -76,28 +73,32 @@ impl Plugin for MinigameVisualsPlugin {
 
 #[cfg(test)]
 mod tests {
-    use super::Minigame;
+    use super::{Minigame, racing, two_player_pong};
+    use crate::session::SessionPhase;
 
     #[test]
-    fn every_minigame_is_played_in_a_minigame_phase() {
-        for game in Minigame::ALL {
-            assert!(game.phase().is_minigame(), "{game:?}");
-        }
+    fn every_minigame_module_has_its_own_phase() {
+        assert_eq!(
+            two_player_pong::PHASE,
+            SessionPhase::Playing(Minigame::TwoPlayerPong)
+        );
+        assert_eq!(racing::PHASE, SessionPhase::Playing(Minigame::Racing));
     }
 
     #[test]
     fn every_minigame_seats_at_least_its_minimum() {
         for game in Minigame::ALL {
-            assert!(game.min_players() >= 2, "{game:?}");
-            assert!(game.max_players() >= game.min_players(), "{game:?}");
+            let info = game.info();
+            assert!(info.min_players >= 2, "{game:?}");
+            assert!(info.max_players >= info.min_players, "{game:?}");
         }
     }
 
     #[test]
-    fn every_minigame_has_its_own_phase() {
+    fn every_minigame_has_its_own_name() {
         for (i, a) in Minigame::ALL.iter().enumerate() {
             for b in &Minigame::ALL[i + 1..] {
-                assert_ne!(a.phase(), b.phase(), "{a:?} and {b:?}");
+                assert_ne!(a.info().name, b.info().name, "{a:?} and {b:?}");
             }
         }
     }
