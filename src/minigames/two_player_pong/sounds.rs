@@ -10,7 +10,7 @@ use super::PHASE;
 use super::ball::Ball;
 use super::config::{BALL_MAX_Y, PADDLE_X_OFFSET};
 use super::score::PongScore;
-use crate::minigames::sounds::play_sound;
+use crate::sound::play_sound;
 
 const PADDLE_HIT_SOUND: &str = "minigames/two_player_pong/paddle_hit.wav";
 const WALL_BOUNCE_SOUND: &str = "minigames/two_player_pong/wall_bounce.wav";

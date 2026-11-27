@@ -1,6 +1,6 @@
 //! This player's own profile: the name they picked in the main menu, the address they last
-//! joined, and their [`Controls`], all remembered between launches in `smocka/settings.toml` in the
-//! system's settings folder.
+//! joined, their [`Controls`] and their [`VolumeSettings`], all remembered between launches in
+//! `smocka/settings.toml` in the system's settings folder.
 //!
 //! A joiner sends the name to the host inside its netcode connect token (the token's "user data"),
 //! so the host knows it the moment the player connects. The host uses its own profile directly.
@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::network::SERVER_ADDR;
 use crate::controls::Controls;
+use crate::sound::VolumeSettings;
 
 /// The longest name allowed, in characters.
 pub const MAX_NAME_CHARS: usize = 16;
@@ -88,6 +89,19 @@ impl Controls {
     }
 }
 
+impl VolumeSettings {
+    /// The volumes saved by an earlier run (made safe, see [`VolumeSettings::sanitized`]), or the
+    /// defaults. Like [`LocalProfile`], only the main menu loads and saves them.
+    pub fn load() -> Self {
+        SavedSettings::load().volume.sanitized()
+    }
+
+    /// Save the volumes for the next run. Failing to save is logged, not fatal.
+    pub fn save(&self) {
+        SavedSettings::update("volume", |saved| saved.volume = *self);
+    }
+}
+
 /// The file everything is saved to, in [`settings_dir`].
 const SETTINGS_FILE: &str = "settings.toml";
 /// Where versions up to 0.1.1 saved the name, read when there's no [`SETTINGS_FILE`] yet.
@@ -104,6 +118,8 @@ struct SavedSettings {
     last_address: Option<String>,
     /// What each action in each minigame is bound to.
     controls: Controls,
+    /// How loud sound and music are.
+    volume: VolumeSettings,
 }
 
 impl SavedSettings {
@@ -199,6 +215,7 @@ mod tests {
         name_from_user_data, name_to_user_data,
     };
     use crate::controls::{Control, ControlAction, Controls};
+    use crate::sound::VolumeSettings;
     use bevy::prelude::GamepadButton;
     use std::path::PathBuf;
 
@@ -224,6 +241,11 @@ mod tests {
             name: "Åsa \"Ö\"".into(),
             last_address: Some("192.168.1.42".into()),
             controls,
+            volume: VolumeSettings {
+                master: 7,
+                effects: 0,
+                music: 3,
+            },
         };
         saved.write(&dir).unwrap();
         assert_eq!(SavedSettings::read(&dir), saved);

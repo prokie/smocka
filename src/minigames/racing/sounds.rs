@@ -5,7 +5,6 @@
 //! engine from your car's [`CarState`]. Bumps are only worked out by the host and drivers, so
 //! spectators don't hear them.
 
-use bevy::audio::Volume;
 use bevy::prelude::*;
 use lightyear::prelude::input::native::InputMarker;
 
@@ -16,7 +15,7 @@ use super::car::CarState;
 use super::config::MAX_SPEED;
 use super::progress::RaceProgress;
 use super::race::RaceStatus;
-use crate::minigames::sounds::play_sound;
+use crate::sound::{Sound, play_sound};
 
 const COUNTDOWN_SOUND: &str = "minigames/racing/countdown.wav";
 const GO_SOUND: &str = "minigames/racing/go.wav";
@@ -210,10 +209,9 @@ fn run_engine_sound(
         (false, Err(_)) => {
             commands.spawn((
                 EngineSound,
+                Sound::effect(ENGINE_VOLUME),
                 AudioPlayer::new(sounds.engine.clone()),
-                PlaybackSettings::LOOP
-                    .with_volume(Volume::Linear(ENGINE_VOLUME))
-                    .with_speed(ENGINE_IDLE_SPEED),
+                PlaybackSettings::LOOP.with_speed(ENGINE_IDLE_SPEED),
                 DespawnOnExit(PHASE),
             ));
         }

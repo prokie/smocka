@@ -117,10 +117,12 @@ same build.
 
 - [ ] **Find games on the local network**: the host announces itself (UDP broadcast or mDNS),
       and the menu lists games to click instead of typing an IP address.
-- [ ] **A volume setting**: there's no way to turn sound down or off in the game (Bevy's
-      `GlobalVolume` resource sets it for every sound; `--mute` sets it to silent). For separate
-      music/effects volumes or fades, look at `bevy_kira_audio` (check it supports Bevy 0.20
-      first).
+- [ ] **Music**: everything is ready (`PlayMusic` / `StopMusic` in `sound.rs`, the music
+      volume, Ogg Vorbis support) except the tracks. Pick where each starts, e.g. a theme on
+      `OnEnter(AppState::MainMenu)`. Switching tracks cuts straight over; fading between them
+      needs `bevy_kira_audio` (check it supports Bevy 0.20 first) or fading `AudioSink` volumes
+      by hand.
+- [ ] **Volume during a game**: the Sound screen is only in the main menu, like Controls.
 - [ ] **Spectators don't hear bumps** in racing. Only the host and drivers work bumps out
       (`CarsBumped` in `bumps.rs`); a spectator's cars are interpolated. Spectators could check
       `contact` between the cars as they're drawn instead.

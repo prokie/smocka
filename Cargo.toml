@@ -8,9 +8,10 @@ bevy = { version = "0.20.1", default-features = false, features = [
     "2d",
     "ui",
     "serialize",
-    # Sound, from the WAV files `tools/make_sounds.py` writes.
+    # Sound: WAV for the effects `tools/make_sounds.py` writes, Ogg Vorbis for music.
     "bevy_audio",
     "wav",
+    "vorbis",
 ] }
 bevy_enhanced_input = { version = "0.27.2", default-features = false, features = [
     "serialize",

@@ -7,6 +7,7 @@ mod next_match;
 mod notices;
 mod party;
 mod results;
+mod sound;
 mod standings;
 mod watching;
 mod widgets;
@@ -30,6 +31,7 @@ use crate::network::{HostSession, LeaveSession, close_session};
 use crate::party::{ChangeRounds, StartParty};
 use crate::profile::{LastAddress, LocalProfile};
 use crate::session::{SessionPhase, StartMinigame};
+use crate::sound::{ChangeVolume, VolumeControl, VolumeSettings};
 use widgets::{HINT_COLOR, label, menu_button, screen};
 
 /// The font for all text.
@@ -59,6 +61,12 @@ pub enum MenuButton {
     ResetControls,
     /// Bind the next key, gamepad button or stick push to this action's binding (from 0).
     Rebind(ControlAction, usize),
+    /// Open the Sound screen.
+    Sound,
+    /// Close the Sound screen.
+    CloseSound,
+    /// Change one of the volumes by this many steps.
+    ChangeVolume(VolumeControl, i32),
 }
 
 /// All local UI. Needs a renderer, so headless tests leave it out.
@@ -70,12 +78,14 @@ impl Plugin for MenuPlugin {
         if !app.is_plugin_added::<TabNavigationPlugin>() {
             app.add_plugins(TabNavigationPlugin);
         }
-        // Only the real game remembers the player's name, last address and controls; headless
-        // tests start with none of them.
+        // Only the real game remembers the player's name, last address, controls and volumes;
+        // headless tests start with none of them.
         app.insert_resource(LocalProfile::load());
         app.insert_resource(LastAddress::load());
         app.insert_resource(Controls::load());
+        app.insert_resource(VolumeSettings::load());
         app.add_systems(PreStartup, use_ui_font);
+        app.add_systems(Startup, sound::load_volume_check);
         app.init_resource::<main_menu::NameEdited>();
         app.add_systems(OnEnter(AppState::MainMenu), main_menu::spawn_main_menu);
         app.add_systems(OnExit(AppState::MainMenu), main_menu::save_profile);
@@ -141,6 +151,12 @@ impl Plugin for MenuPlugin {
                     .run_if(any_with_component::<controls::ControlsScreen>),
                 save_controls
                     .run_if(resource_changed::<Controls>.and_then(not(resource_added::<Controls>))),
+                (sound::close_sound_on_escape, sound::update_volume_labels)
+                    .run_if(any_with_component::<sound::SoundScreen>),
+                save_volume.run_if(
+                    resource_changed::<VolumeSettings>
+                        .and_then(not(resource_added::<VolumeSettings>)),
+                ),
                 leave_on_escape.run_if(not(in_state(AppState::MainMenu))),
                 (
                     lobby::update_player_list,
@@ -190,6 +206,7 @@ fn on_menu_button(
     address: Query<&EditableText, With<AddressInput>>,
     mut last_address: ResMut<LastAddress>,
     mut message: Query<&mut Text, With<MenuMessage>>,
+    volume_check: Option<Res<sound::VolumeCheckSound>>,
     mut commands: Commands,
 ) {
     let Ok(button) = buttons.get(trigger.entity) else {
@@ -221,6 +238,16 @@ fn on_menu_button(
             slot: *slot,
             button: trigger.entity,
         }),
+        MenuButton::Sound => commands.queue(sound::OpenSound),
+        MenuButton::CloseSound => commands.queue(sound::CloseSound),
+        MenuButton::ChangeVolume(control, steps) => {
+            commands.queue(ChangeVolume {
+                control: *control,
+                steps: *steps,
+            });
+            // Queued after the change, so it plays at the new volume.
+            sound::check_volume(*control, volume_check.as_deref(), &mut commands);
+        }
     }
 }
 
@@ -228,6 +255,12 @@ fn on_menu_button(
 /// Controls screen never write to the developer's settings.
 fn save_controls(controls: Res<Controls>) {
     controls.save();
+}
+
+/// Remember changed volumes for the next launch. Separate from changing them, like
+/// [`save_controls`].
+fn save_volume(settings: Res<VolumeSettings>) {
+    settings.save();
 }
 
 fn spawn_connecting_screen(mut commands: Commands) {

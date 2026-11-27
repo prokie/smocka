@@ -31,8 +31,8 @@ Download the zip for your system from the
 cargo run
 ```
 
-Type your name at the top of the main menu; it's remembered for next time (in `smocka/name.txt`
-in your system's settings folder). One player picks **Host game**. The others type the host's
+Type your name at the top of the main menu; it's remembered for next time (in
+`smocka/settings.toml` in your system's settings folder, with your controls and volumes). One player picks **Host game**. The others type the host's
 address (for example `192.168.1.10`, or `192.168.1.10:5000`) and press **Join**. The host listens
 on UDP port 5000 on every interface.
 
@@ -92,6 +92,14 @@ faster your car goes, so it should be a short, steady hum that loops without a c
 
 The placeholders come from `python3 tools/make_sounds.py`, which needs nothing outside Python's
 standard library.
+
+**Sound** in the main menu sets three volumes: master, effects and music. They change sounds
+already playing too, and are saved with the other settings. In code, play every sound with
+`sound::play_sound` (or spawn it with a `sound::Sound`) so it follows them.
+
+There's no music yet, but the game is ready for it: put an Ogg Vorbis file (`.ogg`) under
+`assets/`, then queue `PlayMusic(assets.load("music/theme.ogg"))` from `src/sound.rs` where it
+should start. It loops until `StopMusic` or the next `PlayMusic`, at the music volume.
 
 ## Development
 

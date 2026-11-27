@@ -10,7 +10,7 @@ use smocka::config::network::{HOST_ADDR, SERVER_ADDR};
 use smocka::menu::MenuPlugin;
 use smocka::network::{HostSession, JoinSession, parse_address};
 use smocka::profile::{LastAddress, LocalProfile, clean_name};
-use smocka::{SmockaPlugin, camera, minigames};
+use smocka::{SmockaPlugin, camera, minigames, sound};
 
 /// What to do at startup, from the command line.
 enum Launch {
@@ -89,7 +89,9 @@ fn main() {
         DefaultPlugins.set(ImagePlugin::default_linear()),
         camera::CameraPlugin,
         minigames::MinigameVisualsPlugin,
+        // Loads the saved volume settings, so before `SoundPlugin`, which only adds defaults.
         MenuPlugin,
+        sound::SoundPlugin,
         SmockaPlugin,
     ));
 

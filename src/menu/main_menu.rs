@@ -73,6 +73,7 @@ pub(super) fn spawn_main_menu(
                 ],
             ),
             menu_button(MenuButton::Controls, "Controls"),
+            menu_button(MenuButton::Sound, "Sound"),
             menu_button(MenuButton::Quit, "Quit"),
             (
                 MenuMessage,

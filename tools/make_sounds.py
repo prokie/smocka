@@ -1,8 +1,10 @@
-"""Make the placeholder sounds for every minigame: short synthesised beeps, chimes and thumps.
+"""Make the placeholder sounds for every minigame and the menus: short synthesised beeps, chimes
+and thumps.
 
 Each sound is built from sine tones and noise, shaped by a quick fade in and a decay, and saved as
-a 16-bit mono WAV file next to the minigame's art (assets/minigames/<minigame>/). The engine sound
-loops, so it holds a whole number of cycles of every tone in it. Run from the repository root:
+a 16-bit mono WAV file next to the minigame's art (assets/minigames/<minigame>/), or in
+assets/menu/. The engine sound loops, so it holds a whole number of cycles of every tone in it.
+Music isn't made here. Run from the repository root:
 
     python3 tools/make_sounds.py
 
@@ -27,6 +29,7 @@ ATTACK: Final[float] = 0.004
 HEADROOM: Final[float] = 0.8
 
 ASSETS: Final[Path] = Path("assets/minigames")
+MENU_ASSETS: Final[Path] = Path("assets/menu")
 
 # Note frequencies, in Hz.
 C5, D5, E5, G5, A5 = 523.25, 587.33, 659.25, 783.99, 880.00
@@ -201,10 +204,18 @@ def minigame_sounds() -> dict[str, Signal]:
     }
 
 
+def menu_sounds() -> dict[str, Signal]:
+    return {
+        # Played at the new volume when the player changes it on the Sound screen.
+        "volume_check": tone(A5, 0.15, 0.06, SOFT),
+    }
+
+
 SOUNDS: Final[dict[Path, Callable[[], dict[str, Signal]]]] = {
     ASSETS / "two_player_pong": pong_sounds,
     ASSETS / "racing": racing_sounds,
     ASSETS: minigame_sounds,
+    MENU_ASSETS: menu_sounds,
 }
 
 

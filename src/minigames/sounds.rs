@@ -1,26 +1,18 @@
-//! Sound shared by every minigame, and how minigames play sounds.
+//! Sound shared by every minigame.
 //!
-//! Sounds are local: each peer plays them for what it sees on its own screen, worked out from
-//! replicated state it already has, so nothing about them goes over the network. The files are
+//! Minigame sounds are local: each peer plays them for what it sees on its own screen, worked out
+//! from replicated state it already has, so nothing about them goes over the network. They're
+//! played with [`play_sound`], which makes them follow the player's volume settings. The files are
 //! made by `tools/make_sounds.py`.
 
-use bevy::audio::Volume;
 use bevy::prelude::*;
 
 use crate::session::SessionPhase;
+use crate::sound::play_sound;
 
 /// Played when a minigame ends with a winner.
 const MINIGAME_WON_SOUND: &str = "minigames/minigame_won.wav";
 const MINIGAME_WON_VOLUME: f32 = 0.5;
-
-/// Play `sound` once at `volume` (1 is as loud as the file). The entity playing it despawns when
-/// it's done, so the sound carries on over a change of phase.
-pub fn play_sound(commands: &mut Commands, sound: &Handle<AudioSource>, volume: f32) {
-    commands.spawn((
-        AudioPlayer::new(sound.clone()),
-        PlaybackSettings::DESPAWN.with_volume(Volume::Linear(volume)),
-    ));
-}
 
 /// Whether the session going from `exited` to `entered` means a minigame just ended with a
 /// winner: it goes on to the results, or to a tournament's next match. A walkover counts, since a
