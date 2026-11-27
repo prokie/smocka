@@ -15,6 +15,16 @@ use crate::minigames::outcome::Participants;
 use crate::minigames::settings::MinigameSettings;
 use crate::network::is_host;
 use crate::players::{Player, local_peer_id};
+use crate::session::SessionPhase;
+
+/// Local only: triggered on every peer when a gunner is knocked out mid-round (rather than
+/// removed on phase exit or when its player disconnects), so audio and visual effects can react
+/// without duplicating session or disconnect checks.
+#[derive(Event, Debug, Clone, Copy, PartialEq)]
+pub struct GunnerKnockedOut {
+    pub position: Vec2,
+    pub color: u8,
+}
 
 /// Who plays this gunner. Set once at spawn, copied from the [`Player`] so it keeps them even if
 /// the player leaves.
@@ -110,7 +120,33 @@ impl Plugin for GunnerPlugin {
         app.component::<Health>().replicate();
         app.component::<NextShot>().replicate().predict();
 
+        app.add_observer(notify_knockout);
         app.add_systems(OnEnter(PHASE), spawn_gunners.run_if(is_host));
+    }
+}
+
+/// Trigger [`GunnerKnockedOut`] when a gunner is removed mid-round while its player is still in
+/// the session and its health was at knockout threshold (skipping disconnects and phase exit).
+fn notify_knockout(
+    trigger: On<Remove<Gunner>>,
+    phase: Option<Res<State<SessionPhase>>>,
+    gunners: Query<(&Gunner, Option<&GunnerState>, Option<&Health>)>,
+    players: Query<&Player>,
+    mut commands: Commands,
+) {
+    if !phase.is_some_and(|phase| *phase.get() == PHASE) {
+        return;
+    }
+    let Ok((gunner, state, health)) = gunners.get(trigger.entity) else {
+        return;
+    };
+    let still_here = players.iter().any(|player| player.id == gunner.owner);
+    let fatal_health = health.is_none_or(|health| health.remaining <= 1);
+    if still_here && fatal_health {
+        commands.trigger(GunnerKnockedOut {
+            position: state.map_or(Vec2::ZERO, |state| state.position),
+            color: gunner.color,
+        });
     }
 }
 
@@ -199,5 +235,98 @@ mod tests {
         let halfway = lerp_angle(PI - 0.1, -PI + 0.1, 0.5);
         assert!(close(halfway.abs(), PI), "{halfway}");
         assert!(close(lerp_angle(0.0, FRAC_PI_2, 0.5), FRAC_PI_2 / 2.0));
+    }
+
+    #[test]
+    fn knockout_event_fires_only_for_mid_round_knockouts() {
+        use bevy::prelude::*;
+        use lightyear::prelude::PeerId;
+
+        use super::{Gunner, GunnerKnockedOut, Health, PHASE, notify_knockout};
+        use crate::players::Player;
+        use crate::session::SessionPhase;
+
+        #[derive(Resource, Default)]
+        struct Seen(Vec<GunnerKnockedOut>);
+
+        let mut world = World::new();
+        world.insert_resource(State::new(PHASE));
+        world.init_resource::<Seen>();
+        world.add_observer(notify_knockout);
+        world.add_observer(|trigger: On<GunnerKnockedOut>, mut seen: ResMut<Seen>| {
+            seen.0.push(*trigger.event());
+        });
+
+        let owner = PeerId::Netcode(1);
+        let player = world
+            .spawn(Player {
+                id: owner,
+                name: "Ada".into(),
+                number: 1,
+                color: 2,
+            })
+            .id();
+
+        // Removing a gunner with fatal health while its player is still here fires the event.
+        let gunner = world
+            .spawn((
+                Gunner {
+                    owner,
+                    name: "Ada".into(),
+                    color: 2,
+                },
+                GunnerState::at(Vec2::new(12.0, -4.0)),
+                Health {
+                    remaining: 1,
+                    max: 3,
+                },
+            ))
+            .id();
+        world.despawn(gunner);
+        assert_eq!(
+            world.resource::<Seen>().0,
+            vec![GunnerKnockedOut {
+                position: Vec2::new(12.0, -4.0),
+                color: 2,
+            }]
+        );
+
+        // Removing a gunner whose player already left does not fire the event.
+        world.despawn(player);
+        let disconnected = world
+            .spawn((
+                Gunner {
+                    owner,
+                    name: "Ada".into(),
+                    color: 2,
+                },
+                GunnerState::at(Vec2::ZERO),
+                Health::full(1),
+            ))
+            .id();
+        world.despawn(disconnected);
+        assert_eq!(world.resource::<Seen>().0.len(), 1);
+
+        // Outside the shootout phase, removing a gunner does not fire the event.
+        world.insert_resource(State::new(SessionPhase::Results));
+        world.spawn(Player {
+            id: owner,
+            name: "Ada".into(),
+            number: 1,
+            color: 2,
+        });
+        let exited = world
+            .spawn((
+                Gunner {
+                    owner,
+                    name: "Ada".into(),
+                    color: 2,
+                },
+                GunnerState::at(Vec2::ZERO),
+                Health::full(1),
+            ))
+            .id();
+        world.despawn(exited);
+        assert_eq!(world.resource::<Seen>().0.len(), 1);
     }
 }

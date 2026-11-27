@@ -12,7 +12,7 @@ use super::config::{
     ARENA_HALF_HEIGHT, ARENA_HALF_WIDTH, SAFE_ZONE_MIN_HALF_HEIGHT, SAFE_ZONE_MIN_HALF_WIDTH,
 };
 use super::gunner::{Gunner, GunnerState, Health};
-use super::round::{ShootoutDirector, ShootoutRules};
+use super::round::{ShootoutDirector, ShootoutRules, apply_damage};
 use super::{PHASE, ShootoutSystems};
 use crate::network::is_host;
 
@@ -155,20 +155,15 @@ fn step_safe_zone(
         *outside += dt;
         while *outside >= interval && health.remaining > 0 {
             *outside -= interval;
-            health.remaining = health.remaining.saturating_sub(1);
-            debug!(
-                "{} ({:?}) took sudden-death zone damage ({}/{} hp left)",
-                gunner.name, gunner.owner, health.remaining, health.max
-            );
-            if health.remaining == 0 {
-                info!(
-                    "{} ({:?}) knocked out by the sudden-death zone on tick {}",
-                    gunner.name, gunner.owner, tick.0
-                );
-                if let Some(director) = director.as_deref_mut() {
-                    director.record_knockout(gunner.clone(), tick);
-                }
-                commands.entity(entity).despawn();
+            if apply_damage(
+                director.as_deref_mut(),
+                &mut commands,
+                entity,
+                gunner,
+                &mut health,
+                tick,
+                "the sudden-death zone",
+            ) {
                 state.outside_time.remove(&entity);
                 break;
             }

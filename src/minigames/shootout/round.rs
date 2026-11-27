@@ -14,7 +14,7 @@ use super::config::{
     PICKUP_FIRST_DELAY, PICKUP_INTERVAL, SUDDEN_DEATH_DELAY, SUDDEN_DEATH_SHRINK,
     ZONE_DAMAGE_INTERVAL,
 };
-use super::gunner::Gunner;
+use super::gunner::{Gunner, Health};
 use super::{PHASE, ShootoutSystems};
 use crate::minigames::outcome::{MinigameEnded, MinigameResult, Placement};
 use crate::network::is_host;
@@ -56,6 +56,36 @@ impl ShootoutDirector {
     pub fn record_knockout(&mut self, gunner: Gunner, tick: Tick) {
         self.knocked_out.push((gunner, tick));
     }
+}
+
+/// Host only: deal one hit of damage to `target` from `source`. When health reaches zero, records
+/// the knockout in `director` and despawns `target`, returning `true`.
+pub fn apply_damage(
+    director: Option<&mut ShootoutDirector>,
+    commands: &mut Commands,
+    target: Entity,
+    gunner: &Gunner,
+    health: &mut Health,
+    tick: Tick,
+    source: &str,
+) -> bool {
+    health.remaining = health.remaining.saturating_sub(1);
+    debug!(
+        "{} ({:?}) hit by {source} ({}/{} hp left)",
+        gunner.name, gunner.owner, health.remaining, health.max
+    );
+    if health.remaining == 0 {
+        info!(
+            "{} ({:?}) knocked out by {source} on tick {}",
+            gunner.name, gunner.owner, tick.0
+        );
+        if let Some(director) = director {
+            director.record_knockout(gunner.clone(), tick);
+        }
+        commands.entity(target).despawn();
+        return true;
+    }
+    false
 }
 
 /// Host only: ends the shootout.

@@ -3,17 +3,16 @@
 //!
 //! Each peer plays them locally from what it sees: firing when a [`PaintBall`] spawns, wall hits
 //! from [`PaintBallWallHit`], non-fatal gunner hits when a gunner's replicated [`Health`] drops,
-//! knockouts when a gunner is removed while its player is still in the session, pickups when a
-//! [`Pickup`] is removed mid-round, and sudden death when [`SafeZone::active`] turns true.
+//! knockouts from [`GunnerKnockedOut`], pickups when a [`Pickup`] is removed mid-round, and
+//! sudden death when [`SafeZone::active`] turns true.
 
 use bevy::prelude::*;
 
 use super::PHASE;
-use super::gunner::{Gunner, Health};
+use super::gunner::{Gunner, GunnerKnockedOut, Health};
 use super::pickups::Pickup;
 use super::shots::{PaintBall, PaintBallWallHit};
 use super::zone::SafeZone;
-use crate::players::Player;
 use crate::session::SessionPhase;
 use crate::sound::{play_sound, play_varied_sound};
 
@@ -134,29 +133,12 @@ fn play_hit_sounds(
     }
 }
 
-/// Play the knockout sound when a gunner is removed mid-round while its player is still in the
-/// session (not on phase exit, and not when a player disconnects).
 fn play_knockout_sound(
-    trigger: On<Remove<Gunner>>,
-    phase: Option<Res<State<SessionPhase>>>,
-    gunners: Query<(&Gunner, Option<&Health>)>,
-    players: Query<&Player>,
+    _trigger: On<GunnerKnockedOut>,
     sounds: Option<Res<ShootoutSounds>>,
     mut commands: Commands,
 ) {
-    let in_shootout = phase.is_some_and(|phase| *phase.get() == PHASE);
-    let Some(sounds) = sounds else {
-        return;
-    };
-    if !in_shootout {
-        return;
-    }
-    let Ok((gunner, health)) = gunners.get(trigger.entity) else {
-        return;
-    };
-    let still_here = players.iter().any(|player| player.id == gunner.owner);
-    let fatal_health = health.is_none_or(|health| health.remaining <= 1);
-    if still_here && fatal_health {
+    if let Some(sounds) = sounds {
         play_sound(&mut commands, &sounds.knockout, KNOCKOUT_VOLUME);
     }
 }
