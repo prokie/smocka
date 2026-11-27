@@ -89,7 +89,10 @@ impl Plugin for MenuPlugin {
             OnEnter(SessionPhase::NextMatch),
             next_match::spawn_next_match_screen,
         );
-        app.add_systems(OnEnter(SessionPhase::Board), party::spawn_board_screen);
+        app.add_systems(
+            OnEnter(SessionPhase::NextRound),
+            party::spawn_next_round_screen,
+        );
         app.add_systems(
             OnEnter(SessionPhase::PartyOver),
             party::spawn_party_over_screen,
@@ -119,10 +122,10 @@ impl Plugin for MenuPlugin {
                 results::update_results_screen.run_if(in_state(SessionPhase::Results)),
                 standings::update_standings_screen.run_if(
                     in_state(SessionPhase::Standings)
-                        .or_else(in_state(SessionPhase::Board))
+                        .or_else(in_state(SessionPhase::NextRound))
                         .or_else(in_state(SessionPhase::PartyOver)),
                 ),
-                party::update_board_screen.run_if(in_state(SessionPhase::Board)),
+                party::update_next_round_screen.run_if(in_state(SessionPhase::NextRound)),
                 party::update_party_over_screen.run_if(in_state(SessionPhase::PartyOver)),
                 (
                     next_match::update_next_match_screen,

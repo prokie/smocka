@@ -16,13 +16,13 @@ use smocka::tournament::{Tournament, TournamentRules};
 
 use crate::common::{TestApp, connected_pair, update_until};
 
-/// Make every screen between minigames instant, except the board and the winner, which stay up
-/// for `board` and `winner`. Parties have `rounds` rounds of `games`.
+/// Make every screen between minigames instant, except the next round's and the winner's, which
+/// stay up for `next_round` and `winner`. Parties have `rounds` rounds of `games`.
 fn quick_party(
     host: &mut TestApp,
     rounds: u32,
     games: &[Minigame],
-    board: Duration,
+    next_round: Duration,
     winner: Duration,
 ) {
     let world = host.0.world_mut();
@@ -32,7 +32,7 @@ fn quick_party(
     });
     world.insert_resource(PartyRules {
         rounds,
-        board,
+        next_round,
         winner,
         games: games.to_vec(),
     });
@@ -162,7 +162,7 @@ fn an_abandoned_minigame_is_played_again() {
     host.0.world_mut().trigger(MinigameEnded::Abandoned);
 
     update_until(&mut [&mut host, &mut client], |apps| {
-        apps[0].phase() == Some(SessionPhase::Board)
+        apps[0].phase() == Some(SessionPhase::NextRound)
     });
     update_until(&mut [&mut host, &mut client], |apps| {
         playing_round(apps[0], 1)

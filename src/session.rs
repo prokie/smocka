@@ -22,7 +22,7 @@ pub enum SessionPhase {
     #[default]
     Lobby,
     /// In a [`Party`], before each round: which round it is, and the minigame picked for it.
-    Board,
+    NextRound,
     /// Playing two-player Pong.
     TwoPlayerPong,
     /// Playing the racing minigame.
@@ -43,7 +43,7 @@ impl SessionPhase {
         match self {
             SessionPhase::TwoPlayerPong | SessionPhase::Racing => true,
             SessionPhase::Lobby
-            | SessionPhase::Board
+            | SessionPhase::NextRound
             | SessionPhase::NextMatch
             | SessionPhase::Results
             | SessionPhase::Standings
@@ -152,7 +152,7 @@ pub enum MinigameEnded {
     /// next match follows, or after the final, the tournament's result.
     Won(MinigameResult),
     /// The game can't go on (for example, a player left): go straight back to the lobby, or in
-    /// a [`Party`], to the board to play the round again. Ends a [`Tournament`] too.
+    /// a [`Party`], on to the round again with a new minigame. Ends a [`Tournament`] too.
     Abandoned,
 }
 
@@ -193,10 +193,11 @@ impl Default for SessionRules {
 }
 
 /// Where the session goes when a minigame can't go on: back to the lobby, or in a [`Party`] to
-/// the board, which plays the round again (or ends the party, if too few players are left).
+/// the round's start, which picks a new minigame for it (or ends the party, if too few players
+/// are left).
 fn after_abandoning(in_party: bool) -> SessionPhase {
     if in_party {
-        SessionPhase::Board
+        SessionPhase::NextRound
     } else {
         SessionPhase::Lobby
     }
@@ -607,7 +608,7 @@ fn start_standings_timer(
     let then = match party {
         None => SessionPhase::Lobby,
         Some(party) if party.is_over() => SessionPhase::PartyOver,
-        Some(_) => SessionPhase::Board,
+        Some(_) => SessionPhase::NextRound,
     };
     commands.insert_resource(PhaseTimer {
         timer: Timer::new(rules.standings, TimerMode::Once),
@@ -726,7 +727,7 @@ mod tests {
         assert!(!SessionPhase::Results.is_minigame());
         assert!(!SessionPhase::Standings.is_minigame());
         assert!(!SessionPhase::NextMatch.is_minigame());
-        assert!(!SessionPhase::Board.is_minigame());
+        assert!(!SessionPhase::NextRound.is_minigame());
         assert!(!SessionPhase::PartyOver.is_minigame());
     }
 }

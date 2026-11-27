@@ -1,8 +1,8 @@
 //! Parties: a set number of rounds, each a minigame the game picks, with points adding up to one
 //! winner at the end.
 //!
-//! The host starts a party from the lobby with [`StartParty`]. Each round goes: the board shows
-//! the round and the minigame picked for it ([`SessionPhase::Board`]), the minigame, its results,
+//! The host starts a party from the lobby with [`StartParty`]. Each round goes: a screen shows
+//! the round and the minigame picked for it ([`SessionPhase::NextRound`]), the minigame, its results,
 //! the standings, then the next round. After the last round, [`SessionPhase::PartyOver`] shows who
 //! won, and everyone goes back to the lobby. A minigame that can't go on (a player left) is played
 //! again with a new pick; with fewer than two players left, the party ends.
@@ -16,7 +16,7 @@ use rand::seq::IndexedRandom;
 use serde::{Deserialize, Serialize};
 
 use crate::app_state::AppState;
-use crate::config::party::{BOARD_DURATION, MAX_ROUNDS, MIN_ROUNDS, ROUNDS, WINNER_DURATION};
+use crate::config::party::{MAX_ROUNDS, MIN_ROUNDS, NEXT_ROUND_DURATION, ROUNDS, WINNER_DURATION};
 use crate::config::session::MIN_PLAYERS;
 use crate::minigames::Minigame;
 use crate::network::is_host;
@@ -33,9 +33,9 @@ pub struct Party {
     /// Rounds whose minigame was played to the end. An abandoned minigame doesn't count: its
     /// round is played again.
     pub played: u32,
-    /// The minigame picked for the coming round, once the board has picked it.
+    /// The minigame picked for the coming round, once it has been picked.
     pub next: Option<Minigame>,
-    /// The minigame of the last round played, so the board doesn't pick it twice in a row.
+    /// The minigame of the last round played, so it isn't picked twice in a row.
     pub last: Option<Minigame>,
 }
 
@@ -67,12 +67,12 @@ pub struct PartyRules {
     /// From [`MIN_ROUNDS`] to [`MAX_ROUNDS`]. Defaults to [`ROUNDS`]. The host picks it in the
     /// lobby.
     pub rounds: u32,
-    /// How long the board shows each round before its minigame starts. Defaults to
-    /// [`BOARD_DURATION`].
-    pub board: Duration,
+    /// How long each round's minigame is announced before it starts. Defaults to
+    /// [`NEXT_ROUND_DURATION`].
+    pub next_round: Duration,
     /// How long the winner is shown. Defaults to [`WINNER_DURATION`].
     pub winner: Duration,
-    /// The minigames the board picks from. Defaults to all of them.
+    /// The minigames each round picks from. Defaults to all of them.
     pub games: Vec<Minigame>,
 }
 
@@ -80,7 +80,7 @@ impl Default for PartyRules {
     fn default() -> Self {
         Self {
             rounds: ROUNDS,
-            board: BOARD_DURATION,
+            next_round: NEXT_ROUND_DURATION,
             winner: WINNER_DURATION,
             games: Minigame::ALL.to_vec(),
         }
@@ -144,7 +144,7 @@ impl Command for StartParty {
             warn!("Can't start a party outside the lobby");
             return;
         }
-        phase.0 = SessionPhase::Board;
+        phase.0 = SessionPhase::NextRound;
         for mut points in world.query::<&mut Points>().iter_mut(world) {
             *points = Points::default();
         }
@@ -212,7 +212,10 @@ impl Plugin for PartyPlugin {
         app.init_resource::<PartyRules>();
         app.add_observer(spawn_party_rounds);
         app.add_systems(Update, publish_party_rounds.run_if(is_host));
-        app.add_systems(OnEnter(SessionPhase::Board), start_round.run_if(is_host));
+        app.add_systems(
+            OnEnter(SessionPhase::NextRound),
+            start_round.run_if(is_host),
+        );
         app.add_systems(OnEnter(SessionPhase::Results), count_round.run_if(is_host));
         app.add_systems(OnEnter(SessionPhase::PartyOver), end_party.run_if(is_host));
     }
@@ -233,7 +236,7 @@ fn publish_party_rounds(rules: Res<PartyRules>, mut rounds: Single<&mut PartyRou
     rounds.set_if_neq(PartyRounds(rules.rounds));
 }
 
-/// Host only: on the board, pick the round's minigame and start it after a moment. With fewer
+/// Host only: as a round starts, pick its minigame and start it after a moment. With fewer
 /// than two players left, end the party instead.
 fn start_round(
     rules: Res<PartyRules>,
@@ -243,7 +246,7 @@ fn start_round(
     mut commands: Commands,
 ) {
     let Some(mut party) = party.map(Single::into_inner) else {
-        error!("On the board, but there's no party");
+        error!("Starting a party round, but there's no party");
         phase.0 = SessionPhase::Lobby;
         return;
     };
@@ -268,8 +271,8 @@ fn start_round(
     );
     party.next = Some(game);
     commands.insert_resource(PhaseTimer {
-        timer: Timer::new(rules.board, TimerMode::Once),
-        during: SessionPhase::Board,
+        timer: Timer::new(rules.next_round, TimerMode::Once),
+        during: SessionPhase::NextRound,
         then: Then::Minigame(game),
     });
 }

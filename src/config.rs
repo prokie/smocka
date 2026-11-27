@@ -76,8 +76,8 @@ pub mod party {
     pub const MIN_ROUNDS: u32 = 1;
     /// The most rounds the host can pick.
     pub const MAX_ROUNDS: u32 = 20;
-    /// How long the board shows the coming round's minigame before it starts.
-    pub const BOARD_DURATION: Duration = Duration::from_secs(4);
+    /// How long the coming round's minigame is announced before it starts.
+    pub const NEXT_ROUND_DURATION: Duration = Duration::from_secs(4);
     /// How long the party's winner is shown before everyone goes back to the lobby.
     pub const WINNER_DURATION: Duration = Duration::from_secs(8);
 }

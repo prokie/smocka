@@ -49,27 +49,6 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
 
 ## Bugs and rough edges
 
-- [ ] **Hosting when the port is taken crashes the game.** If something already holds port 5000
-      (say, another copy of the game), Lightyear's `UdpEndpointPlugin::link` observer returns
-      `AddrInUse` and Bevy's default error handler panics: "Address already in use (os error
-      98)" (checked with a throwaway test). Release builds on Windows have no console, so the
-      window just disappears. Bind a test socket in `HostSession::apply` first and, if that
-      fails, stay in the menu with a `SessionEndReason` such as "Port 5000 is in use. Is the
-      game already hosting?". Without the panic it would still be broken: the netcode server
-      gets `Started` whether or not the bind worked, so the host would sit in a lobby nobody can
-      join.
-- [ ] **A walkover on the next-match screen doesn't restart the countdown.** When a player in
-      the coming match leaves during `SessionPhase::NextMatch`, `walk_over_leavers` pairs a new
-      match, but the phase stays `NextMatch`. `start_next_match_timer` doesn't run again, and
-      the host's `PhaseTimer` keeps its remaining time, so near the end of the screen the new
-      pair goes straight into the match. Clients' `Countdown` (`menu/next_match.rs`) keeps the
-      old time too. Restart the timer in `follow_tournament` when already in `NextMatch`, and
-      restart the client countdown when the next match changes.
-- [ ] **A race goes on with only one car left.** `end_race` only abandons once every car is
-      gone. If all the other drivers leave before anyone finishes, the last player drives the
-      remaining laps alone and scores 0 points. Pong abandons as soon as a paddle's player
-      leaves. Abandon when fewer than two cars are left and `director.finishers` is empty.
-      Racing needs 2 players to start, so a solo race isn't otherwise possible.
 - [ ] **Racing doesn't tell you when you miss a checkpoint.** `RaceProgress::advance`
       (`progress.rs`) only counts the next checkpoint in order, so a car that cuts across the
       grass past one gets no laps until it drives back to it. The only sign is a host-side
@@ -131,4 +110,3 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
       `RoomId`, in `lightyear_replication`'s visibility module) can limit which matches each
       client receives. Spectators then pick which match to watch (a key to cycle through them),
       so they need to receive every match.
-- [ ] **The board/hub** that picks the next minigame.

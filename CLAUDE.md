@@ -1,7 +1,8 @@
 # CLAUDE.md
 
-Multiplayer party game (in the style of Pummel Party) built with **Bevy** and **Lightyear**.
-A shared "hub"/board flow hosts many short, self-contained minigames.
+Multiplayer party game built with **Bevy** and **Lightyear**. A party is several short,
+self-contained minigames played back to back, with points adding up to one winner. There is no
+board game between minigames (unlike Pummel Party), and none is planned.
 
 ## Versions — read this first
 - Bevy: `0.20.1` · Lightyear: `0.31` (see `Cargo.toml`)
