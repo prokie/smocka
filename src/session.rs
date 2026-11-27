@@ -334,6 +334,37 @@ impl Command for StartMinigame {
     }
 }
 
+/// Command: the host takes everyone back to the lobby from wherever the session is. A minigame
+/// being played is abandoned, with no points for anyone; a [`Party`] or [`Tournament`] ends (they
+/// go when the lobby is entered). Points already won stay. Refused unless hosting, and outside the
+/// lobby.
+#[derive(Debug, Clone, Copy)]
+pub struct ReturnToLobby;
+
+impl Command for ReturnToLobby {
+    type Out = ();
+
+    fn apply(self, world: &mut World) {
+        if !world.run_system_cached(is_host).unwrap_or(false) {
+            warn!("Only the host can take everyone back to the lobby");
+            return;
+        }
+        let Ok(mut phase) = world.query::<&mut CurrentPhase>().single_mut(world) else {
+            error!("Can't go back to the lobby: the session has no phase");
+            return;
+        };
+        if phase.0 == SessionPhase::Lobby {
+            warn!("Already in the lobby");
+            return;
+        }
+        info!(
+            "The host took everyone back to the lobby from {:?}",
+            phase.0
+        );
+        phase.0 = SessionPhase::Lobby;
+    }
+}
+
 /// Host only: start a [`Minigame`] with everyone here, as the [`Participants`] chosen by
 /// [`pick_participants`], or as a [`Tournament`] if it seats fewer than are here (see
 /// [`needs_tournament`]). With fewer than

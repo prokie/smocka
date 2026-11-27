@@ -61,11 +61,12 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
       there are.
 - [ ] **The log says "Using Fira Sans for all text"** (`use_ui_font` in `menu.rs`), but the font
       has been Fira Mono since `b319578`.
-- [ ] **"Esc: leave" and the watching line overlap on narrow windows.** Both sit 8 px from the
+- [ ] **The Esc hint and the watching line overlap on narrow windows.** Both sit 8 px from the
       bottom: the hint on the left (`spawn_leave_hint` in `menu.rs`), `WatchingText` centred
       (`menu/watching.rs`). In Bevy's default monospace font, "Watching: Player 1 vs Player 2
       (semi-final)" is about 540 px wide. In a 640 px window (`--left`/`--right` on a 1280 px
-      screen) it starts at ~50 px, on top of the hint (12–108 px). Two 16-character names
+      screen) it starts at ~50 px, on top of the hint (12–108 px for "Esc: leave", 12–185 px for
+      the host's "Esc: back to lobby"). Two 16-character names
       overlap it in any window narrower than ~950 px. Move one of them up.
 - [ ] **Pong's ball sinks into a paddle on fast hits.** `step_ball` turns the ball around on a
       hit but leaves it where the step ended: up to `BALL_MAX_SPEED / TICK_RATE` ≈ 4.7 units

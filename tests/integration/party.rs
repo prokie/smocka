@@ -9,7 +9,7 @@ use smocka::minigames::Minigame;
 use smocka::minigames::outcome::{MinigameEnded, MinigameResult, Participants, Placement};
 use smocka::party::{ChangeRounds, Party, PartyRounds, PartyRules, StartParty};
 use smocka::players::Player;
-use smocka::session::{SessionPhase, SessionRules};
+use smocka::session::{ReturnToLobby, SessionPhase, SessionRules};
 use smocka::standings::Points;
 use smocka::tournament::{Tournament, TournamentRules};
 
@@ -172,6 +172,29 @@ fn an_abandoned_minigame_is_played_again() {
             || apps[0].phase() == Some(SessionPhase::Lobby)
     });
     assert_eq!(totals(&mut host), [0, 1]);
+}
+
+#[test]
+fn the_host_going_back_to_the_lobby_ends_the_party() {
+    let (mut host, mut client) = pair();
+    quick_party(
+        &mut host,
+        3,
+        &[Minigame::TwoPlayerPong],
+        Duration::ZERO,
+        Duration::from_secs(60),
+    );
+    StartParty.apply(host.0.world_mut());
+    update_until(&mut [&mut host, &mut client], |apps| {
+        playing_round(apps[0], 1) && party(apps[1]).is_some()
+    });
+
+    ReturnToLobby.apply(host.0.world_mut());
+
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut()
+            .all(|app| app.phase() == Some(SessionPhase::Lobby) && party(app).is_none())
+    });
 }
 
 #[test]

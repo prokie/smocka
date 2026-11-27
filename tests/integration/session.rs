@@ -12,7 +12,7 @@ use smocka::minigames::two_player_pong::GOALS_TO_WIN_SETTING;
 use smocka::minigames::two_player_pong::ball::Ball;
 use smocka::minigames::two_player_pong::paddles::Paddle;
 use smocka::players::Player;
-use smocka::session::{SessionPhase, SessionRules, SkipVotes, VoteSkip};
+use smocka::session::{ReturnToLobby, SessionPhase, SessionRules, SkipVotes, VoteSkip};
 use smocka::standings::Points;
 
 use crate::common::{TestApp, connected_pair, pair_in_pong, update_until, update_until_within};
@@ -102,6 +102,36 @@ fn the_host_picks_which_minigame_to_start() {
             .all(|app| app.phase() == Some(SessionPhase::Playing(Minigame::Racing)))
     });
     assert_eq!(pong_entities(&mut host), 0);
+}
+
+#[test]
+fn the_host_takes_everyone_back_to_the_lobby_from_a_minigame() {
+    let (mut host, mut client, _) = pair_in_pong();
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut().all(|app| pong_entities(app) == 3)
+    });
+
+    ReturnToLobby.apply(host.0.world_mut());
+
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut()
+            .all(|app| app.phase() == Some(SessionPhase::Lobby) && pong_entities(app) == 0)
+    });
+    // Nobody left the session.
+    assert_eq!(host.players(), 2);
+    assert_eq!(client.players(), 2);
+}
+
+#[test]
+fn a_joiner_cannot_take_everyone_back_to_the_lobby() {
+    let (mut host, mut client, _) = pair_in_pong();
+
+    ReturnToLobby.apply(client.0.world_mut());
+    wait_a_bit(&mut [&mut host, &mut client]);
+
+    let pong = Some(SessionPhase::Playing(Minigame::TwoPlayerPong));
+    assert_eq!(host.phase(), pong);
+    assert_eq!(client.phase(), pong);
 }
 
 #[test]

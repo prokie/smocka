@@ -69,7 +69,8 @@ Keyboard or gamepad. These are the defaults: change them with **Controls** in th
   left click / `Space` / right trigger fire.
 - **Session:** Hold `Tab` (or gamepad Back) during a minigame, tournament wait, or results screen
   to view the current standings. Press `Space`, `Enter`, or gamepad `A` on waiting screens to vote
-  to skip (moves on once everyone agrees). `Esc` leaves the session.
+  to skip (moves on once everyone agrees). `Esc` leaves the session, except for the host outside
+  the lobby: it takes everyone back to the lobby, ending the minigame or party.
 
 ## Art
 
