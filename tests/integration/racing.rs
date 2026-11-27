@@ -16,9 +16,12 @@ use smocka::minigames::racing::config::LAPS;
 use smocka::minigames::racing::progress::RaceProgress;
 use smocka::minigames::racing::race::{ChangeLaps, RaceLaps, RaceRules, RaceStatus};
 use smocka::minigames::racing::track::{CHECKPOINTS, Surface, surface_at};
+use smocka::network::LagPreset;
 use smocka::session::SessionPhase;
 
-use crate::common::{TestApp, connected_pair, update_for, update_until};
+use crate::common::{
+    TestApp, connected_pair, lagged_pair, update_for, update_until, update_until_within,
+};
 
 /// The state of the car whose driver matches `is_driver`, if this app has it yet.
 fn car(app: &mut TestApp, is_driver: impl Fn(PeerId) -> bool) -> Option<CarState> {
@@ -269,6 +272,63 @@ fn a_trigger_pressed_only_a_little_doesnt_accelerate() {
     // The joiner's own car would move at once (it's predicted), long before the host sees it.
     update_for(&mut [&mut host, &mut client], Duration::from_millis(100));
     assert_eq!(car(&mut client, joiners).unwrap().speed, 0.0);
+}
+
+/// Over a connection as slow as `--lag=average` on both ends (about 100 ms there and back, with
+/// jitter and lost packets), the joiner's driving still reaches the host, and once the car stops
+/// both agree where: the joiner's prediction of their own car is corrected to the host's.
+#[test]
+fn a_race_holds_up_over_an_average_connection() {
+    let (mut host, mut client) = lagged_pair(LagPreset::Average);
+    // The lag is real: Lightyear measures a round trip close to the preset's.
+    update_until_within(
+        &mut [&mut host, &mut client],
+        Duration::from_secs(10),
+        |apps| {
+            apps[1]
+                .round_trip()
+                .is_some_and(|rtt| rtt >= Duration::from_millis(70))
+        },
+    );
+    let (mut host, mut client) = start_race(
+        host,
+        client,
+        RaceRules {
+            countdown: Duration::ZERO,
+            ..default()
+        },
+    );
+    let start = car(&mut host, joiners).unwrap().position;
+
+    hold(&mut client, KeyCode::KeyW);
+    update_until_within(
+        &mut [&mut host, &mut client],
+        Duration::from_secs(10),
+        |apps| {
+            apps.iter_mut()
+                .all(|app| car(app, joiners).is_some_and(|car| car.position.x > start.x + 40.0))
+        },
+    );
+
+    client
+        .0
+        .world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .release(KeyCode::KeyW);
+    update_until_within(
+        &mut [&mut host, &mut client],
+        Duration::from_secs(10),
+        |apps| {
+            let stopped =
+                |app: &mut TestApp| car(app, joiners).filter(|car| car.speed.abs() < 0.01);
+            match (stopped(apps[0]), stopped(apps[1])) {
+                (Some(on_host), Some(on_joiner)) => {
+                    on_host.position.distance(on_joiner.position) < 0.5
+                }
+                _ => false,
+            }
+        },
+    );
 }
 
 #[test]

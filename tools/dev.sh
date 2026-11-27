@@ -5,6 +5,8 @@
 # e.g. `tools/dev.sh --release`. Shows the game's debug logs (set RUST_LOG to override), each line
 # marked [host] or [join], and keeps each player's log in logs/host.log and logs/join.log.
 # Only the host plays sound: the joiner is muted, so nothing is heard twice.
+# Set SMOCKA_LAG=good, average or poor to play as if over the internet: both get `--lag` (see the
+# README), e.g. `SMOCKA_LAG=average tools/dev.sh`.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -12,6 +14,8 @@ cd "$root"
 
 monitor=()
 [[ "${SMOCKA_MONITOR:-secondary}" == secondary ]] && monitor=(--secondary)
+lag=()
+[[ -n "${SMOCKA_LAG:-}" ]] && lag=(--lag="$SMOCKA_LAG")
 
 cargo build "$@"
 profile=debug
@@ -37,10 +41,10 @@ log_as() {
     tee >(sed -u 's/\x1b\[[0-9;]*m//g' >"$logs/$peer.log") | sed -u "s/^/[$peer] /"
 }
 
-"$game" host --left --name=Host "${monitor[@]}" > >(log_as host) 2>&1 &
+"$game" host --left --name=Host "${monitor[@]}" "${lag[@]}" > >(log_as host) 2>&1 &
 host=$!
 trap 'kill "$host" 2>/dev/null || true' EXIT
 
 # Give the host a moment to start listening before the joiner knocks.
 sleep 1
-"$game" join --right --name=Joiner --mute "${monitor[@]}" > >(log_as join) 2>&1
+"$game" join --right --name=Joiner --mute "${monitor[@]}" "${lag[@]}" > >(log_as join) 2>&1

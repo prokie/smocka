@@ -1,7 +1,9 @@
 mod client;
+mod lag;
 mod server;
 mod transport;
 
+pub use lag::{LagPreset, SimulatedLag};
 pub use transport::{HostSession, JoinSession, LeaveSession, close_session};
 
 use crate::app_state::AppState;

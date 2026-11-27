@@ -1,3 +1,4 @@
+use super::lag::{SimulatedLag, receive_conditioner};
 use crate::app_state::{AppState, SessionEndReason};
 use crate::config::network::{PRIVATE_KEY, PROTOCOL_ID};
 use crate::profile::{LocalProfile, name_to_user_data};
@@ -104,6 +105,8 @@ impl Command for HostSession {
                 NetcodeServer::new(server_config),
                 LocalAddr(addr),
                 ServerUdpIo,
+                // Each joiner's link gets a copy of the conditioner, if any.
+                Endpoint::new(receive_conditioner(world)),
             ))
             .id();
         world.trigger(Start { entity: server });
@@ -118,6 +121,7 @@ impl Command for HostSession {
         world.trigger(Connect { entity: client });
 
         info!("Hosting on {addr}");
+        log_simulated_lag(world);
         Ok(())
     }
 }
@@ -179,13 +183,17 @@ impl Command for JoinSession {
                     reason: UnlinkReason::UserRequested(None),
                 });
                 world.entity_mut(client).insert((PeerAddr(addr), netcode));
+                let conditioner = receive_conditioner(world);
+                if let Some(mut link) = world.get_mut::<Link>(client) {
+                    link.recv.conditioner = conditioner;
+                }
                 client
             }
             None => world
                 .spawn((
                     Name::from("Client"),
                     Client,
-                    Link::default(),
+                    Link::default().with_conditioner(receive_conditioner(world)),
                     LocalAddr(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))),
                     PeerAddr(addr),
                     ReplicationReceiver,
@@ -198,7 +206,15 @@ impl Command for JoinSession {
         world.trigger(Connect { entity: client });
 
         info!("Joining {addr} as client {client_id}");
+        log_simulated_lag(world);
         Ok(())
+    }
+}
+
+/// Say in the log when `--lag` is making this session's connection worse than it is.
+fn log_simulated_lag(world: &World) {
+    if let Some(lag) = world.get_resource::<SimulatedLag>() {
+        info!("Simulating lag (--lag): {}", lag.describe());
     }
 }
 

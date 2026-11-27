@@ -4,11 +4,17 @@
 
 APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.cargo/registry`.
 
-- [ ] **Test under bad network conditions.** Everything is tested over clean localhost.
-      `Link::with_conditioner(LinkConditionerConfig { .. })` (`lightyear_link`) adds latency,
-      jitter and packet loss. Add a CLI flag (e.g. `--lag`) for manual play, and one
-      integration test with a conditioned link. Racing needs it most: other players' cars are
-      predicted from their rebroadcast inputs, and are wrong for longer the higher the latency.
+- [ ] **Racing desyncs for good over a poor connection** (`--lag=poor`, about 200 ms there and
+      back). Lightyear won't roll back more than `RollbackPolicy::max_rollback_ticks` (default
+      20), which at 128 Hz is only 156 ms. A correction from the host arrives about a round trip
+      after the tick it's for, so past ~150 ms every correction is refused ("Trying to do a
+      rollback of N ticks. The max is 20! Aborting", a `warn!` from Lightyear) and a driver's own
+      car stays where they predicted it: in a test it stopped 20 units from where the host had
+      it, and stayed there. Raising `max_rollback_ticks` on the joiner's `PredictionManager`
+      (`JoinSession`, in `network/transport.rs`) to 64 fixed it in a test; each rollback then
+      replays up to 64 ticks in one frame. A lower `TICK_RATE` (below) covers more time with the
+      same 20 ticks. `a_race_holds_up_over_an_average_connection` (`tests/integration/racing.rs`)
+      passes with `LagPreset::Poor` once it's fixed.
 - [ ] **Reconsider `TICK_RATE` (128 Hz) and `SEND_INTERVAL` (64 Hz)** now that movement is
       smoothed between ticks (`minigames/smoothing.rs`). 64 Hz ticks and a 20–32 Hz send rate would roughly halve CPU and bandwidth. Measure
       first. A lower tick rate also tightens three limits that are written in terms of it: the

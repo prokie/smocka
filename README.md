@@ -48,6 +48,7 @@ cargo run -- join                # join a host on this machine
 cargo run -- join 192.168.1.10   # join another machine (port 5000 unless given)
 cargo run -- host --name=Ada     # play as "Ada" this time, without changing the saved name
 cargo run -- join --mute         # play without sound
+cargo run -- join --lag=poor     # play as if over a bad internet connection (see below)
 ```
 
 To test two players on one machine, `tools/dev.sh` builds once and starts a host on the left half
@@ -58,6 +59,13 @@ so the script runs the game on X11 (XWayland) there. It shows the game's debug l
 players (unless `RUST_LOG` is set), each line marked `[host]` or `[join]`, and keeps each
 player's log in `logs/host.log` and `logs/join.log` until the next run. Only the host plays sound:
 the joiner runs with `--mute`.
+
+To try the game as if over the internet, use `--lag` (`--lag=good`, `--lag=average`, the default,
+or `--lag=poor`), or `SMOCKA_LAG=average tools/dev.sh` to give it to both windows. Every packet
+the game receives is then held back, jittered and sometimes dropped. Each player's `--lag` adds
+half the connection, so with it on both ends the round trip is about 40 ms (good), 100 ms
+(average) or 200 ms (poor), with 0.2%, 2% or 10% of packets lost. The host's own player never
+lags, as for real.
 
 ## Controls
 

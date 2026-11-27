@@ -8,7 +8,7 @@ use bevy::prelude::*;
 use bevy::window::{Monitor, PrimaryMonitor, PrimaryWindow, WindowPosition};
 use smocka::config::network::{HOST_ADDR, SERVER_ADDR};
 use smocka::menu::MenuPlugin;
-use smocka::network::{HostSession, JoinSession, parse_address};
+use smocka::network::{HostSession, JoinSession, LagPreset, SimulatedLag, parse_address};
 use smocka::profile::{LastAddress, LocalProfile, clean_name};
 use smocka::{SmockaPlugin, camera, minigames, sound};
 
@@ -62,6 +62,17 @@ fn main() {
     });
     // `--mute` plays without sound, so two copies on one machine (`tools/dev.sh`) aren't heard twice.
     let mute = has("--mute");
+    // `--lag` (or `--lag=good`, `--lag=average`, `--lag=poor`) makes the connection worse than it
+    // is, to try the game as if over the internet. See `smocka::network::SimulatedLag`.
+    let lag = flags.iter().find_map(|flag| match flag.as_str() {
+        "--lag" => Some(LagPreset::default()),
+        _ => flag.strip_prefix("--lag=").map(|name| {
+            LagPreset::parse(name).unwrap_or_else(|| {
+                eprintln!("Not a --lag preset: {name} (use good, average or poor)");
+                std::process::exit(2);
+            })
+        }),
+    });
     // `--name=Ada` plays as "Ada" this time, without changing the saved name.
     let name = flags
         .iter()
@@ -95,6 +106,10 @@ fn main() {
         SmockaPlugin,
     ));
 
+    if let Some(lag) = lag {
+        info!("Lag is on (--lag={lag}): sessions will be slower than this network is");
+        app.insert_resource(SimulatedLag::from(lag));
+    }
     if mute {
         info!("Sound is off (--mute)");
         app.insert_resource(GlobalVolume::new(Volume::SILENT));

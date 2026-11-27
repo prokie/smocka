@@ -9,7 +9,7 @@ use lightyear::prelude::*;
 use smocka::SmockaPlugin;
 use smocka::app_state::{AppState, SessionEndReason};
 use smocka::minigames::Minigame;
-use smocka::network::{HostSession, JoinSession, LeaveSession};
+use smocka::network::{HostSession, JoinSession, LagPreset, LeaveSession, SimulatedLag};
 use smocka::players::{Player, PlayerLeft};
 use smocka::profile::LocalProfile;
 use smocka::session::{SessionPhase, StartMinigame};
@@ -40,6 +40,16 @@ impl TestApp {
         app.finish();
         app.cleanup();
         Self(app)
+    }
+
+    /// A new app whose sessions are as slow as `preset`, as with `--lag`. Host or join with
+    /// [`start_hosting`](Self::start_hosting) or [`start_joining`](Self::start_joining).
+    pub fn with_lag(preset: LagPreset) -> Self {
+        let mut app = Self::new();
+        app.0
+            .world_mut()
+            .insert_resource(SimulatedLag::from(preset));
+        app
     }
 
     /// A new app hosting a session on a free port. [`host_addr`](Self::host_addr) says which.
@@ -87,10 +97,25 @@ impl TestApp {
         app.0
             .world_mut()
             .insert_resource(LocalProfile { name: name.into() });
-        JoinSession { addr }
-            .apply(app.0.world_mut())
-            .expect("failed to join session");
+        app.start_joining(addr);
         app
+    }
+
+    /// Join the session at `addr` from this app.
+    pub fn start_joining(&mut self, addr: SocketAddr) {
+        JoinSession { addr }
+            .apply(self.0.world_mut())
+            .expect("failed to join session");
+    }
+
+    /// The round trip to the host Lightyear has measured, once this app has joined.
+    pub fn round_trip(&mut self) -> Option<Duration> {
+        self.0
+            .world_mut()
+            .query_filtered::<&Link, (With<Client>, With<Connected>)>()
+            .iter(self.0.world())
+            .next()
+            .map(|link| link.stats.rtt)
     }
 
     /// Leave the session the way the menu does, with [`LeaveSession`].
@@ -275,6 +300,22 @@ pub fn connected_pair() -> (TestApp, TestApp, SocketAddr) {
         apps[0].connected_remote_links() == 1 && apps[1].connected_clients() == 1
     });
     (host, client, addr)
+}
+
+/// [`connected_pair`], with both as slow as `preset` (as with `--lag` on both): the round trip
+/// between them is about the preset's, and some packets are lost.
+pub fn lagged_pair(preset: LagPreset) -> (TestApp, TestApp) {
+    let mut host = TestApp::with_lag(preset);
+    let addr = host.start_hosting();
+    let mut client = TestApp::with_lag(preset);
+    client.start_joining(addr);
+    // Lost handshake packets are sent again, which takes longer than over a clean connection.
+    update_until_within(
+        &mut [&mut host, &mut client],
+        Duration::from_secs(15),
+        |apps| apps[0].connected_remote_links() == 1 && apps[1].connected_clients() == 1,
+    );
+    (host, client)
 }
 
 /// Start a host and a joiner, have the host start Pong, and wait until both are playing it.
