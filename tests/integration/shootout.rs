@@ -14,9 +14,14 @@ use smocka::minigames::Minigame;
 use smocka::minigames::outcome::MinigameResult;
 use smocka::minigames::settings::PublishedSettings;
 use smocka::minigames::shootout::HITS_TO_KNOCK_OUT_SETTING;
-use smocka::minigames::shootout::config::{GUNNER_RADIUS, HITS_TO_KNOCK_OUT, SPAWNS};
+use smocka::minigames::shootout::config::{
+    ARENA_HALF_HEIGHT, GUNNER_RADIUS, HITS_TO_KNOCK_OUT, PAINT_BALL_RADIUS, PICKUP_SPOTS, SPAWNS,
+};
 use smocka::minigames::shootout::gunner::{Gunner, GunnerState, Health, normalize_angle};
+use smocka::minigames::shootout::pickups::{BuffKind, GunnerBuff, Pickup, PickupKind};
+use smocka::minigames::shootout::round::ShootoutRules;
 use smocka::minigames::shootout::shots::{PaintBall, PaintBallPosition};
+use smocka::minigames::shootout::zone::SafeZone;
 use smocka::network::LagPreset;
 use smocka::party::PartyRules;
 use smocka::session::SessionPhase;
@@ -514,6 +519,175 @@ fn a_shootout_holds_up_over_an_average_connection_and_catches_up_incoming_shots(
                 .all(|app| app.phase() == Some(SessionPhase::Results))
         },
     );
+    for app in [&mut host, &mut client] {
+        let world = app.0.world_mut();
+        let result = world.query::<&MinigameResult>().single(world).unwrap();
+        assert!(hosts(result.placements[0].player));
+        assert!(joiners(result.placements[1].player));
+    }
+}
+
+#[test]
+fn a_bank_shot_ricochets_off_the_top_wall_and_hits_a_gunner_behind_cover() {
+    let (mut host, mut client) = shootout_pair();
+    // Place host and joiner on opposite sides of the centre cover block at (0, 0), and aim the
+    // host at the top border wall midway between them so the single bounce lands on the joiner.
+    let top_bounce_y = ARENA_HALF_HEIGHT - PAINT_BALL_RADIUS;
+    let bank_angle = Vec2::new(80.0, top_bounce_y).to_angle();
+    {
+        let world = host.0.world_mut();
+        for (gunner, mut state) in world.query::<(&Gunner, &mut GunnerState)>().iter_mut(world) {
+            if hosts(gunner.owner) {
+                state.position = Vec2::new(-80.0, 0.0);
+                state.aim = bank_angle;
+            } else {
+                state.position = Vec2::new(80.0, 0.0);
+                state.aim = std::f32::consts::PI;
+            }
+        }
+    }
+
+    hold(&mut host, KeyCode::Space);
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut()
+            .all(|app| health(app, joiners).is_some_and(|hp| hp < HITS_TO_KNOCK_OUT))
+    });
+}
+
+#[test]
+fn centre_pickups_spawn_replicate_and_apply_spread_and_shield_effects() {
+    let (mut host, mut client, _) = connected_pair();
+    *host.0.world_mut().resource_mut::<ShootoutRules>() = ShootoutRules {
+        pickup_first_delay: Duration::from_millis(50),
+        pickup_interval: Duration::from_secs(60),
+        ..ShootoutRules::default()
+    };
+    update_until(&mut [&mut host, &mut client], |apps| apps[0].players() == 2);
+    host.start_minigame(Minigame::Shootout);
+
+    // Wait for the host to spawn a centre pickup and replicate it to the joiner.
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut().all(|app| {
+            let world = app.0.world_mut();
+            world
+                .query::<&Pickup>()
+                .iter(world)
+                .any(|pickup| PICKUP_SPOTS.contains(&pickup.position))
+        })
+    });
+
+    // Replace the random pickup with Spread right under the host's gunner.
+    let spot = PICKUP_SPOTS[0];
+    {
+        let world = host.0.world_mut();
+        let existing: Vec<Entity> = world
+            .query_filtered::<Entity, With<Pickup>>()
+            .iter(world)
+            .collect();
+        for entity in existing {
+            world.despawn(entity);
+        }
+        for (gunner, mut state) in world.query::<(&Gunner, &mut GunnerState)>().iter_mut(world) {
+            if hosts(gunner.owner) {
+                state.position = spot;
+                state.aim = 0.0;
+            }
+        }
+        world.spawn((
+            Pickup {
+                kind: PickupKind::Spread,
+                position: spot,
+            },
+            DespawnOnExit(SessionPhase::Playing(Minigame::Shootout)),
+            lightyear::prelude::Replicate::to_clients(lightyear::prelude::NetworkTarget::All),
+        ));
+    }
+
+    // Host collects Spread and replicates the buff to the joiner.
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut().all(|app| {
+            let world = app.0.world_mut();
+            world
+                .query::<(&Gunner, &GunnerBuff)>()
+                .iter(world)
+                .any(|(gunner, buff)| {
+                    hosts(gunner.owner)
+                        && buff.0.is_some_and(|active| active.kind == BuffKind::Spread)
+                })
+        })
+    });
+
+    // Firing once with Spread spawns three paint balls on both host and joiner.
+    hold(&mut host, KeyCode::Space);
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut().all(|app| balls_from(app, hosts).len() >= 3)
+    });
+
+    // Picking up Shield grants +1 HP above the starting max on both peers.
+    {
+        let world = host.0.world_mut();
+        world.spawn((
+            Pickup {
+                kind: PickupKind::Shield,
+                position: spot,
+            },
+            DespawnOnExit(SessionPhase::Playing(Minigame::Shootout)),
+            lightyear::prelude::Replicate::to_clients(lightyear::prelude::NetworkTarget::All),
+        ));
+    }
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut()
+            .all(|app| health(app, hosts) == Some(HITS_TO_KNOCK_OUT + 1))
+    });
+}
+
+#[test]
+fn sudden_death_shrinks_the_safe_zone_and_knocks_out_a_gunner_outside_it() {
+    let (mut host, mut client, _) = connected_pair();
+    host.set_setting(HITS_TO_KNOCK_OUT_SETTING, 2);
+    *host.0.world_mut().resource_mut::<ShootoutRules>() = ShootoutRules {
+        sudden_death_delay: Duration::from_millis(80),
+        sudden_death_shrink: Duration::from_millis(120),
+        zone_damage_interval: Duration::from_millis(80),
+        ..ShootoutRules::default()
+    };
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps[0].players() == 2 && hits_to_knock_out(apps[1]) == Some(2)
+    });
+    host.start_minigame(Minigame::Shootout);
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut().all(|app| {
+            app.phase() == Some(SessionPhase::Playing(Minigame::Shootout))
+                && gunners(app).len() == 2
+        })
+    });
+
+    // Move the host safely inside the final safe zone; leave the joiner out in the corner.
+    {
+        let world = host.0.world_mut();
+        for (gunner, mut state) in world.query::<(&Gunner, &mut GunnerState)>().iter_mut(world) {
+            if hosts(gunner.owner) {
+                state.position = Vec2::new(0.0, 48.0);
+            }
+        }
+    }
+
+    // Both peers see the safe zone activate and shrink.
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut().all(|app| {
+            let world = app.0.world_mut();
+            world
+                .query::<&SafeZone>()
+                .iter(world)
+                .any(|zone| zone.active && zone.half_width < 200.0)
+        })
+    });
+
+    // The joiner outside the zone is knocked out and the host wins on both peers.
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut()
+            .all(|app| app.phase() == Some(SessionPhase::Results))
+    });
     for app in [&mut host, &mut client] {
         let world = app.0.world_mut();
         let result = world.query::<&MinigameResult>().single(world).unwrap();

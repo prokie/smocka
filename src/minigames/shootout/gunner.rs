@@ -9,6 +9,7 @@ use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use super::config::SPAWNS;
+use super::pickups::GunnerBuff;
 use super::{HITS_TO_KNOCK_OUT_SETTING, PHASE};
 use crate::minigames::outcome::Participants;
 use crate::minigames::settings::MinigameSettings;
@@ -150,6 +151,7 @@ fn spawn_gunners(
             GunnerState::at(spawn),
             Health::full(hits),
             NextShot::default(),
+            GunnerBuff::default(),
             DespawnOnExit(PHASE),
             Replicate::to_clients(NetworkTarget::All),
             PredictionTarget::to_clients(NetworkTarget::Single(owner)),

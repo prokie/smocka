@@ -47,6 +47,7 @@ BALL_SIZE: Final[float] = 8.0  # BALL_SIZE
 SHOOTOUT_BORDER: Final[float] = 8.0  # BORDER
 GUNNER_RADIUS: Final[float] = 8.0  # GUNNER_RADIUS
 PAINT_BALL_RADIUS: Final[float] = 3.0  # PAINT_BALL_RADIUS
+PICKUP_RADIUS: Final[float] = 8.0  # PICKUP_RADIUS
 # COVER: (centre x, centre y, width, height) of each block.
 SHOOTOUT_COVER: Final[list[tuple[float, float, float, float]]] = [
     (0.0, 0.0, 48.0, 48.0),
@@ -358,6 +359,74 @@ def draw_paint_ball() -> None:
     canvas.save(ASSETS / "shootout/paint_ball.png")
 
 
+def draw_paint_splat() -> None:
+    """A flat paint splat with a few droplets around it, drawn white so the game tints it per
+    player."""
+    size = 20.0
+    canvas = Canvas(size, size)
+    # Main irregular splat from overlapping circles, plus small outer droplets.
+    blobs = [
+        (0.0, 0.0, 4.6),
+        (2.8, 1.2, 2.7),
+        (-2.6, 1.6, 2.5),
+        (-1.8, -2.4, 2.8),
+        (2.0, -2.2, 2.3),
+        (5.6, 2.8, 1.3),
+        (-5.8, -0.8, 1.2),
+        (0.8, 6.0, 1.1),
+        (-3.2, -5.6, 1.0),
+        (4.8, -4.6, 0.9),
+    ]
+    for cx, cy, r in blobs:
+        canvas.ellipse(cx - r, cy - r, cx + r, cy + r, WHITE, WHITE, 0.0)
+    canvas.save(ASSETS / "shootout/paint_splat.png")
+
+
+def draw_pickups() -> None:
+    """Three circular centre-arena power-up badges: Spread (amber), Rapid Fire (cyan) and
+    Shield (teal)."""
+    size = 2 * PICKUP_RADIUS
+    r = PICKUP_RADIUS - 0.6
+
+    # Triple Spread: warm amber badge with three fanned paint dots.
+    spread = Canvas(size, size)
+    spread.ellipse(-r, -r, r, r, (245, 165, 45, 255), OUTLINE, 0.9)
+    for dx, dy in ((3.0, 3.0), (3.8, 0.0), (3.0, -3.0)):
+        spread.line(-3.5, 0.0, dx, dy, WHITE, 1.2)
+        spread.ellipse(dx - 1.2, dy - 1.2, dx + 1.2, dy + 1.2, WHITE, WHITE, 0.0)
+    spread.save(ASSETS / "shootout/pickup_spread.png")
+
+    # Rapid Fire: electric cyan badge with a lightning bolt.
+    rapid = Canvas(size, size)
+    rapid.ellipse(-r, -r, r, r, (55, 205, 240, 255), OUTLINE, 0.9)
+    bolt = [
+        (0.8, 4.4),
+        (-2.6, 0.2),
+        (0.2, 0.2),
+        (-1.0, -4.4),
+        (2.8, -0.2),
+        (0.0, -0.2),
+    ]
+    rapid.draw.polygon([rapid.point(x, y) for x, y in bolt], fill=WHITE)
+    rapid.save(ASSETS / "shootout/pickup_rapid.png")
+
+    # Shield: crisp mint/emerald badge with a bold plus sign.
+    shield = Canvas(size, size)
+    shield.ellipse(-r, -r, r, r, (70, 210, 145, 255), OUTLINE, 0.9)
+    shield.rect(-1.4, -4.2, 1.4, 4.2, WHITE, radius=0.5)
+    shield.rect(-4.2, -1.4, 4.2, 1.4, WHITE, radius=0.5)
+    shield.save(ASSETS / "shootout/pickup_shield.png")
+
+
+def draw_buff_ring() -> None:
+    """A crisp white halo drawn behind a buffed gunner and tinted per buff in the game."""
+    size = 2 * GUNNER_RADIUS + 10.0
+    canvas = Canvas(size, size)
+    r = GUNNER_RADIUS + 3.0
+    canvas.ellipse(-r, -r, r, r, None, WHITE, 1.8)
+    canvas.save(ASSETS / "shootout/buff_ring.png")
+
+
 # Thumbnails: a minigame's art with a few players' things on it, as if mid-game.
 
 
@@ -457,6 +526,9 @@ def main() -> None:
     draw_shootout_arena()
     draw_gunner()
     draw_paint_ball()
+    draw_paint_splat()
+    draw_pickups()
+    draw_buff_ring()
     # After the art they're made from.
     draw_pong_thumbnail()
     draw_racing_thumbnail()

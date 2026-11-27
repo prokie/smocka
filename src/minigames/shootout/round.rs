@@ -5,13 +5,42 @@
 //! remains, the shootout ends — won if at least one knockout happened, or abandoned if every
 //! other player simply left.
 
+use std::time::Duration;
+
 use bevy::prelude::*;
 use lightyear::prelude::Tick;
 
+use super::config::{
+    PICKUP_FIRST_DELAY, PICKUP_INTERVAL, SUDDEN_DEATH_DELAY, SUDDEN_DEATH_SHRINK,
+    ZONE_DAMAGE_INTERVAL,
+};
 use super::gunner::Gunner;
 use super::{PHASE, ShootoutSystems};
 use crate::minigames::outcome::{MinigameEnded, MinigameResult, Placement};
 use crate::network::is_host;
+
+/// Host only: timing for centre pickups and sudden death in the next shootout. Defaults to the
+/// constants in [`config`](super::config); tests can shorten them without waiting tens of seconds.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ShootoutRules {
+    pub pickup_first_delay: Duration,
+    pub pickup_interval: Duration,
+    pub sudden_death_delay: Duration,
+    pub sudden_death_shrink: Duration,
+    pub zone_damage_interval: Duration,
+}
+
+impl Default for ShootoutRules {
+    fn default() -> Self {
+        Self {
+            pickup_first_delay: PICKUP_FIRST_DELAY,
+            pickup_interval: PICKUP_INTERVAL,
+            sudden_death_delay: SUDDEN_DEATH_DELAY,
+            sudden_death_shrink: SUDDEN_DEATH_SHRINK,
+            zone_damage_interval: ZONE_DAMAGE_INTERVAL,
+        }
+    }
+}
 
 /// Host only: knockouts so far in this shootout. Exists while playing.
 #[derive(Resource, Debug, Default)]
@@ -34,6 +63,7 @@ pub struct RoundPlugin;
 
 impl Plugin for RoundPlugin {
     fn build(&self, app: &mut App) {
+        app.init_resource::<ShootoutRules>();
         app.add_systems(OnEnter(PHASE), start_round.run_if(is_host));
         app.add_systems(OnExit(PHASE), |mut commands: Commands| {
             commands.remove_resource::<ShootoutDirector>();

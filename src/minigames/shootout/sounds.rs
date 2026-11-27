@@ -1,14 +1,18 @@
-//! Shootout's sounds: firing a paint ball, paint splatting on walls, gunner hits, and knockouts.
+//! Shootout's sounds: firing a paint ball, paint splatting on walls, gunner hits, knockouts,
+//! centre pickups and the sudden-death border warning.
 //!
 //! Each peer plays them locally from what it sees: firing when a [`PaintBall`] spawns, wall hits
 //! from [`PaintBallWallHit`], non-fatal gunner hits when a gunner's replicated [`Health`] drops,
-//! and knockouts when a gunner is removed while its player is still in the session.
+//! knockouts when a gunner is removed while its player is still in the session, pickups when a
+//! [`Pickup`] is removed mid-round, and sudden death when [`SafeZone::active`] turns true.
 
 use bevy::prelude::*;
 
 use super::PHASE;
 use super::gunner::{Gunner, Health};
+use super::pickups::Pickup;
 use super::shots::{PaintBall, PaintBallWallHit};
+use super::zone::SafeZone;
 use crate::players::Player;
 use crate::session::SessionPhase;
 use crate::sound::{play_sound, play_varied_sound};
@@ -17,11 +21,15 @@ const SHOT_SOUND: &str = "minigames/shootout/shot.wav";
 const WALL_HIT_SOUND: &str = "minigames/shootout/wall_hit.wav";
 const HIT_SOUND: &str = "minigames/shootout/hit.wav";
 const KNOCKOUT_SOUND: &str = "minigames/shootout/knockout.wav";
+const PICKUP_SOUND: &str = "minigames/shootout/pickup.wav";
+const SUDDEN_DEATH_SOUND: &str = "minigames/shootout/sudden_death.wav";
 
 const SHOT_VOLUME: f32 = 0.45;
 const WALL_HIT_VOLUME: f32 = 0.3;
 const HIT_VOLUME: f32 = 0.55;
 const KNOCKOUT_VOLUME: f32 = 0.65;
+const PICKUP_VOLUME: f32 = 0.55;
+const SUDDEN_DEATH_VOLUME: f32 = 0.65;
 
 /// The last [`Health::remaining`] this peer saw on a gunner, so it only plays a hit sound when
 /// health drops after spawn.
@@ -47,19 +55,35 @@ struct ShootoutSounds {
     wall_hit: Handle<AudioSource>,
     hit: Handle<AudioSource>,
     knockout: Handle<AudioSource>,
+    pickup: Handle<AudioSource>,
+    sudden_death: Handle<AudioSource>,
 }
+
+/// Whether this peer already played the sudden-death chime during the current round.
+#[derive(Resource, Default)]
+struct SuddenDeathAnnounced(bool);
 
 /// Plays shootout's sounds on every peer.
 pub struct ShootoutSoundsPlugin;
 
 impl Plugin for ShootoutSoundsPlugin {
     fn build(&self, app: &mut App) {
+        app.init_resource::<SuddenDeathAnnounced>();
         app.add_systems(Startup, load_sounds);
+        app.add_systems(OnEnter(PHASE), reset_sudden_death_sound);
         app.add_observer(play_shot_sound);
         app.add_observer(play_wall_hit_sound);
         app.add_observer(play_knockout_sound);
-        app.add_systems(Update, play_hit_sounds.run_if(in_state(PHASE)));
+        app.add_observer(play_pickup_sound);
+        app.add_systems(
+            Update,
+            (play_hit_sounds, play_sudden_death_sound).run_if(in_state(PHASE)),
+        );
     }
+}
+
+fn reset_sudden_death_sound(mut announced: ResMut<SuddenDeathAnnounced>) {
+    announced.0 = false;
 }
 
 fn load_sounds(assets: Res<AssetServer>, mut commands: Commands) {
@@ -68,6 +92,8 @@ fn load_sounds(assets: Res<AssetServer>, mut commands: Commands) {
         wall_hit: assets.load(WALL_HIT_SOUND),
         hit: assets.load(HIT_SOUND),
         knockout: assets.load(KNOCKOUT_SOUND),
+        pickup: assets.load(PICKUP_SOUND),
+        sudden_death: assets.load(SUDDEN_DEATH_SOUND),
     });
 }
 
@@ -132,6 +158,35 @@ fn play_knockout_sound(
     let fatal_health = health.is_none_or(|health| health.remaining <= 1);
     if still_here && fatal_health {
         play_sound(&mut commands, &sounds.knockout, KNOCKOUT_VOLUME);
+    }
+}
+
+fn play_pickup_sound(
+    _trigger: On<Remove<Pickup>>,
+    phase: Option<Res<State<SessionPhase>>>,
+    sounds: Option<Res<ShootoutSounds>>,
+    mut commands: Commands,
+) {
+    if !phase.is_some_and(|phase| *phase.get() == PHASE) {
+        return;
+    }
+    if let Some(sounds) = sounds {
+        play_sound(&mut commands, &sounds.pickup, PICKUP_VOLUME);
+    }
+}
+
+fn play_sudden_death_sound(
+    zones: Query<&SafeZone>,
+    mut announced: ResMut<SuddenDeathAnnounced>,
+    sounds: Res<ShootoutSounds>,
+    mut commands: Commands,
+) {
+    if announced.0 {
+        return;
+    }
+    if zones.iter().any(|zone| zone.active) {
+        announced.0 = true;
+        play_sound(&mut commands, &sounds.sudden_death, SUDDEN_DEATH_VOLUME);
     }
 }
 

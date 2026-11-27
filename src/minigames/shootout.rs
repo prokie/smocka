@@ -4,11 +4,13 @@
 pub mod config;
 pub mod gunner;
 pub mod movement;
+pub mod pickups;
 pub mod round;
 mod shootout_input;
 pub mod shots;
 pub mod sounds;
 mod visuals;
+pub mod zone;
 
 pub use shootout_input::ShootoutInput;
 pub use visuals::ShootoutVisualsPlugin;
@@ -46,10 +48,14 @@ pub const HITS_TO_KNOCK_OUT_SETTING: SettingId = SettingId::new(Minigame::Shooto
 pub enum ShootoutSystems {
     /// Walk and aim the gunners from this tick's input.
     Walk,
+    /// Spawn centre pickups and award them to gunners walking over them.
+    Pickups,
     /// Spawn paint balls for gunners firing this tick.
     Fire,
     /// Move paint balls along their lines and resolve wall and gunner hits.
     MoveBalls,
+    /// Shrink the sudden-death safe zone and damage gunners outside it.
+    Zone,
     /// End the shootout when at most one gunner remains.
     Finish,
 }
@@ -64,15 +70,19 @@ impl Plugin for ShootoutPlugin {
             gunner::GunnerPlugin,
             shootout_input::ShootoutInputPlugin,
             movement::MovementPlugin,
+            pickups::PickupsPlugin,
             shots::ShotsPlugin,
+            zone::ZonePlugin,
             round::RoundPlugin,
         ));
         app.configure_sets(
             FixedUpdate,
             (
                 ShootoutSystems::Walk,
+                ShootoutSystems::Pickups,
                 ShootoutSystems::Fire,
                 ShootoutSystems::MoveBalls,
+                ShootoutSystems::Zone,
                 ShootoutSystems::Finish,
             )
                 .chain()

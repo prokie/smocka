@@ -277,6 +277,17 @@ def shootout_sounds() -> dict[str, Signal]:
             tone(330.0, 0.16, 0.06, BRIGHT, glide=0.55, bright_decay=0.025),
             at(0.11, tone(185.0, 0.3, 0.11, SOFT, glide=0.5, bright_decay=0.04)),
         ),
+        # Bright rising chime when someone grabs a centre pickup.
+        "pickup": mix(
+            tone(E5, 0.12, 0.05, BRIGHT, bright_decay=0.025),
+            at(0.07, tone(C6, 0.24, 0.09, BRIGHT, bright_decay=0.04)),
+        ),
+        # Urgent two-tone warning chime when the sudden-death border starts closing in.
+        "sudden_death": mix(
+            tone(A5, 0.16, 0.08, BRIGHT, bright_decay=0.03),
+            at(0.15, tone(E5, 0.16, 0.08, BRIGHT, bright_decay=0.03)),
+            at(0.30, tone(A5, 0.32, 0.14, BRIGHT, bright_decay=0.05)),
+        ),
     }
 
 
