@@ -10,6 +10,7 @@ use super::ShootoutInput;
 use super::config::{GUNNER_RADIUS, PAINT_BALL_RADIUS};
 use super::gunner::{Gunner, GunnerState, Health};
 use super::shots::{PaintBall, PaintBallPosition};
+use super::sounds::ShootoutSoundsPlugin;
 use crate::camera::gameplay_camera_2d;
 use crate::config::display::{VIEW_HEIGHT, VIEW_WIDTH};
 use crate::minigames::smoothing::{Smoothed, remember_previous_tick, smoothed};
@@ -56,6 +57,7 @@ pub struct ShootoutVisualsPlugin;
 
 impl Plugin for ShootoutVisualsPlugin {
     fn build(&self, app: &mut App) {
+        app.add_plugins(ShootoutSoundsPlugin);
         app.add_systems(OnEnter(PHASE), (spawn_camera, spawn_arena));
         app.add_systems(OnExit(PHASE), reset_cursor);
         app.add_observer(add_gunner_sprite);

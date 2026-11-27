@@ -1,23 +1,28 @@
-//! Walking and aiming: gunners move at a fixed speed in eight directions, slide along the border
-//! wall and cover rather than going through, and turn toward their input's aim.
+//! Walking, aiming and gunner-to-gunner collision: gunners move at a fixed speed in eight
+//! directions, slide along the border wall and cover rather than going through, turn toward their
+//! input's aim, and push apart instead of overlapping each other.
 
 use bevy::prelude::*;
 use lightyear::prelude::input::native::ActionState;
 use lightyear::prelude::*;
 
 use super::config::{ARENA_HALF_HEIGHT, ARENA_HALF_WIDTH, COVER, GUNNER_RADIUS, GUNNER_SPEED};
-use super::gunner::GunnerState;
+use super::gunner::{Gunner, GunnerState};
 use super::shootout_input::ShootoutInput;
 use super::{PHASE, ShootoutSystems};
 
-/// Walks the gunners each tick.
+/// Separation passes per tick: resolves chains of gunners pushed against each other or a wall.
+const SEPARATION_PASSES: usize = 3;
+
+/// Walks the gunners each tick and keeps them from overlapping each other.
 pub struct MovementPlugin;
 
 impl Plugin for MovementPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             FixedUpdate,
-            walk_gunners
+            (walk_gunners, separate_gunners)
+                .chain()
                 .in_set(ShootoutSystems::Walk)
                 .run_if(in_state(PHASE)),
         );
@@ -40,6 +45,84 @@ fn walk_gunners(
         let next = walk(*state, input, time.delta_secs());
         state.set_if_neq(next);
     }
+}
+
+/// Push overlapping gunners apart so players can't walk through each other.
+///
+/// On the host every gunner is simulated, so touching pairs share the push equally in a
+/// deterministic order by [`Gunner::owner`]. On a joiner only this player's own gunner is
+/// simulated while everyone else's is [`Interpolated`], so the local gunner is pushed out of
+/// other gunners without modifying interpolated components.
+fn separate_gunners(
+    mut simulated: Query<(Entity, &Gunner, &mut GunnerState), Without<Interpolated>>,
+    interpolated: Query<&GunnerState, With<Interpolated>>,
+) {
+    let mut order: Vec<(PeerId, Entity)> = simulated
+        .iter()
+        .map(|(entity, gunner, _)| (gunner.owner, entity))
+        .collect();
+    order.sort_by_key(|(owner, _)| *owner);
+
+    let others: Vec<Vec2> = interpolated.iter().map(|state| state.position).collect();
+
+    for _ in 0..SEPARATION_PASSES {
+        for i in 0..order.len() {
+            for j in (i + 1)..order.len() {
+                let Ok([(_, _, mut a), (_, _, mut b)]) =
+                    simulated.get_many_mut([order[i].1, order[j].1])
+                else {
+                    continue;
+                };
+                let (next_a, next_b) = separate_pair(a.position, b.position);
+                if next_a != a.position {
+                    a.position = next_a;
+                }
+                if next_b != b.position {
+                    b.position = next_b;
+                }
+            }
+        }
+        if !others.is_empty() {
+            for (_, _, mut state) in &mut simulated {
+                let mut position = state.position;
+                for &other in &others {
+                    position = push_out_of_gunner(position, other);
+                }
+                if position != state.position {
+                    state.position = position;
+                }
+            }
+        }
+    }
+}
+
+/// Two gunners' positions pushed apart equally if they overlap, each kept out of walls and cover.
+pub fn separate_pair(a: Vec2, b: Vec2) -> (Vec2, Vec2) {
+    let gap = b - a;
+    let min_distance = 2.0 * GUNNER_RADIUS;
+    let distance = gap.length();
+    if distance >= min_distance {
+        return (a, b);
+    }
+    let dir = gap.try_normalize().unwrap_or(Vec2::X);
+    let half_push = dir * ((min_distance - distance) / 2.0);
+    (
+        keep_out_of_walls(a - half_push),
+        keep_out_of_walls(b + half_push),
+    )
+}
+
+/// Push a single gunner at `position` out of a gunner at `other`, keeping it out of walls and
+/// cover. Used on clients so a predicted gunner doesn't walk through interpolated opponents.
+pub fn push_out_of_gunner(position: Vec2, other: Vec2) -> Vec2 {
+    let gap = position - other;
+    let min_distance = 2.0 * GUNNER_RADIUS;
+    let distance = gap.length();
+    if distance >= min_distance {
+        return position;
+    }
+    let dir = gap.try_normalize().unwrap_or(Vec2::X);
+    keep_out_of_walls(other + dir * min_distance)
 }
 
 /// The gunner's state after walking and aiming for `dt` seconds with `input`. Diagonals are no
@@ -119,7 +202,7 @@ mod tests {
 
     use bevy::math::Vec2;
 
-    use super::{keep_out_of_walls, walk};
+    use super::{keep_out_of_walls, push_out_of_gunner, separate_pair, walk};
     use crate::minigames::shootout::config::{
         ARENA_HALF_WIDTH, COVER, GUNNER_RADIUS, GUNNER_SPEED,
     };
@@ -244,5 +327,34 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn overlapping_gunners_are_pushed_apart_without_entering_walls() {
+        let (a, b) = separate_pair(Vec2::new(0.0, 120.0), Vec2::new(4.0, 120.0));
+        assert!(
+            (b.distance(a) - 2.0 * GUNNER_RADIUS).abs() < 1e-3,
+            "{a} {b}"
+        );
+
+        // Two gunners on the exact same spot still separate cleanly.
+        let (a, b) = separate_pair(Vec2::new(0.0, 120.0), Vec2::new(0.0, 120.0));
+        assert!(
+            (b.distance(a) - 2.0 * GUNNER_RADIUS).abs() < 1e-3,
+            "{a} {b}"
+        );
+
+        // A gunner pinned against the right border wall is never pushed past it.
+        let edge = ARENA_HALF_WIDTH - GUNNER_RADIUS;
+        let (left, right) = separate_pair(Vec2::new(edge - 4.0, 120.0), Vec2::new(edge, 120.0));
+        assert!(right.x <= edge + 1e-3, "{right}");
+        assert!(left.x < right.x);
+
+        // Single-sided separation stops a predicted gunner at 2 * GUNNER_RADIUS.
+        let pushed = push_out_of_gunner(Vec2::new(10.0, 120.0), Vec2::new(0.0, 120.0));
+        assert!(
+            (pushed.distance(Vec2::new(0.0, 120.0)) - 2.0 * GUNNER_RADIUS).abs() < 1e-3,
+            "{pushed}"
+        );
     }
 }

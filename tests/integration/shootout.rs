@@ -12,13 +12,18 @@ use smocka::camera::GameplayCamera;
 use smocka::config::display::{VIEW_HEIGHT, VIEW_WIDTH};
 use smocka::minigames::Minigame;
 use smocka::minigames::outcome::MinigameResult;
-use smocka::minigames::shootout::config::{HITS_TO_KNOCK_OUT, SPAWNS};
+use smocka::minigames::settings::PublishedSettings;
+use smocka::minigames::shootout::HITS_TO_KNOCK_OUT_SETTING;
+use smocka::minigames::shootout::config::{GUNNER_RADIUS, HITS_TO_KNOCK_OUT, SPAWNS};
 use smocka::minigames::shootout::gunner::{Gunner, GunnerState, Health, normalize_angle};
-use smocka::minigames::shootout::shots::PaintBall;
+use smocka::minigames::shootout::shots::{PaintBall, PaintBallPosition};
+use smocka::network::LagPreset;
 use smocka::party::PartyRules;
 use smocka::session::SessionPhase;
 
-use crate::common::{TestApp, connected_pair, update_for, update_until};
+use crate::common::{
+    TestApp, connected_pair, lagged_pair, update_for, update_until, update_until_within,
+};
 
 /// Each gunner this app can see: its player, its state, and whether it's predicted here
 /// (rather than interpolated).
@@ -350,6 +355,169 @@ fn knocking_out_the_other_gunner_wins_the_shootout_on_every_peer() {
 }
 
 #[test]
+fn gunners_collide_and_push_each_other_apart_on_every_peer() {
+    let (mut host, mut client) = shootout_pair();
+    // Place the host just left of the joiner on the open top lane.
+    {
+        let world = host.0.world_mut();
+        for (gunner, mut state) in world.query::<(&Gunner, &mut GunnerState)>().iter_mut(world) {
+            if hosts(gunner.owner) {
+                state.position = Vec2::new(-10.0, 140.0);
+            } else {
+                state.position = Vec2::new(15.0, 140.0);
+            }
+        }
+    }
+    update_until(&mut [&mut host, &mut client], |apps| {
+        position(apps[1], joiners).is_some_and(|p| p.distance(Vec2::new(15.0, 140.0)) < 1.0)
+    });
+
+    // Host walks right into the joiner: pushes the joiner along without ever overlapping it.
+    hold(&mut host, KeyCode::KeyD);
+    update_until(&mut [&mut host, &mut client], |apps| {
+        for app in apps.iter_mut() {
+            if let (Some(a), Some(b)) = (position(app, hosts), position(app, joiners)) {
+                assert!(
+                    a.distance(b) >= 2.0 * GUNNER_RADIUS - 1.5,
+                    "gunners overlapped: {a} and {b} (dist {})",
+                    a.distance(b)
+                );
+            }
+        }
+        apps.iter_mut()
+            .all(|app| position(app, joiners).is_some_and(|p| p.x > 35.0))
+    });
+}
+
+#[test]
 fn parties_include_shootout_by_default() {
     assert!(PartyRules::default().games.contains(&Minigame::Shootout));
+}
+
+fn hits_to_knock_out(app: &mut TestApp) -> Option<u32> {
+    app.0
+        .world_mut()
+        .query::<&PublishedSettings>()
+        .iter(app.0.world())
+        .next()
+        .map(|settings| settings.get(HITS_TO_KNOCK_OUT_SETTING))
+}
+
+#[test]
+fn the_host_picks_how_many_hits_knock_a_gunner_out_and_joiners_see_it() {
+    let (mut host, mut client, _) = connected_pair();
+    host.set_setting(HITS_TO_KNOCK_OUT_SETTING, 1);
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps[0].players() == 2 && hits_to_knock_out(apps[1]) == Some(1)
+    });
+
+    host.start_minigame(Minigame::Shootout);
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut().all(|app| {
+            app.phase() == Some(SessionPhase::Playing(Minigame::Shootout))
+                && health(app, hosts) == Some(1)
+                && health(app, joiners) == Some(1)
+        })
+    });
+
+    // Clear line of sight on the top lane: one single hit from the host knocks out the joiner.
+    {
+        let world = host.0.world_mut();
+        for (gunner, mut state) in world.query::<(&Gunner, &mut GunnerState)>().iter_mut(world) {
+            if hosts(gunner.owner) {
+                state.position = Vec2::new(-100.0, 140.0);
+                state.aim = 0.0;
+            } else {
+                state.position = Vec2::new(100.0, 140.0);
+                state.aim = std::f32::consts::PI;
+            }
+        }
+    }
+    hold(&mut host, KeyCode::Space);
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut()
+            .all(|app| app.phase() == Some(SessionPhase::Results))
+    });
+}
+
+#[test]
+fn a_shootout_holds_up_over_an_average_connection_and_catches_up_incoming_shots() {
+    let (mut host, mut client) = lagged_pair(LagPreset::Average);
+    host.set_setting(HITS_TO_KNOCK_OUT_SETTING, 2);
+    update_until_within(
+        &mut [&mut host, &mut client],
+        Duration::from_secs(10),
+        |apps| apps[0].players() == 2 && hits_to_knock_out(apps[1]) == Some(2),
+    );
+    host.start_minigame(Minigame::Shootout);
+    update_until_within(
+        &mut [&mut host, &mut client],
+        Duration::from_secs(10),
+        |apps| {
+            apps.iter_mut().all(|app| {
+                app.phase() == Some(SessionPhase::Playing(Minigame::Shootout))
+                    && gunners(app).len() == 2
+            })
+        },
+    );
+
+    // Line both gunners up along the clear top lane, far enough apart that the shot is still in
+    // flight when the joiner receives it over ~50 ms one-way lag.
+    let origin_x = -240.0;
+    {
+        let world = host.0.world_mut();
+        for (gunner, mut state) in world.query::<(&Gunner, &mut GunnerState)>().iter_mut(world) {
+            if hosts(gunner.owner) {
+                state.position = Vec2::new(origin_x, 140.0);
+                state.aim = 0.0;
+            } else {
+                state.position = Vec2::new(240.0, 140.0);
+                state.aim = std::f32::consts::PI;
+            }
+        }
+    }
+
+    hold(&mut host, KeyCode::Space);
+    // Wait until the joiner has spawned a cosmetic ball for the host's shot, and verify it was
+    // caught up well past the host's barrel (over ~50 ms at 600 units/s it travels ~30 units).
+    let mut first_joiner_ball_x = None;
+    update_until_within(
+        &mut [&mut host, &mut client],
+        Duration::from_secs(10),
+        |apps| {
+            let world = apps[1].0.world_mut();
+            if let Some((_, pos)) = world
+                .query::<(&PaintBall, &PaintBallPosition)>()
+                .iter(world)
+                .find(|(ball, _)| hosts(ball.shooter))
+            {
+                first_joiner_ball_x = Some(pos.0.x);
+                true
+            } else {
+                false
+            }
+        },
+    );
+    let muzzle_x = origin_x + smocka::minigames::shootout::config::MUZZLE_OFFSET;
+    let seen_x = first_joiner_ball_x.unwrap();
+    assert!(
+        seen_x > muzzle_x + 10.0,
+        "incoming shot should catch up past muzzle ({muzzle_x}), saw {seen_x}"
+    );
+
+    // Keep firing until the joiner is knocked out and both peers finish cleanly.
+    update_until_within(
+        &mut [&mut host, &mut client],
+        Duration::from_secs(15),
+        |apps| {
+            apps.iter_mut()
+                .all(|app| app.phase() == Some(SessionPhase::Results))
+        },
+    );
+    for app in [&mut host, &mut client] {
+        let world = app.0.world_mut();
+        let result = world.query::<&MinigameResult>().single(world).unwrap();
+        assert!(hosts(result.placements[0].player));
+        assert!(joiners(result.placements[1].player));
+    }
 }

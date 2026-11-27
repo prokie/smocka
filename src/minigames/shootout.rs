@@ -7,6 +7,7 @@ pub mod movement;
 pub mod round;
 mod shootout_input;
 pub mod shots;
+pub mod sounds;
 mod visuals;
 
 pub use shootout_input::ShootoutInput;
@@ -14,9 +15,10 @@ pub use visuals::ShootoutVisualsPlugin;
 
 use bevy::prelude::*;
 
+use super::settings::{Setting, SettingId};
 use super::{Minigame, MinigameInfo};
 use crate::session::SessionPhase;
-use config::SPAWNS;
+use config::{HITS_TO_KNOCK_OUT, MAX_HITS_TO_KNOCK_OUT, MIN_HITS_TO_KNOCK_OUT, SPAWNS};
 
 /// The phase a shootout is played in.
 pub const PHASE: SessionPhase = SessionPhase::Playing(Minigame::Shootout);
@@ -28,8 +30,16 @@ pub const INFO: MinigameInfo = MinigameInfo {
     min_players: 2,
     max_players: SPAWNS.len(),
     thumbnail: "minigames/shootout/thumbnail.png",
-    settings: &[],
+    settings: &[Setting {
+        name: "Hits to knock out",
+        min: MIN_HITS_TO_KNOCK_OUT,
+        max: MAX_HITS_TO_KNOCK_OUT,
+        default: HITS_TO_KNOCK_OUT,
+    }],
 };
+
+/// How many hits knock a gunner out, picked by the host (see [`settings`](super::settings)).
+pub const HITS_TO_KNOCK_OUT_SETTING: SettingId = SettingId::new(Minigame::Shootout, 0);
 
 /// The order the shootout's game logic runs in each `FixedUpdate` tick.
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]

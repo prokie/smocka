@@ -8,9 +8,10 @@ use bevy::prelude::*;
 use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use super::PHASE;
-use super::config::{HITS_TO_KNOCK_OUT, SPAWNS};
+use super::config::SPAWNS;
+use super::{HITS_TO_KNOCK_OUT_SETTING, PHASE};
 use crate::minigames::outcome::Participants;
+use crate::minigames::settings::MinigameSettings;
 use crate::network::is_host;
 use crate::players::{Player, local_peer_id};
 
@@ -120,17 +121,19 @@ impl Plugin for GunnerPlugin {
 fn spawn_gunners(
     mut commands: Commands,
     participants: Single<&Participants>,
+    settings: Res<MinigameSettings>,
     players: Query<(&Player, &ControlledBy)>,
     host: Query<&LocalId, (With<Client>, With<Connected>)>,
 ) {
     let host = local_peer_id(&host);
+    let hits = settings.get(HITS_TO_KNOCK_OUT_SETTING);
     let here: Vec<_> = participants
         .0
         .iter()
         .filter_map(|id| players.iter().find(|(player, _)| player.id == *id))
         .collect();
     info!(
-        "Shootout between {} players: {:?}",
+        "Shootout ({hits} hits to knock out) between {} players: {:?}",
         here.len(),
         here.iter()
             .map(|(player, _)| player.name())
@@ -145,7 +148,7 @@ fn spawn_gunners(
                 color: player.color,
             },
             GunnerState::at(spawn),
-            Health::full(HITS_TO_KNOCK_OUT),
+            Health::full(hits),
             NextShot::default(),
             DespawnOnExit(PHASE),
             Replicate::to_clients(NetworkTarget::All),

@@ -7,6 +7,7 @@
 //! decides hits, hit points and knockouts.
 
 use bevy::prelude::*;
+use lightyear::prelude::client::RemoteTimeline;
 use lightyear::prelude::input::native::{ActionState, InputMarker};
 use lightyear::prelude::{server::ClientOf, *};
 use serde::{Deserialize, Serialize};
@@ -52,6 +53,11 @@ pub struct PaintBall {
     pub velocity: Vec2,
     pub authoritative: bool,
 }
+
+/// Local only: triggered when a paint ball hits the border wall or a cover block, so
+/// [`sounds`](super::sounds) can play a splat.
+#[derive(Event, Debug, Clone, Copy)]
+pub struct PaintBallWallHit;
 
 /// Where a [`PaintBall`] is, in world units. Smoothed between fixed ticks when drawn.
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
@@ -228,26 +234,67 @@ fn fire_gunner_local(
     );
 }
 
-/// Joiners only: spawn cosmetic paint balls for other players' shots sent by the host.
+/// Remote client receivers for [`ShotFired`] along with the estimated host timeline.
+type RemoteShotReceivers<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static mut MessageReceiver<ShotFired>,
+        Option<&'static RemoteTimeline>,
+    ),
+    (With<Client>, Without<LinkOf>),
+>;
+
+/// Joiners only: spawn cosmetic paint balls for other players' shots sent by the host, caught up
+/// to where the host's timeline currently has them so lagged shots don't appear late.
 fn receive_shots(
-    mut receivers: Query<&mut MessageReceiver<ShotFired>, (With<Client>, Without<LinkOf>)>,
+    fixed: Res<Time<Fixed>>,
+    mut receivers: RemoteShotReceivers,
     mut commands: Commands,
 ) {
-    for mut receiver in &mut receivers {
+    let dt = fixed.timestep().as_secs_f32();
+    for (mut receiver, remote_timeline) in &mut receivers {
+        let host_tick = remote_timeline.map(|timeline| timeline.tick());
         for shot in receiver.receive() {
             if !shot.origin.is_finite() || !shot.angle.is_finite() {
                 continue;
             }
+            let velocity = Vec2::from_angle(shot.angle) * PAINT_BALL_SPEED;
+            let position = match host_tick {
+                Some(now) => match catch_up_shot(shot.origin, velocity, shot.tick, now, dt) {
+                    Some(position) => position,
+                    None => continue,
+                },
+                None => shot.origin,
+            };
             spawn_paint_ball(
                 &mut commands,
                 shot.shooter,
                 shot.color,
-                shot.origin,
+                position,
                 shot.angle,
                 false,
             );
         }
     }
+}
+
+/// How far along its flight a shot fired on `shot_tick` already is when the host is at
+/// `host_tick` (with fixed timestep `dt`). Returns `None` if it already hit a wall or cover
+/// while in transit, so it isn't spawned past the obstacle.
+pub fn catch_up_shot(
+    origin: Vec2,
+    velocity: Vec2,
+    shot_tick: Tick,
+    host_tick: Tick,
+    dt: f32,
+) -> Option<Vec2> {
+    let elapsed = (host_tick - shot_tick).max(0) as f32 * dt;
+    if elapsed <= 0.0 {
+        return Some(origin);
+    }
+    let advanced = origin + velocity * elapsed;
+    wall_hit(origin, advanced).is_none().then_some(advanced)
 }
 
 /// Move every paint ball along its line and check the stretch it covered against the walls,
@@ -279,6 +326,7 @@ fn step_paint_balls(
         match hit {
             Some(BallHit::Wall(_)) => {
                 commands.entity(ball_entity).despawn();
+                commands.trigger(PaintBallWallHit);
             }
             Some(BallHit::Gunner { target, .. }) => {
                 commands.entity(ball_entity).despawn();
@@ -447,9 +495,11 @@ pub fn segment_hits_circle(start: Vec2, end: Vec2, centre: Vec2, radius: f32) ->
 #[cfg(test)]
 mod tests {
     use bevy::math::{Rect, Vec2};
+    use lightyear::prelude::Tick;
 
     use super::{
-        BallHit, check_ball_step, segment_exits_rect, segment_hits_circle, segment_hits_rect,
+        BallHit, catch_up_shot, check_ball_step, segment_exits_rect, segment_hits_circle,
+        segment_hits_rect,
     };
     use crate::minigames::shootout::config::{
         ARENA_HALF_WIDTH, COVER, GUNNER_RADIUS, PAINT_BALL_RADIUS,
@@ -567,5 +617,35 @@ mod tests {
             segment_hits_rect(Vec2::new(-20.0, 0.0), Vec2::new(20.0, 0.0), rect).unwrap(),
             0.25
         ));
+    }
+
+    #[test]
+    fn catch_up_advances_a_delayed_shot_and_drops_one_that_hit_a_wall() {
+        let dt = 1.0 / 128.0;
+        let origin = Vec2::new(-100.0, 140.0);
+        let velocity = Vec2::new(600.0, 0.0);
+
+        // No delay or slightly early estimate leaves the ball at its origin.
+        assert_eq!(
+            catch_up_shot(origin, velocity, Tick(50), Tick(50), dt),
+            Some(origin)
+        );
+        assert_eq!(
+            catch_up_shot(origin, velocity, Tick(50), Tick(48), dt),
+            Some(origin)
+        );
+
+        // 8 ticks behind advances 8 ticks along its line.
+        let caught_up = catch_up_shot(origin, velocity, Tick(50), Tick(58), dt).unwrap();
+        assert!(
+            caught_up.distance(origin + velocity * (8.0 * dt)) < 1e-4,
+            "{caught_up}"
+        );
+
+        // A shot fired into the centre cover block that already hit it in transit is dropped.
+        assert_eq!(
+            catch_up_shot(Vec2::new(-40.0, 0.0), velocity, Tick(50), Tick(60), dt),
+            None
+        );
     }
 }

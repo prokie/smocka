@@ -1,0 +1,151 @@
+//! Shootout's sounds: firing a paint ball, paint splatting on walls, gunner hits, and knockouts.
+//!
+//! Each peer plays them locally from what it sees: firing when a [`PaintBall`] spawns, wall hits
+//! from [`PaintBallWallHit`], non-fatal gunner hits when a gunner's replicated [`Health`] drops,
+//! and knockouts when a gunner is removed while its player is still in the session.
+
+use bevy::prelude::*;
+
+use super::PHASE;
+use super::gunner::{Gunner, Health};
+use super::shots::{PaintBall, PaintBallWallHit};
+use crate::players::Player;
+use crate::session::SessionPhase;
+use crate::sound::{play_sound, play_varied_sound};
+
+const SHOT_SOUND: &str = "minigames/shootout/shot.wav";
+const WALL_HIT_SOUND: &str = "minigames/shootout/wall_hit.wav";
+const HIT_SOUND: &str = "minigames/shootout/hit.wav";
+const KNOCKOUT_SOUND: &str = "minigames/shootout/knockout.wav";
+
+const SHOT_VOLUME: f32 = 0.45;
+const WALL_HIT_VOLUME: f32 = 0.3;
+const HIT_VOLUME: f32 = 0.55;
+const KNOCKOUT_VOLUME: f32 = 0.65;
+
+/// The last [`Health::remaining`] this peer saw on a gunner, so it only plays a hit sound when
+/// health drops after spawn.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+struct SeenHealth(u32);
+
+/// What sound a gunner's health change from `before` to `now` calls for, if any.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DamageSound {
+    /// The gunner took a hit and is still standing.
+    Hit,
+}
+
+/// Whether `health` dropping from `before` to `now` should play a non-fatal hit sound. Knockouts
+/// (when the gunner is removed) have their own sound.
+pub fn damage_sound(before: u32, now: u32) -> Option<DamageSound> {
+    (now < before && now > 0).then_some(DamageSound::Hit)
+}
+
+#[derive(Resource)]
+struct ShootoutSounds {
+    shot: Handle<AudioSource>,
+    wall_hit: Handle<AudioSource>,
+    hit: Handle<AudioSource>,
+    knockout: Handle<AudioSource>,
+}
+
+/// Plays shootout's sounds on every peer.
+pub struct ShootoutSoundsPlugin;
+
+impl Plugin for ShootoutSoundsPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Startup, load_sounds);
+        app.add_observer(play_shot_sound);
+        app.add_observer(play_wall_hit_sound);
+        app.add_observer(play_knockout_sound);
+        app.add_systems(Update, play_hit_sounds.run_if(in_state(PHASE)));
+    }
+}
+
+fn load_sounds(assets: Res<AssetServer>, mut commands: Commands) {
+    commands.insert_resource(ShootoutSounds {
+        shot: assets.load(SHOT_SOUND),
+        wall_hit: assets.load(WALL_HIT_SOUND),
+        hit: assets.load(HIT_SOUND),
+        knockout: assets.load(KNOCKOUT_SOUND),
+    });
+}
+
+fn play_shot_sound(
+    _trigger: On<Add<PaintBall>>,
+    sounds: Option<Res<ShootoutSounds>>,
+    mut commands: Commands,
+) {
+    if let Some(sounds) = sounds {
+        play_varied_sound(&mut commands, &sounds.shot, SHOT_VOLUME);
+    }
+}
+
+fn play_wall_hit_sound(
+    _trigger: On<PaintBallWallHit>,
+    sounds: Option<Res<ShootoutSounds>>,
+    mut commands: Commands,
+) {
+    if let Some(sounds) = sounds {
+        play_varied_sound(&mut commands, &sounds.wall_hit, WALL_HIT_VOLUME);
+    }
+}
+
+fn play_hit_sounds(
+    gunners: Query<(Entity, &Health, Option<&mut SeenHealth>), With<Gunner>>,
+    sounds: Res<ShootoutSounds>,
+    mut commands: Commands,
+) {
+    for (entity, health, seen) in gunners {
+        let Some(mut seen) = seen else {
+            commands.entity(entity).insert(SeenHealth(health.remaining));
+            continue;
+        };
+        if damage_sound(seen.0, health.remaining) == Some(DamageSound::Hit) {
+            play_varied_sound(&mut commands, &sounds.hit, HIT_VOLUME);
+        }
+        seen.0 = health.remaining;
+    }
+}
+
+/// Play the knockout sound when a gunner is removed mid-round while its player is still in the
+/// session (not on phase exit, and not when a player disconnects).
+fn play_knockout_sound(
+    trigger: On<Remove<Gunner>>,
+    phase: Option<Res<State<SessionPhase>>>,
+    gunners: Query<(&Gunner, Option<&Health>)>,
+    players: Query<&Player>,
+    sounds: Option<Res<ShootoutSounds>>,
+    mut commands: Commands,
+) {
+    let in_shootout = phase.is_some_and(|phase| *phase.get() == PHASE);
+    let Some(sounds) = sounds else {
+        return;
+    };
+    if !in_shootout {
+        return;
+    }
+    let Ok((gunner, health)) = gunners.get(trigger.entity) else {
+        return;
+    };
+    let still_here = players.iter().any(|player| player.id == gunner.owner);
+    let fatal_health = health.is_none_or(|health| health.remaining <= 1);
+    if still_here && fatal_health {
+        play_sound(&mut commands, &sounds.knockout, KNOCKOUT_VOLUME);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DamageSound, damage_sound};
+
+    #[test]
+    fn plays_hit_sound_only_on_non_fatal_damage() {
+        assert_eq!(damage_sound(3, 3), None);
+        assert_eq!(damage_sound(3, 2), Some(DamageSound::Hit));
+        assert_eq!(damage_sound(2, 1), Some(DamageSound::Hit));
+        // Knockouts play their own sound when the gunner is removed.
+        assert_eq!(damage_sound(1, 0), None);
+        assert_eq!(damage_sound(1, 3), None);
+    }
+}

@@ -1,17 +1,5 @@
 # TODO
 
-## Shootout (in progress)
-
-A top-down last-one-standing shooter with mouse or right-stick aim and fast, dodgeable paint
-balls, built a step at a time (`minigames/shootout/`). Done: the arena, a gunner per player,
-walking, aiming, firing paint balls with swept hit detection, hit points, knockouts, winning, and
-party support.
-
-- [ ] Playtest over `--lag`. Hits are judged where the targets are on the host, which is fair to
-      the one dodging, so no rewinding as hitscan would need. If others' shots look late, draw
-      them as far along as the host has them.
-- [ ] Sounds, and a "hits to knock out" setting.
-
 ## Netcode and engine
 
 APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.cargo/registry`.

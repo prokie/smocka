@@ -30,8 +30,10 @@ pub const PAINT_BALL_SPEED: f32 = 600.0;
 pub const FIRE_COOLDOWN_SECONDS: f32 = 0.35;
 /// [`FIRE_COOLDOWN_SECONDS`] in fixed ticks.
 pub const FIRE_COOLDOWN_TICKS: u32 = (FIRE_COOLDOWN_SECONDS * TICK_RATE as f32) as u32;
-/// How many hits knock a gunner out.
+/// How many hits knock a gunner out by default, and the limits the host can pick between.
 pub const HITS_TO_KNOCK_OUT: u32 = 3;
+pub const MIN_HITS_TO_KNOCK_OUT: u32 = 1;
+pub const MAX_HITS_TO_KNOCK_OUT: u32 = 10;
 
 /// A block `width` by `height`, centred on (`x`, `y`).
 const fn block(x: f32, y: f32, width: f32, height: f32) -> Rect {

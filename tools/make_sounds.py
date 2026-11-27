@@ -251,6 +251,35 @@ def engine() -> Signal:
     return out
 
 
+def shootout_sounds() -> dict[str, Signal]:
+    return {
+        # Punchy pneumatic paintball pop: brief noise puff over a quick falling tone.
+        "shot": mix(
+            scaled(0.55, noise(0.06, 0.018, smoothing=0.6, seed=21)),
+            tone(380.0, 0.08, 0.025, SOFT, glide=0.45, bright_decay=0.01),
+        ),
+        # Soft paint splat against a wall or cover block.
+        "wall_hit": scaled(
+            0.65,
+            mix(
+                noise(0.07, 0.02, smoothing=0.78, seed=22),
+                scaled(0.5, tone(180.0, 0.06, 0.02, SOFT, glide=0.6)),
+            ),
+        ),
+        # Crisp splat/thwack when a gunner takes a hit.
+        "hit": mix(
+            noise(0.09, 0.025, smoothing=0.68, seed=23),
+            scaled(0.8, tone(260.0, 0.1, 0.035, BRIGHT, glide=0.65, bright_decay=0.015)),
+        ),
+        # Heavier two-step descending thump when a gunner is knocked out.
+        "knockout": mix(
+            noise(0.18, 0.05, smoothing=0.84, seed=24),
+            tone(330.0, 0.16, 0.06, BRIGHT, glide=0.55, bright_decay=0.025),
+            at(0.11, tone(185.0, 0.3, 0.11, SOFT, glide=0.5, bright_decay=0.04)),
+        ),
+    }
+
+
 def minigame_sounds() -> dict[str, Signal]:
     return {
         # When a minigame is won: up through a chord, then a warmer chord together.
@@ -278,6 +307,7 @@ def menu_sounds() -> dict[str, Signal]:
 SOUNDS: Final[dict[Path, Callable[[], dict[str, Signal]]]] = {
     ASSETS / "two_player_pong": pong_sounds,
     ASSETS / "racing": racing_sounds,
+    ASSETS / "shootout": shootout_sounds,
     ASSETS: minigame_sounds,
     MENU_ASSETS: menu_sounds,
 }
