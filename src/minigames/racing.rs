@@ -1,5 +1,6 @@
 pub mod bumps;
 pub mod car;
+mod checkpoint_guide;
 pub mod config;
 pub mod progress;
 pub mod race;
@@ -18,6 +19,7 @@ use super::settings::{Setting, SettingId};
 use super::{Minigame, MinigameInfo};
 use crate::session::SessionPhase;
 use config::{GRID_SLOTS, LAPS, MAX_LAPS, MIN_LAPS};
+use track::TrackId;
 
 /// The phase a race is played in.
 pub const PHASE: SessionPhase = SessionPhase::Playing(Minigame::Racing);
@@ -29,16 +31,30 @@ pub const INFO: MinigameInfo = MinigameInfo {
     min_players: 2,
     max_players: GRID_SLOTS,
     thumbnail: "minigames/racing/thumbnail.png",
-    settings: &[Setting {
-        name: "Laps",
-        min: MIN_LAPS,
-        max: MAX_LAPS,
-        default: LAPS,
-    }],
+    settings: &[
+        Setting {
+            name: "Laps",
+            min: MIN_LAPS,
+            max: MAX_LAPS,
+            default: LAPS,
+            labels: &[],
+        },
+        Setting {
+            name: "Track",
+            min: 0,
+            max: TrackId::ALL.len() as u32 - 1,
+            default: TrackId::FigureEight as u32,
+            labels: &TrackId::NAMES,
+        },
+    ],
 };
 
 /// How many laps a race has, picked by the host (see [`settings`](super::settings)).
 pub const LAPS_SETTING: SettingId = SettingId::new(Minigame::Racing, 0);
+
+/// Which track the race is on, picked by the host: an index in [`TrackId::ALL`] (see
+/// [`TrackId::from_setting`]).
+pub const TRACK_SETTING: SettingId = SettingId::new(Minigame::Racing, 1);
 
 /// The order racing's game logic runs in each `FixedUpdate` tick.
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]

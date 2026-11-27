@@ -13,10 +13,11 @@ use super::config::{
     SLIDE_DECELERATION, TURN_RATE,
 };
 use super::progress::RaceProgress;
-use super::race::RaceStart;
+use super::race::{RaceStart, picked_track};
 use super::racing_input::RacingInput;
-use super::track::{START_HEADING, Surface, grid_position, surface_at};
+use super::track::{Surface, TrackId};
 use crate::minigames::outcome::Participants;
+use crate::minigames::settings::MinigameSettings;
 use crate::network::is_host;
 use crate::players::Player;
 use crate::standings::Points;
@@ -108,7 +109,9 @@ fn spawn_cars(
     mut commands: Commands,
     participants: Single<&Participants>,
     players: Query<(&Player, &Points, &ControlledBy)>,
+    settings: Res<MinigameSettings>,
 ) {
+    let track = picked_track(&settings).track();
     let active_participants: Vec<(&Player, Points, &ControlledBy)> = participants
         .0
         .iter()
@@ -156,7 +159,7 @@ fn spawn_cars(
                 name: standing.player.name,
                 color: standing.player.color,
             },
-            CarState::parked(grid_position(slot), START_HEADING),
+            CarState::parked(track.grid_position(slot), track.layout().start_heading),
             RaceProgress::on_grid(),
             DespawnOnExit(PHASE),
             Replicate::to_clients(NetworkTarget::All),
@@ -173,21 +176,30 @@ fn spawn_cars(
 /// Runs on the host for every car and on each driver's machine for the cars it predicts (all of
 /// them). Spectators' cars are interpolated, so it leaves them alone, even though the host's
 /// rebroadcast gives them inputs too. A car with no input yet coasts. Before the race's
-/// [`RaceStart`] tick (or before it has arrived), input is ignored: judged by the tick being
-/// simulated, so a rollback replaying ticks from before the start keeps the cars still.
+/// [`RaceStart`] tick, input is ignored: judged by the tick being simulated, so a rollback
+/// replaying ticks from before the start keeps the cars still. Until the race's entity (with its
+/// start and its [`TrackId`]) has arrived, cars stay parked on the grid where they were spawned.
 fn drive_cars(
     time: Res<Time>,
     timeline: Res<LocalTimeline>,
-    start: Option<Single<&RaceStart>>,
+    race: Option<Single<(&RaceStart, &TrackId)>>,
     mut cars: Query<(&mut CarState, Option<&ActionState<RacingInput>>), Without<Interpolated>>,
 ) {
-    let may_drive = start.is_some_and(|start| start.cars_may_drive(timeline.tick()));
+    let Some((start, track)) = race.map(|race| (*race.0, race.1.track())) else {
+        return;
+    };
+    let may_drive = start.cars_may_drive(timeline.tick());
     for (mut state, input) in &mut cars {
         let input = match input {
             Some(input) if may_drive => input.0,
             _ => RacingInput::default(),
         };
-        let next = drive(*state, input, surface_at(state.position), time.delta_secs());
+        let next = drive(
+            *state,
+            input,
+            track.surface_at(state.position),
+            time.delta_secs(),
+        );
         state.set_if_neq(next);
     }
 }
@@ -294,7 +306,7 @@ mod tests {
         SLIDE_DECELERATION,
     };
     use crate::minigames::racing::race::RaceStatus;
-    use crate::minigames::racing::track::Surface;
+    use crate::minigames::racing::track::{Surface, TrackId};
 
     const DT: f32 = 1.0 / 128.0;
 
@@ -484,7 +496,7 @@ mod tests {
         let mut timeline = LocalTimeline::default();
         timeline.apply_delta(tick as i32);
         world.insert_resource(timeline);
-        world.spawn(RaceStart(Tick(START)));
+        world.spawn((RaceStart(Tick(START)), TrackId::default()));
         world
     }
 
@@ -557,5 +569,43 @@ mod tests {
         let car = world.spawn((moving(0.0), ActionState(THROTTLE))).id();
         world.run_system_once(drive_cars).unwrap();
         assert_eq!(*world.get::<CarState>(car).unwrap(), moving(0.0));
+    }
+
+    #[test]
+    fn cars_cant_move_before_the_track_is_known() {
+        let mut world = race_world(START + 10);
+        let race = world
+            .query_filtered::<Entity, With<RaceStart>>()
+            .single(&world)
+            .unwrap();
+        world.entity_mut(race).remove::<TrackId>();
+        let car = world.spawn((moving(0.0), ActionState(THROTTLE))).id();
+        world.run_system_once(drive_cars).unwrap();
+        assert_eq!(*world.get::<CarState>(car).unwrap(), moving(0.0));
+    }
+
+    #[test]
+    fn cars_drive_on_the_races_own_track() {
+        // On the oval's left bend, which is grass on the figure of eight.
+        let spot = CarState {
+            position: Vec2::new(-270.0, 0.0),
+            ..moving(150.0)
+        };
+        let speed_on = |track: TrackId| {
+            let mut world = race_world(START);
+            let race = world
+                .query_filtered::<Entity, With<RaceStart>>()
+                .single(&world)
+                .unwrap();
+            world.entity_mut(race).insert(track);
+            let car = world.spawn((spot, ActionState(THROTTLE))).id();
+            world.run_system_once(drive_cars).unwrap();
+            world.get::<CarState>(car).unwrap().speed
+        };
+        assert!(speed_on(TrackId::Oval) > 150.0, "speeds up on the road");
+        assert!(
+            speed_on(TrackId::FigureEight) < 150.0,
+            "slows down on grass"
+        );
     }
 }

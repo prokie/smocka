@@ -13,14 +13,14 @@ use super::PHASE;
 use super::RacingSystems;
 use super::car::{Car, CarState};
 use super::race::{RaceDirector, lap_time_label};
-use super::track::{CHECKPOINTS, checkpoint_at};
+use super::track::Track;
 use crate::minigames::outcome::ordinal;
 use crate::network::is_host;
 
 /// How far round the track a car has got. Replicated, not predicted: it only changes on the host.
 #[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RaceProgress {
-    /// The index in [`CHECKPOINTS`] the car must reach next.
+    /// The index in the race's [`Track::checkpoints`] the car must reach next.
     pub next_checkpoint: usize,
     /// Laps completed.
     pub laps: u32,
@@ -39,13 +39,13 @@ impl RaceProgress {
         }
     }
 
-    /// Progress after the car is seen in `checkpoint` (or in none). Only the next checkpoint
-    /// counts, so skipping one or driving the wrong way gets the car nowhere. A finished car
-    /// stays as it is.
-    pub fn advance(self, checkpoint: Option<usize>) -> Self {
+    /// Progress after the car is seen in `checkpoint` (or in none) of `track`. Only the next
+    /// checkpoint counts, so skipping one or driving the wrong way gets the car nowhere. A
+    /// finished car stays as it is.
+    pub fn advance(self, checkpoint: Option<usize>, track: &Track) -> Self {
         match checkpoint {
             Some(reached) if reached == self.next_checkpoint && self.place.is_none() => Self {
-                next_checkpoint: (reached + 1) % CHECKPOINTS.len(),
+                next_checkpoint: (reached + 1) % track.checkpoints().len(),
                 laps: if reached == 0 {
                     self.laps + 1
                 } else {
@@ -57,20 +57,25 @@ impl RaceProgress {
         }
     }
 
-    /// How many checkpoints the car has reached since the start, to rank cars that didn't finish.
-    pub fn checkpoints_passed(self) -> u32 {
-        let count = CHECKPOINTS.len();
+    /// How many of `track`'s checkpoints the car has reached since the start, to rank cars that
+    /// didn't finish.
+    pub fn checkpoints_passed(self, track: &Track) -> u32 {
+        let count = track.checkpoints().len();
         self.laps * count as u32 + ((self.next_checkpoint + count - 1) % count) as u32
     }
 }
 
 /// Sort key for the running order: lower is further ahead. Finished cars come first, by place;
 /// the rest by how many checkpoints they've passed, then by how close they are to the next one.
-pub fn running_order(progress: RaceProgress, position: Vec2) -> (u32, Reverse<u32>, FloatOrd) {
-    let next = CHECKPOINTS[progress.next_checkpoint].center();
+pub fn running_order(
+    track: &Track,
+    progress: RaceProgress,
+    position: Vec2,
+) -> (u32, Reverse<u32>, FloatOrd) {
+    let next = track.checkpoints()[progress.next_checkpoint].center();
     (
         progress.place.unwrap_or(u32::MAX),
-        Reverse(progress.checkpoints_passed()),
+        Reverse(progress.checkpoints_passed(track)),
         FloatOrd(position.distance(next)),
     )
 }
@@ -115,10 +120,11 @@ fn count_laps(
     mut inside: Local<EntityHashMap<Option<usize>>>,
 ) {
     inside.retain(|entity, _| cars.contains(*entity));
+    let track = director.track();
     for (entity, car, state, mut progress) in &mut cars {
-        let checkpoint = checkpoint_at(state.position);
+        let checkpoint = track.checkpoint_at(state.position);
         let entered = inside.insert(entity, checkpoint) != Some(checkpoint);
-        let mut next = progress.advance(checkpoint);
+        let mut next = progress.advance(checkpoint, track);
         match checkpoint {
             Some(reached) if entered && next != *progress => debug!(
                 "{} ({:?}) reached checkpoint {reached} on lap {}",
@@ -158,14 +164,24 @@ mod tests {
     use bevy::math::Vec2;
 
     use super::{RaceProgress, lap_label, position_label, running_order};
-    use crate::minigames::racing::track::CHECKPOINTS;
+    use crate::minigames::racing::track::{Track, TrackId};
 
     const LAPS: u32 = 3;
+
+    /// The track these tests race on.
+    fn track() -> &'static Track {
+        TrackId::default().track()
+    }
+
+    /// The checkpoints of one lap from the grid, in order, ending on the line.
+    fn lap() -> Vec<usize> {
+        (1..track().checkpoints().len()).chain([0]).collect()
+    }
 
     /// `progress` after reaching each of `checkpoints` in turn.
     fn reach(progress: RaceProgress, checkpoints: &[usize]) -> RaceProgress {
         checkpoints.iter().fold(progress, |progress, &checkpoint| {
-            progress.advance(Some(checkpoint))
+            progress.advance(Some(checkpoint), track())
         })
     }
 
@@ -179,16 +195,18 @@ mod tests {
 
     #[test]
     fn reaching_every_checkpoint_in_order_completes_a_lap() {
-        let progress = reach(RaceProgress::on_grid(), &[0, 1, 2, 3, 0]);
+        // Over the line from the grid first, which doesn't count.
+        let progress = reach(RaceProgress::on_grid(), &[vec![0], lap()].concat());
         assert_eq!(progress.laps, 1);
         assert_eq!(progress.next_checkpoint, 1);
-        let progress = reach(progress, &[1, 2, 3, 0, 1, 2, 3, 0]);
+        let progress = reach(progress, &lap().repeat(2));
         assert_eq!(progress.laps, 3);
     }
 
     #[test]
     fn staying_in_a_checkpoint_counts_it_once() {
-        let progress = reach(RaceProgress::on_grid(), &[1, 1, 1, 2, 2, 3, 0, 0, 0]);
+        let lingering: Vec<usize> = lap().into_iter().flat_map(|c| [c, c, c]).collect();
+        let progress = reach(RaceProgress::on_grid(), &lingering);
         assert_eq!(progress.laps, 1);
         assert_eq!(progress.next_checkpoint, 1);
     }
@@ -202,14 +220,15 @@ mod tests {
 
     #[test]
     fn driving_the_wrong_way_isnt_a_lap() {
-        let progress = reach(RaceProgress::on_grid(), &[3, 2, 1, 0]);
+        let backwards: Vec<usize> = lap().into_iter().rev().collect();
+        let progress = reach(RaceProgress::on_grid(), &backwards);
         assert_eq!(progress.laps, 0);
     }
 
     #[test]
     fn being_in_no_checkpoint_changes_nothing() {
         let progress = RaceProgress::on_grid();
-        assert_eq!(progress.advance(None), progress);
+        assert_eq!(progress.advance(None, track()), progress);
     }
 
     #[test]
@@ -235,17 +254,19 @@ mod tests {
             laps: LAPS,
             place: Some(1),
         };
-        assert_eq!(reach(finished, &[1, 2, 3, 0]), finished);
+        assert_eq!(reach(finished, &lap()), finished);
     }
 
     #[test]
     fn the_running_order_ranks_places_then_checkpoints_then_distance() {
-        let at_next = |progress: RaceProgress| CHECKPOINTS[progress.next_checkpoint].center();
+        let at_next =
+            |progress: RaceProgress| track().checkpoints()[progress.next_checkpoint].center();
+        let running_order = |progress, position| running_order(track(), progress, position);
         let grid = RaceProgress::on_grid();
         let one_ahead = reach(grid, &[1]);
         let finished = RaceProgress {
             place: Some(2),
-            ..reach(grid, &[1, 2, 3, 0])
+            ..reach(grid, &lap())
         };
         let near = running_order(grid, at_next(grid));
         let far = running_order(grid, at_next(grid) + Vec2::new(-50.0, 0.0));
@@ -266,10 +287,12 @@ mod tests {
     #[test]
     fn checkpoints_passed_counts_from_the_grid() {
         let grid = RaceProgress::on_grid();
-        assert_eq!(grid.checkpoints_passed(), 0);
-        assert_eq!(reach(grid, &[1]).checkpoints_passed(), 1);
-        assert_eq!(reach(grid, &[1, 2, 3]).checkpoints_passed(), 3);
-        assert_eq!(reach(grid, &[1, 2, 3, 0]).checkpoints_passed(), 4);
-        assert_eq!(reach(grid, &[1, 2, 3, 0, 1]).checkpoints_passed(), 5);
+        let passed = |progress: RaceProgress| progress.checkpoints_passed(track());
+        assert_eq!(passed(grid), 0);
+        assert_eq!(passed(reach(grid, &[1])), 1);
+        assert_eq!(passed(reach(grid, &[1, 2, 3])), 3);
+        let count = track().checkpoints().len() as u32;
+        assert_eq!(passed(reach(grid, &lap())), count);
+        assert_eq!(passed(reach(grid, &[lap(), vec![1]].concat())), count + 1);
     }
 }

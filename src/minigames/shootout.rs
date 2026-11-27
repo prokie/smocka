@@ -37,6 +37,7 @@ pub const INFO: MinigameInfo = MinigameInfo {
         min: MIN_HITS_TO_KNOCK_OUT,
         max: MAX_HITS_TO_KNOCK_OUT,
         default: HITS_TO_KNOCK_OUT,
+        labels: &[],
     }],
 };
 

@@ -10,13 +10,13 @@ use lightyear::prelude::{LocalTimeline, PeerId, Rollback, Tick};
 use smocka::controls::{Control, ControlAction, Controls};
 use smocka::minigames::Minigame;
 use smocka::minigames::outcome::MinigameResult;
-use smocka::minigames::racing::LAPS_SETTING;
 use smocka::minigames::racing::bumps::contact;
 use smocka::minigames::racing::car::{Car, CarState};
 use smocka::minigames::racing::config::LAPS;
 use smocka::minigames::racing::progress::RaceProgress;
 use smocka::minigames::racing::race::{RaceRules, RaceStatus};
-use smocka::minigames::racing::track::{CHECKPOINTS, Surface, surface_at};
+use smocka::minigames::racing::track::{Surface, Track, TrackId};
+use smocka::minigames::racing::{LAPS_SETTING, TRACK_SETTING};
 use smocka::minigames::racing::{RacingInput, RacingSystems};
 use smocka::minigames::settings::{ChangeSetting, PublishedSettings};
 use smocka::network::LagPreset;
@@ -89,7 +89,37 @@ fn finish(app: &mut TestApp, is_driver: impl Fn(PeerId) -> bool + Copy) {
             };
         }
     }
-    teleport(app, is_driver, CHECKPOINTS[0].center());
+    let line = race_track(app).unwrap().checkpoints()[0].center();
+    teleport(app, is_driver, line);
+}
+
+/// The track this app's race is on, once it knows.
+fn race_track(app: &mut TestApp) -> Option<&'static Track> {
+    app.0
+        .world_mut()
+        .query::<&TrackId>()
+        .iter(app.0.world())
+        .next()
+        .map(|id| id.track())
+}
+
+/// The checkpoints of one lap of `track` from the grid, in order, ending on the line.
+fn one_lap(track: &Track) -> impl Iterator<Item = usize> {
+    (1..track.checkpoints().len()).chain([0])
+}
+
+/// Host only: take the host's car round one lap of the race's checkpoints, in order, ending on
+/// the line, waiting at each until the host has counted it.
+fn drive_a_lap(host: &mut TestApp, client: &mut TestApp) {
+    let track = race_track(host).unwrap();
+    for checkpoint in one_lap(track) {
+        teleport(host, hosts, track.checkpoints()[checkpoint].center());
+        update_until(&mut [&mut *host, &mut *client], |apps| {
+            progress(apps[0], hosts).is_some_and(|progress| {
+                progress.next_checkpoint == (checkpoint + 1) % track.checkpoints().len()
+            })
+        });
+    }
 }
 
 /// This app's race status, if it has one yet.
@@ -181,7 +211,7 @@ fn race_pair_with_joiner_controls(controls: Controls) -> (TestApp, TestApp) {
 }
 
 /// Start a race between a connected host and joiner, the host using `rules`, and wait until both
-/// see both cars.
+/// see both cars and know the track.
 fn start_race(mut host: TestApp, mut client: TestApp, rules: RaceRules) -> (TestApp, TestApp) {
     host.0.world_mut().insert_resource(rules);
     update_until(&mut [&mut host, &mut client], |apps| apps[0].players() == 2);
@@ -191,6 +221,7 @@ fn start_race(mut host: TestApp, mut client: TestApp, rules: RaceRules) -> (Test
             app.phase() == Some(SessionPhase::Playing(Minigame::Racing))
                 && car(app, hosts).is_some()
                 && car(app, joiners).is_some()
+                && race_track(app).is_some()
         })
     });
     (host, client)
@@ -207,11 +238,56 @@ fn every_player_gets_one_car_on_every_peer() {
 fn cars_start_on_the_road() {
     let (mut host, mut client) = race_pair();
     for app in [&mut host, &mut client] {
+        let track = race_track(app).unwrap();
         for driver in [hosts, joiners] {
             let position = car(app, driver).unwrap().position;
-            assert_eq!(surface_at(position), Surface::Road, "{position}");
+            assert_eq!(track.surface_at(position), Surface::Road, "{position}");
         }
     }
+}
+
+#[test]
+fn races_are_on_the_figure_eight_unless_the_host_picks_another_track() {
+    let (mut host, mut client) = race_pair();
+    for app in [&mut host, &mut client] {
+        assert!(std::ptr::eq(
+            race_track(app).unwrap(),
+            TrackId::FigureEight.track()
+        ));
+    }
+}
+
+#[test]
+fn the_host_picks_the_track_and_every_peer_races_on_it() {
+    let (mut host, client, _) = connected_pair();
+    host.set_setting(TRACK_SETTING, TrackId::Oval as u32);
+    let (mut host, mut client) = start_race(
+        host,
+        client,
+        RaceRules {
+            countdown: Duration::ZERO,
+            ..default()
+        },
+    );
+    let oval = TrackId::Oval.track();
+    let grid: Vec<Vec2> = (0..2).map(|slot| oval.grid_position(slot)).collect();
+    for app in [&mut host, &mut client] {
+        assert!(std::ptr::eq(race_track(app).unwrap(), oval));
+        for driver in [hosts, joiners] {
+            let position = car(app, driver).unwrap().position;
+            assert!(
+                grid.contains(&position),
+                "{position} isn't on the oval's grid"
+            );
+        }
+    }
+
+    // A lap of the oval's checkpoints counts.
+    drive_a_lap(&mut host, &mut client);
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut()
+            .all(|app| progress(app, hosts).is_some_and(|progress| progress.laps == 1))
+    });
 }
 
 #[test]
@@ -437,14 +513,7 @@ fn the_host_counts_a_lap_and_every_peer_sees_it() {
     let (mut host, mut client) = race_pair();
 
     // Take the host's car round the checkpoints in order, ending on the line.
-    for checkpoint in [1, 2, 3, 0] {
-        teleport(&mut host, hosts, CHECKPOINTS[checkpoint].center());
-        update_until(&mut [&mut host, &mut client], |apps| {
-            progress(apps[0], hosts).is_some_and(|progress| {
-                progress.next_checkpoint == (checkpoint + 1) % CHECKPOINTS.len()
-            })
-        });
-    }
+    drive_a_lap(&mut host, &mut client);
 
     update_until(&mut [&mut host, &mut client], |apps| {
         apps.iter_mut()
@@ -613,14 +682,7 @@ fn the_host_picks_how_many_laps_the_race_has() {
     });
 
     // One lap: round every checkpoint in order, ending on the line.
-    for checkpoint in [1, 2, 3, 0] {
-        teleport(&mut host, hosts, CHECKPOINTS[checkpoint].center());
-        update_until(&mut [&mut host, &mut client], |apps| {
-            progress(apps[0], hosts).is_some_and(|progress| {
-                progress.next_checkpoint == (checkpoint + 1) % CHECKPOINTS.len()
-            })
-        });
-    }
+    drive_a_lap(&mut host, &mut client);
     let progress = progress(&mut host, hosts).unwrap();
     assert_eq!((progress.laps, progress.place), (1, Some(1)));
 }

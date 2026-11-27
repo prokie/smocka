@@ -26,6 +26,19 @@ pub struct Setting {
     pub max: u32,
     /// Its value until the host picks another.
     pub default: u32,
+    /// What the lobby calls each value, from `min` up, for a setting that picks one of a few
+    /// things (such as racing's track). Empty to show the number.
+    pub labels: &'static [&'static str],
+}
+
+impl Setting {
+    /// What the lobby shows for `value`: its label, or the number.
+    pub fn label(self, value: u32) -> String {
+        value
+            .checked_sub(self.min)
+            .and_then(|index| self.labels.get(index as usize))
+            .map_or_else(|| value.to_string(), |label| (*label).to_string())
+    }
 }
 
 /// Which setting: a minigame, and where the setting is in that minigame's
@@ -74,10 +87,14 @@ impl SettingValues {
         value
     }
 
-    /// What the lobby shows for `game`'s settings, e.g. "Laps: 3". Empty if it has none.
+    /// What the lobby shows for `game`'s settings, e.g. "Laps: 3 · Track: Oval". Empty if it
+    /// has none.
     pub fn summary(&self, game: Minigame) -> String {
         SettingId::all_of(game)
-            .map(|id| format!("{}: {}", id.setting().name, self.get(id)))
+            .map(|id| {
+                let setting = id.setting();
+                format!("{}: {}", setting.name, setting.label(self.get(id)))
+            })
             .collect::<Vec<_>>()
             .join(" · ")
     }
@@ -110,15 +127,25 @@ impl Command for ChangeSetting {
             return;
         };
         let id = self.setting;
-        let Setting { name, min, max, .. } = id.setting();
+        let setting = id.setting();
+        let Setting { name, min, max, .. } = setting;
         let game = id.game.info().name;
         let before = settings.get(id);
         let wanted = before.saturating_add_signed(self.by);
         if settings.set(id, wanted) == before {
-            debug!("{game} {name} stays at {before}: it goes from {min} to {max}");
+            debug!(
+                "{game} {name} stays at {}: it goes from {} to {}",
+                setting.label(before),
+                setting.label(min),
+                setting.label(max)
+            );
             return;
         }
-        info!("{game} {name} {before} -> {}", settings.get(id));
+        info!(
+            "{game} {name} {} -> {}",
+            setting.label(before),
+            setting.label(settings.get(id))
+        );
     }
 }
 
@@ -164,6 +191,43 @@ mod tests {
 
     use super::{ChangeSetting, MinigameSettings, SettingId, SettingValues};
     use crate::minigames::Minigame;
+
+    #[test]
+    fn labelled_settings_name_every_value() {
+        for game in Minigame::ALL {
+            for id in SettingId::all_of(game) {
+                let setting = id.setting();
+                if !setting.labels.is_empty() {
+                    assert_eq!(
+                        setting.labels.len() as u32,
+                        setting.max - setting.min + 1,
+                        "{} {setting:?}",
+                        game.info().name
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_setting_shows_its_label_or_its_number() {
+        let numbered = super::Setting {
+            name: "Laps",
+            min: 1,
+            max: 3,
+            default: 1,
+            labels: &[],
+        };
+        assert_eq!(numbered.label(2), "2");
+        let labelled = super::Setting {
+            labels: &["One", "Two", "Three"],
+            ..numbered
+        };
+        assert_eq!(labelled.label(1), "One");
+        assert_eq!(labelled.label(3), "Three");
+        // Out of range falls back to the number rather than panicking.
+        assert_eq!(labelled.label(9), "9");
+    }
 
     #[test]
     fn every_setting_starts_within_its_limits() {
@@ -213,9 +277,15 @@ mod tests {
     #[test]
     fn the_summary_lists_a_games_settings() {
         let mut values = SettingValues::default();
-        let id = SettingId::all_of(Minigame::Racing).next().unwrap();
-        values.set(id, 4);
-        assert_eq!(values.summary(Minigame::Racing), "Laps: 4");
+        let mut racing = SettingId::all_of(Minigame::Racing);
+        let (laps, track) = (racing.next().unwrap(), racing.next().unwrap());
+        values.set(laps, 4);
+        assert_eq!(
+            values.summary(Minigame::Racing),
+            "Laps: 4 · Track: Figure eight"
+        );
+        values.set(track, 1);
+        assert_eq!(values.summary(Minigame::Racing), "Laps: 4 · Track: Oval");
         assert_eq!(values.summary(Minigame::TwoPlayerPong), "Goals to win: 5");
     }
 }

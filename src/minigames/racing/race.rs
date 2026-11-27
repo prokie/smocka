@@ -11,7 +11,8 @@ use serde::{Deserialize, Serialize};
 use super::car::{Car, CarState};
 use super::config::{COUNTDOWN, FINISH_GRACE};
 use super::progress::{RaceProgress, running_order};
-use super::{LAPS_SETTING, PHASE, RacingSystems};
+use super::track::{Track, TrackId};
+use super::{LAPS_SETTING, PHASE, RacingSystems, TRACK_SETTING};
 use crate::minigames::outcome::{MinigameEnded, MinigameResult, Placement};
 use crate::minigames::settings::MinigameSettings;
 use crate::network::is_host;
@@ -79,6 +80,7 @@ pub struct FastestLap {
 #[derive(Resource, Debug)]
 pub struct RaceDirector {
     laps: u32,
+    track: TrackId,
     countdown: Timer,
     /// Time since the race was set up, countdown included. Lap times are measured on it.
     clock: Duration,
@@ -97,9 +99,10 @@ pub struct RaceDirector {
 }
 
 impl RaceDirector {
-    fn new(rules: &RaceRules, laps: u32) -> Self {
+    fn new(rules: &RaceRules, laps: u32, track: TrackId) -> Self {
         Self {
             laps,
+            track,
             countdown: Timer::new(rules.countdown, TimerMode::Once),
             clock: Duration::ZERO,
             lap_started: HashMap::new(),
@@ -114,6 +117,11 @@ impl RaceDirector {
     /// How many laps a car must complete to finish.
     pub fn laps(&self) -> u32 {
         self.laps
+    }
+
+    /// The track the race is on.
+    pub fn track(&self) -> &'static Track {
+        self.track.track()
     }
 
     /// Record that `car` just crossed the line to complete a lap, and return how long the lap
@@ -180,6 +188,7 @@ impl Plugin for RacePlugin {
     fn build(&self, app: &mut App) {
         app.component::<RaceStatus>().replicate();
         app.component::<RaceStart>().replicate();
+        app.component::<TrackId>().replicate();
         app.init_resource::<RaceRules>();
 
         app.add_systems(OnEnter(PHASE), start_race.run_if(is_host));
@@ -199,10 +208,16 @@ impl Plugin for RacePlugin {
     }
 }
 
+/// Host only: the track the host picked for the next race.
+pub fn picked_track(settings: &MinigameSettings) -> TrackId {
+    TrackId::from_setting(settings.get(TRACK_SETTING))
+}
+
 /// Host only: when the race starts, spawn its status and start the countdown.
 ///
 /// The countdown's timer (in [`RaceDirector`]) finishes on the same tick as [`RaceStart`], so the
-/// status says "GO!" on the tick the cars may first drive.
+/// status says "GO!" on the tick the cars may first drive. The race's [`TrackId`] goes on the same
+/// entity as [`RaceStart`], so they reach every peer together.
 fn start_race(
     rules: Res<RaceRules>,
     settings: Res<MinigameSettings>,
@@ -211,19 +226,22 @@ fn start_race(
     mut commands: Commands,
 ) {
     let laps = settings.get(LAPS_SETTING);
+    let track = picked_track(&settings);
     let start = timeline.tick() + countdown_ticks(rules.countdown, fixed.timestep()) as i32;
     info!(
-        "Race of {laps} laps starts in {} s, on tick {}",
+        "Race of {laps} laps on the {} track starts in {} s, on tick {}",
+        track.name(),
         rules.countdown.as_secs_f32().ceil() as u32,
         start.0
     );
     commands.spawn((
         RaceStatus::Countdown(whole_seconds(rules.countdown)),
         RaceStart(start),
+        track,
         DespawnOnExit(PHASE),
         Replicate::to_clients(NetworkTarget::All),
     ));
-    commands.insert_resource(RaceDirector::new(&rules, laps));
+    commands.insert_resource(RaceDirector::new(&rules, laps, track));
 }
 
 /// Host only: run the countdown and the finish grace, and publish the status they give.
@@ -281,7 +299,7 @@ fn end_race(
         .filter(|(_, progress, _)| progress.place.is_none())
         .map(|(car, progress, state)| (car.clone(), *progress, state.position))
         .collect();
-    let placements = race_placements(&director.finishers, unfinished);
+    let placements = race_placements(director.track(), &director.finishers, unfinished);
     let summary = race_summary(director.fastest_lap.as_ref());
     info!(
         "Race over ({}). {summary}",
@@ -332,10 +350,11 @@ pub fn lap_time_label(time: Duration) -> String {
 /// The final order: the finishers in the order they finished, then the cars that didn't finish
 /// (marked "DNF"), in [`running_order`].
 pub fn race_placements(
+    track: &Track,
     finishers: &[Car],
     mut unfinished: Vec<(Car, RaceProgress, Vec2)>,
 ) -> Vec<Placement> {
-    unfinished.sort_by_key(|(_, progress, position)| running_order(*progress, *position));
+    unfinished.sort_by_key(|(_, progress, position)| running_order(track, *progress, *position));
     finishers
         .iter()
         .map(|car| (car, ""))
@@ -365,6 +384,7 @@ mod tests {
         lap_time_label, race_placements, race_summary, status_label,
     };
     use crate::minigames::racing::progress::RaceProgress;
+    use crate::minigames::racing::track::TrackId;
 
     fn car(number: u32) -> Car {
         Car {
@@ -383,7 +403,7 @@ mod tests {
 
     #[test]
     fn counts_down_then_races() {
-        let mut director = RaceDirector::new(&rules(3, 10), 3);
+        let mut director = RaceDirector::new(&rules(3, 10), 3, TrackId::default());
         assert_eq!(director.tick(Duration::ZERO), RaceStatus::Countdown(3));
         assert_eq!(
             director.tick(Duration::from_millis(500)),
@@ -398,7 +418,7 @@ mod tests {
 
     #[test]
     fn the_first_finish_starts_the_grace_period() {
-        let mut director = RaceDirector::new(&rules(0, 10), 3);
+        let mut director = RaceDirector::new(&rules(0, 10), 3, TrackId::default());
         assert_eq!(director.tick(Duration::ZERO), RaceStatus::Racing);
         assert_eq!(director.finish(&car(2)), 1);
         assert_eq!(director.finish(&car(1)), 2);
@@ -413,7 +433,7 @@ mod tests {
 
     #[test]
     fn times_laps_and_keeps_the_fastest() {
-        let mut director = RaceDirector::new(&rules(3, 10), 3);
+        let mut director = RaceDirector::new(&rules(3, 10), 3, TrackId::default());
         director.tick(Duration::from_secs(3));
         // First laps are timed from the end of the countdown.
         director.tick(Duration::from_secs(9));
@@ -474,7 +494,8 @@ mod tests {
             let timestep = Duration::from_secs_f64(1.0 / rate);
             for countdown in [0, 1, 3, 10].map(Duration::from_secs) {
                 let ticks = countdown_ticks(countdown, timestep);
-                let mut director = RaceDirector::new(&rules_with_countdown(countdown), 3);
+                let mut director =
+                    RaceDirector::new(&rules_with_countdown(countdown), 3, TrackId::default());
                 // The timer is ticked once per fixed tick, from the first one after it starts.
                 let mut finished_on = None;
                 for tick in 1..=ticks + 1 {
@@ -513,6 +534,7 @@ mod tests {
             place: None,
         };
         let placements = race_placements(
+            TrackId::default().track(),
             &finishers,
             vec![(car(1), behind, Vec2::ZERO), (car(3), further, Vec2::ZERO)],
         );

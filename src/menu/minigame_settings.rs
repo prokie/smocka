@@ -146,8 +146,10 @@ pub(super) fn update_setting_values(
 ) {
     for (SettingValue(id), mut text) in &mut values {
         let setting = id.setting();
+        let value = settings.get(*id);
         show_pick(
-            settings.get(*id),
+            value,
+            setting.label(value),
             (setting.min, setting.max),
             &mut text,
             &buttons,
@@ -177,7 +179,8 @@ mod tests {
         update_setting_values,
     };
     use crate::minigames::Minigame;
-    use crate::minigames::racing::LAPS_SETTING;
+    use crate::minigames::racing::track::TrackId;
+    use crate::minigames::racing::{LAPS_SETTING, TRACK_SETTING};
     use crate::minigames::settings::MinigameSettings;
 
     fn screens(world: &mut World) -> usize {
@@ -208,6 +211,7 @@ mod tests {
         let mut world = World::new();
         let mut settings = MinigameSettings::default();
         settings.set(LAPS_SETTING, 7);
+        settings.set(TRACK_SETTING, TrackId::Oval as u32);
         world.insert_resource(settings);
         world
             .commands()
@@ -219,6 +223,6 @@ mod tests {
             .iter(&world)
             .map(|text| text.0.clone())
             .collect();
-        assert_eq!(shown, ["7"]);
+        assert_eq!(shown, ["7", "Oval"]);
     }
 }

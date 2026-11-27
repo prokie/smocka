@@ -5,12 +5,13 @@ use super::LAPS_SETTING;
 use super::PHASE;
 use super::RacingInput;
 use super::car::{Car, CarState};
-use super::config::{CAR_LENGTH, CAR_WIDTH, START_LINE_X, TRACK_INNER_RADIUS, TRACK_OUTER_RADIUS};
+use super::checkpoint_guide::CheckpointGuidePlugin;
+use super::config::{CAR_LENGTH, CAR_WIDTH};
 use super::progress::{RaceProgress, lap_label, position_label, running_order};
 use super::race::{RaceStatus, status_label};
 use super::skid_marks::SkidMarksPlugin;
 use super::sounds::RacingSoundsPlugin;
-use super::track::{CHECKPOINTS, outline};
+use super::track::TrackId;
 use crate::camera::gameplay_camera_2d;
 use crate::config::display::{VIEW_HEIGHT, VIEW_WIDTH};
 use crate::minigames::settings::PublishedSettings;
@@ -19,9 +20,6 @@ use crate::players::player_color;
 
 /// Points right. Drawn in white/grey and tinted per player.
 const CAR_IMAGE: &str = "minigames/racing/car.png";
-
-/// Covers the whole screen, drawn to match the shape in [`track`](super::track).
-const TRACK_IMAGE: &str = "minigames/racing/track.png";
 
 /// Draw order: higher values are drawn on top.
 const TRACK_Z: f32 = 0.0;
@@ -41,6 +39,7 @@ const STATUS_TEXT_SIZE: f32 = 72.0;
 /// How long "GO!" stays up after the start, in seconds.
 const GO_SECONDS: f32 = 1.0;
 
+/// The race's track art, which covers the whole screen (see [`Layout::image`](super::track::Layout::image)).
 #[derive(Component)]
 pub struct TrackSprite;
 
@@ -65,13 +64,12 @@ pub struct RacingVisualsPlugin;
 
 impl Plugin for RacingVisualsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((SkidMarksPlugin, RacingSoundsPlugin));
+        app.add_plugins((SkidMarksPlugin, RacingSoundsPlugin, CheckpointGuidePlugin));
         app.init_resource::<TrackGizmos>();
         app.add_systems(
             OnEnter(PHASE),
             (
                 spawn_camera,
-                spawn_track,
                 spawn_lap_text,
                 spawn_position_text,
                 spawn_status_text,
@@ -81,6 +79,7 @@ impl Plugin for RacingVisualsPlugin {
         app.add_systems(
             Update,
             (
+                spawn_track,
                 toggle_track_gizmos,
                 draw_track_gizmos.run_if(|show: Res<TrackGizmos>| show.0),
                 update_lap_text,
@@ -109,13 +108,27 @@ fn spawn_camera(mut commands: Commands) {
     commands.spawn(gameplay_camera_2d(PHASE, VIEW_WIDTH, VIEW_HEIGHT));
 }
 
-fn spawn_track(assets: Res<AssetServer>, mut commands: Commands) {
+/// Draw the race's track once its [`TrackId`] is known: at once on the host, and on a joiner when
+/// the race's entity arrives.
+fn spawn_track(
+    track: Option<Single<&TrackId>>,
+    drawn: Query<(), With<TrackSprite>>,
+    assets: Res<AssetServer>,
+    mut commands: Commands,
+) {
+    let Some(track) = track.map(|track| **track) else {
+        return;
+    };
+    if !drawn.is_empty() {
+        return;
+    }
+    debug!("Drawing the {} track", track.name());
     commands.spawn((
         TrackSprite,
         DespawnOnExit(PHASE),
         Sprite {
             custom_size: Some(Vec2::new(VIEW_WIDTH, VIEW_HEIGHT)),
-            ..Sprite::from_image(assets.load(TRACK_IMAGE))
+            ..Sprite::from_image(assets.load(track.layout().image))
         },
         Transform::from_xyz(0.0, 0.0, TRACK_Z),
     ));
@@ -188,21 +201,27 @@ type CarStandings = (
 
 /// Show where this player's car is in the running order. Worked out here from the replicated
 /// progress and the positions this app sees, so it can be a moment off for close cars. Empty
-/// once the car has finished (the lap counter shows its place) or if this player has no car.
+/// once the car has finished (the lap counter shows its place), if this player has no car, or
+/// until the race's track is known.
 fn update_position_text(
+    track: Option<Single<&TrackId>>,
     cars: Query<CarStandings, With<Car>>,
     mut text: Single<&mut Text, With<PositionText>>,
 ) {
-    let own = cars
-        .iter()
-        .find(|(_, _, own)| *own)
-        .filter(|(progress, _, _)| progress.place.is_none())
-        .map(|(progress, state, _)| running_order(*progress, state.position));
+    let track = track.map(|id| id.track());
+    let own = track.and_then(|track| {
+        cars.iter()
+            .find(|(_, _, own)| *own)
+            .filter(|(progress, _, _)| progress.place.is_none())
+            .map(|(progress, state, _)| (track, running_order(track, *progress, state.position)))
+    });
     let shown = match own {
-        Some(own) => {
+        Some((track, own)) => {
             let ahead = cars
                 .iter()
-                .filter(|(progress, state, _)| running_order(**progress, state.position) < own)
+                .filter(|(progress, state, _)| {
+                    running_order(track, **progress, state.position) < own
+                })
                 .count();
             position_label(ahead + 1, cars.iter().len())
         }
@@ -267,18 +286,23 @@ fn toggle_track_gizmos(keys: Res<ButtonInput<KeyCode>>, mut show: ResMut<TrackGi
     }
 }
 
-fn draw_track_gizmos(mut gizmos: Gizmos) {
-    for radius in [TRACK_INNER_RADIUS, TRACK_OUTER_RADIUS] {
-        gizmos.linestrip_2d(outline(radius, 32), ROAD_EDGE_GIZMO_COLOR);
+fn draw_track_gizmos(track: Option<Single<&TrackId>>, mut gizmos: Gizmos) {
+    let Some(track) = track.map(|id| id.track()) else {
+        return;
+    };
+    let layout = track.layout();
+    for offset in [-layout.road_half_width, layout.road_half_width] {
+        gizmos.linestrip_2d(track.outline(offset, 4.0), ROAD_EDGE_GIZMO_COLOR);
     }
+    let across = Vec2::from_angle(layout.start_heading).perp() * layout.road_half_width;
     gizmos.line_2d(
-        Vec2::new(START_LINE_X, -TRACK_INNER_RADIUS),
-        Vec2::new(START_LINE_X, -TRACK_OUTER_RADIUS),
+        layout.start_line - across,
+        layout.start_line + across,
         START_LINE_GIZMO_COLOR,
     );
-    for checkpoint in CHECKPOINTS {
+    for checkpoint in track.checkpoints() {
         gizmos.rect_2d(
-            Isometry2d::from_translation(checkpoint.center()),
+            checkpoint.isometry(),
             checkpoint.size(),
             CHECKPOINT_GIZMO_COLOR,
         );
@@ -305,7 +329,10 @@ fn add_car_sprite(
 }
 
 /// Draw each car between its last two ticks (see [`smoothing`](crate::minigames::smoothing)).
-fn sync_car_transform(time: Res<Time<Fixed>>, mut cars: Query<Smoothed<CarState>, With<Car>>) {
+pub(super) fn sync_car_transform(
+    time: Res<Time<Fixed>>,
+    mut cars: Query<Smoothed<CarState>, With<Car>>,
+) {
     for (state, previous, mut transform) in &mut cars {
         let shown = smoothed(state, previous, time.overstep_fraction());
         transform.translation.x = shown.position.x;

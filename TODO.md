@@ -38,14 +38,6 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
 
 ## Bugs and rough edges
 
-- [ ] **Racing doesn't tell you when you miss a checkpoint.** `RaceProgress::advance`
-      (`progress.rs`) only counts the next checkpoint in order, so a car that cuts across the
-      grass past one gets no laps until it drives back to it. The only sign is a host-side
-      `debug!` in `count_laps`. The player just sees the lap counter not go up. Show it: a
-      "Missed checkpoint!" message when your car enters a checkpoint out of order, and mark the
-      checkpoint it needs next (or an arrow towards it). `RaceProgress` is replicated, so each
-      client already knows its own car's `next_checkpoint` and can check its own `CarState`
-      against `checkpoint_at`, with no new message from the host.
 - [ ] **Skid marks depend on the frame rate.** `leave_skid_marks` runs in `Update` and divides
       each change in `CarState` by the frame's `delta_secs`. Cars driven in `FixedUpdate` (all
       of them on the host and on a driver's machine) only change on 128 Hz ticks. On a 144–240 Hz
@@ -155,8 +147,6 @@ same build.
       Only give it to predicted cars, never the host's: it writes the blend into `CarState`,
       marking it changed every frame, so the host would re-send idle cars. Pong paddles don't
       need it: only the owner predicts one, and nobody else's input moves it.
-- [ ] **More interesting tracks**: describe the track as data (a centre line plus width) instead of
-      an oval.
 - [ ] **Tournament matches at the same time.** Today matches run one after another, with
       everyone else watching ("Watching: …" and the bracket on the next-match screen). That's slow
       with many players: 8 players is 7 matches. Running them at once needs a match id on every

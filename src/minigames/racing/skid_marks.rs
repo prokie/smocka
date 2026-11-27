@@ -6,7 +6,7 @@ use bevy::prelude::*;
 
 use super::PHASE;
 use super::car::{Car, CarState};
-use super::track::{Surface, surface_at};
+use super::track::{Surface, TrackId};
 
 /// Cornering this hard (speed × turn rate, world units/s²) leaves marks. At full steering that's
 /// from about two thirds of top speed.
@@ -75,20 +75,25 @@ pub fn is_skidding(before: CarState, after: CarState, dt: f32) -> bool {
     cornering > CORNERING || braking > BRAKING
 }
 
-/// Lay a strip behind each rear wheel of every car that is skidding on the road, from where the
-/// wheel was last frame to where it is now.
+/// Lay a strip behind each rear wheel of every car that is skidding on the race's road, from
+/// where the wheel was last frame to where it is now. Nothing until the race's [`TrackId`] has
+/// arrived.
 fn leave_skid_marks(
     time: Res<Time>,
+    track: Option<Single<&TrackId>>,
     mut cars: Query<(&CarState, &mut SkidTrail)>,
     mut commands: Commands,
 ) {
+    let Some(track) = track.map(|id| id.track()) else {
+        return;
+    };
     for (state, mut trail) in &mut cars {
         let Some(before) = trail.last.replace(*state) else {
             continue;
         };
         let step = state.position.distance(before.position);
         if step > MAX_STEP
-            || surface_at(state.position) != Surface::Road
+            || track.surface_at(state.position) != Surface::Road
             || !is_skidding(before, *state, time.delta_secs())
         {
             continue;

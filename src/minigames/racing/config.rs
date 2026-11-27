@@ -51,19 +51,6 @@ pub const GRASS_MAX_SPEED: f32 = 80.0;
 /// [`ACCELERATION`], or throttle would beat it.
 pub const GRASS_DECELERATION: f32 = 400.0;
 
-/// The track is a stadium-shaped ring: the road is every point between
-/// [`TRACK_INNER_RADIUS`] and [`TRACK_OUTER_RADIUS`] from a horizontal centre line running
-/// from `-TRACK_HALF_LENGTH` to `TRACK_HALF_LENGTH` along `y = 0`. Redraw `track.png` if
-/// you change these.
-pub const TRACK_HALF_LENGTH: f32 = 140.0;
-/// See [`TRACK_HALF_LENGTH`].
-pub const TRACK_INNER_RADIUS: f32 = 100.0;
-/// See [`TRACK_HALF_LENGTH`].
-pub const TRACK_OUTER_RADIUS: f32 = 160.0;
-
-/// `x` of the start line, on the bottom straight. Cars race anticlockwise, so they cross it
-/// heading right.
-pub const START_LINE_X: f32 = 0.0;
 /// Cars the starting grid has room for (and `track.png` draws), so the most players a race
 /// can have.
 pub const GRID_SLOTS: usize = 8;
@@ -88,3 +75,7 @@ pub const FINISH_GRACE: Duration = Duration::from_secs(10);
 /// tick, so keep it well above how far a car moves in one tick (`MAX_SPEED / TICK_RATE`);
 /// `track.rs` checks this when it compiles.
 pub const CHECKPOINT_DEPTH: f32 = 16.0;
+/// How far each checkpoint reaches past both edges of the road, so a car running a little
+/// wide still counts. Keep it small enough that cutting across the grass inside a hairpin
+/// misses the checkpoint at its apex.
+pub const CHECKPOINT_MARGIN: f32 = 16.0;

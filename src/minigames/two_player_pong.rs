@@ -32,6 +32,7 @@ pub const INFO: MinigameInfo = MinigameInfo {
         min: MIN_GOALS_TO_WIN,
         max: MAX_GOALS_TO_WIN,
         default: GOALS_TO_WIN,
+        labels: &[],
     }],
 };
 

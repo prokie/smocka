@@ -499,6 +499,7 @@ pub(super) fn update_round_picker(
     };
     show_pick(
         rounds,
+        rounds.to_string(),
         (MIN_ROUNDS, MAX_ROUNDS),
         &mut text,
         &buttons,
@@ -510,17 +511,17 @@ pub(super) fn update_round_picker(
     );
 }
 
-/// Show `value` in `text`, and disable the buttons that `change_of` says change it once it's at
-/// the end of `(min, max)` they move it towards.
+/// Show `value` in `text` as `shown`, and disable the buttons that `change_of` says change it once
+/// it's at the end of `(min, max)` they move it towards.
 pub(super) fn show_pick(
     value: u32,
+    shown: String,
     (min, max): (u32, u32),
     text: &mut Text,
     buttons: &Query<(Entity, &MenuButton, Has<InteractionDisabled>)>,
     commands: &mut Commands,
     change_of: impl Fn(&MenuButton) -> Option<i32>,
 ) {
-    let shown = value.to_string();
     if text.0 != shown {
         text.0 = shown;
     }

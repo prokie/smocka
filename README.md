@@ -87,9 +87,10 @@ Each minigame also has a `thumbnail.png` (480×270) for its tile in the lobby, a
 `assets/menu/gear.png` is the settings icon on the tiles.
 
 The placeholders come from `python3 tools/make_art.py`, which makes the thumbnails from the
-minigames' art, so replacing the art and running it again updates them. The racing track's art must match the
-shape set in `src/minigames/racing/config.rs` (`TRACK_*` constants), as must the copy of those
-constants in the script; press `F3` in a race to check.
+minigames' art, so replacing the art and running it again updates them. Each racing track's art
+(`racing/figure_eight.png`, `racing/oval.png`) must match its `Layout` in
+`src/minigames/racing/track.rs`, as must the copy of those layouts in the script; press `F3` in a
+race to check.
 
 ## Sound
 

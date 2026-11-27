@@ -6,7 +6,8 @@ drawn at ART_SCALE texture pixels per unit. Shapes are drawn SUPERSAMPLE times b
 then shrunk, for smooth edges.
 
 Shapes that gameplay depends on (the racing track, Pong's walls) use the same constants as each
-minigame's config.rs (src/minigames/<minigame>/config.rs): keep them in step. Run from the repository root:
+minigame's config.rs (src/minigames/<minigame>/config.rs), and the racing track the same pieces as
+src/minigames/racing/track.rs: keep them in step. Run from the repository root:
 
     python3 tools/make_art.py
 
@@ -16,6 +17,7 @@ Then press F3 in a race to check that the road edges line up with the art. Needs
 import math
 from collections.abc import Iterator
 from pathlib import Path
+from dataclasses import dataclass
 from typing import Final, TypeAlias
 
 from PIL import Image, ImageChops, ImageDraw
@@ -28,14 +30,80 @@ VIEW_W: Final[float] = 640.0  # config::display::VIEW_WIDTH
 VIEW_H: Final[float] = 360.0  # config::display::VIEW_HEIGHT
 
 # Keep in step with minigames::racing::config.
-HALF_LENGTH: Final[float] = 140.0  # TRACK_HALF_LENGTH
-INNER: Final[float] = 100.0  # TRACK_INNER_RADIUS
-OUTER: Final[float] = 160.0  # TRACK_OUTER_RADIUS
-START_LINE_X: Final[float] = 0.0  # START_LINE_X
 GRID_ROW: Final[float] = 24.0  # GRID_ROW_SPACING
 GRID_LANE: Final[float] = 14.0  # GRID_LANE_OFFSET
 CAR_LENGTH: Final[float] = 16.0  # CAR_LENGTH
 CAR_WIDTH: Final[float] = 10.0  # CAR_WIDTH
+
+
+
+@dataclass(frozen=True)
+class TrackLayout:
+    """Keep in step with minigames::racing::track::Layout."""
+
+    name: str  # the art's file name, in assets/minigames/racing/
+    start_line: tuple[float, float]
+    road_half_width: float
+    # Its pieces, leaving out the checkpoints: ("straight", length) or ("turn", radius,
+    # degrees), with positive degrees turning left.
+    pieces: list[tuple]
+    crossing: tuple[float, float] | None = None
+    # Which way cars face on the grid. Only 0 (right) is drawn.
+    start_heading: float = 0.0
+
+
+# Keep in step with minigames::racing::track: FIGURE_EIGHT and OVAL.
+FIGURE_EIGHT: Final[TrackLayout] = TrackLayout(
+    name="figure_eight",
+    start_line=(-60.0, -40.0),
+    road_half_width=24.0,
+    crossing=(50.0, -40.0),
+    pieces=[
+        ("straight", 280.0),
+        ("turn", 45.0, 90.0),
+        ("straight", 85.0),
+        ("turn", 45.0, 90.0),
+        ("straight", 20.0),
+        ("turn", 25.0, 90.0),
+        ("straight", 20.0),
+        ("turn", 32.0, -90.0),
+        ("turn", 32.0, -90.0),
+        ("straight", 20.0),
+        ("turn", 25.0, 90.0),
+        ("straight", 306.0),
+        ("turn", 32.0, 90.0),
+        ("turn", 32.0, 90.0),
+        ("straight", 230.0),
+        ("turn", 40.0, -90.0),
+        ("straight", 106.0),
+        ("straight", 15.0),
+        ("turn", 50.0, -90.0),
+        ("straight", 105.0),
+        ("straight", 105.0),
+        ("turn", 50.0, -90.0),
+        ("turn", 50.0, -90.0),
+        ("straight", 150.0),
+    ],
+)
+OVAL: Final[TrackLayout] = TrackLayout(
+    name="oval",
+    start_line=(0.0, -130.0),
+    road_half_width=30.0,
+    pieces=[
+        ("straight", 140.0),
+        ("turn", 130.0, 90.0),
+        ("turn", 130.0, 90.0),
+        ("straight", 140.0),
+        ("straight", 140.0),
+        ("turn", 130.0, 90.0),
+        ("turn", 130.0, 90.0),
+        ("straight", 140.0),
+    ],
+)
+TRACKS: Final[list[TrackLayout]] = [FIGURE_EIGHT, OVAL]
+
+# Keep in step with minigames::racing::checkpoint_guide::CHEVRON_SIZE.
+CHEVRON_SIZE: Final[tuple[float, float]] = (10.0, 12.0)
 
 # Keep in step with minigames::two_player_pong::config.
 WALL_THICKNESS: Final[float] = 4.0  # WALL_THICKNESS
@@ -63,8 +131,7 @@ SHOOTOUT_SPAWNS: Final[list[tuple[float, float]]] = [
     (-280.0, 140.0), (280.0, -140.0), (280.0, 140.0), (-280.0, -140.0),
 ]
 
-BOTTOM_Y: Final[float] = -(INNER + OUTER) / 2
-KERB: Final[float] = 4.0  # kerb width, inside the road
+KERB: Final[float] = 4.0  # kerb width, inside the road on the bends
 KERB_SEGMENT: Final[float] = 10.0  # length of each red/white piece
 EDGE: Final[float] = 2.0  # dark outline just outside the road
 
@@ -90,6 +157,7 @@ FLOOR_LINE: Final[RGBA] = (54, 50, 47, 255)
 WALL: Final[RGBA] = (112, 104, 96, 255)
 WALL_TOP: Final[RGBA] = (138, 129, 119, 255)
 BARREL: Final[RGBA] = (44, 44, 50, 255)
+BOX_JUNCTION: Final[RGBA] = (240, 196, 64, 255)
 
 ASSETS: Final[Path] = Path("assets/minigames")
 MENU_ASSETS: Final[Path] = Path("assets/menu")
@@ -147,19 +215,18 @@ class Canvas:
             width=round(width * self.scale),
         )
 
-    def stadium(self, radius: float, fill: RGBA) -> None:
-        """Every point within `radius` of the track's centre line: the same shape as
-        track::surface_at uses."""
-        self.rect(-HALF_LENGTH - radius, -radius, HALF_LENGTH + radius, radius, fill, radius)
-
-    def wedge(self, cx: float, cy: float, radius: float, a0: float, a1: float, fill: RGBA) -> None:
-        """A slice of the circle around (cx, cy), from angle `a0` to `a1` (radians, anticlockwise)."""
-        # Pillow measures angles in degrees, clockwise, with y down.
-        self.draw.pieslice(
-            self.box(cx - radius, cy - radius, cx + radius, cy + radius),
-            -math.degrees(a1),
-            -math.degrees(a0),
+    def polygon(
+        self,
+        points: list[tuple[float, float]],
+        fill: RGBA,
+        outline: RGBA | None = None,
+        width: float = 0.0,
+    ) -> None:
+        self.draw.polygon(
+            [self.point(x, y) for x, y in points],
             fill=fill,
+            outline=outline,
+            width=round(width * self.scale),
         )
 
     def line(self, x0: float, y0: float, x1: float, y1: float, fill: RGBA, width: float) -> None:
@@ -181,77 +248,179 @@ class Canvas:
 # Racing
 
 
-def grid_slots() -> Iterator[tuple[float, float]]:
-    """The same positions as track::grid_position, for 8 cars."""
+def grid_slots(track: TrackLayout) -> Iterator[tuple[float, float]]:
+    """The same positions as Track::grid_position, for 8 cars."""
+    fx, fy = math.cos(track.start_heading), math.sin(track.start_heading)
+    sx, sy = track.start_line
     for slot in range(8):
         row, outside = slot // 2, slot % 2 == 1
-        x = START_LINE_X - GRID_ROW * (row + 1) - (GRID_ROW / 2 if outside else 0)
-        yield x, BOTTOM_Y + (-1 if outside else 1) * GRID_LANE
+        back = GRID_ROW * (row + 1) + (GRID_ROW / 2 if outside else 0)
+        lane = -GRID_LANE if outside else GRID_LANE
+        yield sx - fx * back - fy * lane, sy - fy * back + fx * lane
 
 
-def kerb_ring(canvas: Canvas, radius: float, band: tuple[float, float]) -> None:
-    """Alternating red and white pieces all the way round, out to `radius` from the centre line.
-    `band` is the kerb's (inner, outer) distance from the centre line on the straights."""
-    colours = (KERB_RED, KERB_WHITE)
-    # Straights.
-    count = math.ceil(2 * HALF_LENGTH / KERB_SEGMENT)
-    for i in range(count):
-        x0 = -HALF_LENGTH + i * KERB_SEGMENT
-        x1 = min(x0 + KERB_SEGMENT, HALF_LENGTH)
-        for sign in (1, -1):
-            canvas.rect(x0, sign * band[0], x1, sign * band[1], colours[i % 2])
-    # Bends: slices of the circle around each end of the centre line.
-    step = KERB_SEGMENT / radius
-    count = math.ceil(math.pi / step)
-    for cx, start in ((HALF_LENGTH, -math.pi / 2), (-HALF_LENGTH, math.pi / 2)):
-        for i in range(count):
-            a0 = start + i * step
-            a1 = min(a0 + step, start + math.pi)
-            canvas.wedge(cx, 0, radius, a0, a1, colours[i % 2])
+# A point on the track's centre line: x, y, and which way the track runs there (radians).
+TrackPoint: TypeAlias = tuple[float, float, float]
 
 
-def draw_track() -> None:
+def track_pieces(track: TrackLayout) -> list[tuple[tuple, list[TrackPoint]]]:
+    """Each of the track's pieces, with points along it at most 1 unit apart, both ends included,
+    followed on from the start line as track.rs does."""
+    x, y = track.start_line
+    heading = track.start_heading
+    pieces = []
+    for piece in track.pieces:
+        kind, *size = piece
+        if kind == "straight":
+            (length,) = size
+            count = max(1, math.ceil(length))
+            points = [
+                (x + math.cos(heading) * length * i / count,
+                 y + math.sin(heading) * length * i / count,
+                 heading)
+                for i in range(count + 1)
+            ]
+        else:
+            radius, degrees = size
+            sweep = math.radians(degrees)
+            side = 1.0 if sweep > 0 else -1.0
+            # The circle's centre is off to the side the car turns towards.
+            cx = x - math.sin(heading) * radius * side
+            cy = y + math.cos(heading) * radius * side
+            start = math.atan2(y - cy, x - cx)
+            count = max(2, math.ceil(abs(sweep) * radius))
+            points = []
+            for i in range(count + 1):
+                angle = start + sweep * i / count
+                points.append(
+                    (cx + math.cos(angle) * radius, cy + math.sin(angle) * radius,
+                     heading + sweep * i / count)
+                )
+        pieces.append((piece, points))
+        x, y, heading = points[-1]
+    return pieces
+
+
+def offset(point: TrackPoint, distance: float) -> tuple[float, float]:
+    """The point `distance` to the left of `point` on the centre line (to the right if negative)."""
+    x, y, heading = point
+    return x - math.sin(heading) * distance, y + math.cos(heading) * distance
+
+
+def band(canvas: Canvas, points: list[TrackPoint], near: float, far: float, fill: RGBA) -> None:
+    """The strip between `near` and `far` to the left of the line through `points` (to the right
+    if negative)."""
+    for a, b in zip(points, points[1:]):
+        canvas.polygon([offset(a, near), offset(b, near), offset(b, far), offset(a, far)], fill)
+
+
+def kerbs(
+    canvas: Canvas, half_width: float, radius: float, degrees: float, points: list[TrackPoint]
+) -> None:
+    """Red and white kerbs along the edges of a bend, inside the road, in pieces about
+    KERB_SEGMENT long along the edge. A bend so tight that its inside edge nearly meets the
+    circle's centre gets none on the inside, where they'd only be a dot."""
+    inside = 1.0 if degrees > 0 else -1.0
+    for sign in (1.0, -1.0):
+        if sign == inside and radius - half_width < 2 * KERB:
+            continue
+        near, far = sign * (half_width - KERB), sign * half_width
+        piece: list[TrackPoint] = [points[0]]
+        colour = 0
+        travelled = 0.0
+        for a, b in zip(points, points[1:]):
+            piece.append(b)
+            travelled += math.dist(offset(a, far), offset(b, far))
+            if travelled >= KERB_SEGMENT:
+                band(canvas, piece, near, far, (KERB_RED, KERB_WHITE)[colour])
+                piece, colour, travelled = [b], 1 - colour, 0.0
+        if len(piece) > 1:
+            band(canvas, piece, near, far, (KERB_RED, KERB_WHITE)[colour])
+
+
+def box_junction(canvas: Canvas, crossing: tuple[float, float], half: float) -> None:
+    """Yellow criss-cross lines over the square where the road crosses itself, so it reads as a
+    crossing at a glance. The square is `half` either side of `crossing`."""
+    cx, cy = crossing
+    hatch = Canvas(VIEW_W, VIEW_H)
+    spacing = 8.0
+    reach = 2 * half
+    steps = math.ceil(reach / spacing)
+    for i in range(-steps, steps + 1):
+        d = i * spacing
+        hatch.line(cx + d - reach, cy - reach, cx + d + reach, cy + reach, BOX_JUNCTION, 1.0)
+        hatch.line(cx + d - reach, cy + reach, cx + d + reach, cy - reach, BOX_JUNCTION, 1.0)
+    inset = 3.0
+    box = [round(v) for v in canvas.box(cx - half + inset, cy - half + inset, cx + half - inset, cy + half - inset)]
+    canvas.image.alpha_composite(hatch.image.crop(box), (box[0], box[1]))
+    canvas.rect(cx - half + inset, cy - half + inset, cx + half - inset, cy + half - inset,
+                None, outline=BOX_JUNCTION, width=1.2)
+
+
+def draw_track(track: TrackLayout) -> None:
+    assert track.start_heading == 0.0, "the start line and grid are only drawn facing right"
+    half_width = track.road_half_width
     canvas = Canvas(VIEW_W, VIEW_H)
 
-    # Grass with mowing stripes, kept to fill the infield again later.
+    # Grass with mowing stripes.
     stripe = 20.0
     for i in range(math.ceil(VIEW_W / stripe)):
         x0 = -VIEW_W / 2 + i * stripe
         canvas.rect(x0, -VIEW_H / 2, x0 + stripe, VIEW_H / 2, (GRASS_A, GRASS_B)[i % 2])
-    grass = canvas.image.copy()
 
-    # Outside in: dark edge, outer kerb, road, inner kerb, dark edge, infield.
-    canvas.stadium(OUTER + EDGE, GRASS_EDGE)
-    kerb_ring(canvas, OUTER, (OUTER - KERB, OUTER))
-    canvas.stadium(OUTER - KERB, ROAD)
-    kerb_ring(canvas, INNER + KERB, (INNER, INNER + KERB))
-    canvas.stadium(INNER, GRASS_EDGE)
-    infield = Canvas(VIEW_W, VIEW_H)
-    infield.stadium(INNER - EDGE, WHITE)
-    canvas.image.paste(grass, (0, 0), infield.image)
+    # Dark edges all round, then the bends' kerbs, then the road over everything, so where the
+    # road crosses itself it runs straight over the other stretch's edges.
+    pieces = track_pieces(track)
+    for _, points in pieces:
+        band(canvas, points, -(half_width + EDGE), half_width + EDGE, GRASS_EDGE)
+    for (kind, *size), points in pieces:
+        if kind == "turn":
+            kerbs(canvas, half_width, *size, points)
+    for (kind, *_), points in pieces:
+        half = half_width - (KERB if kind == "turn" else 0.0)
+        band(canvas, points, -half, half, ROAD)
+    if track.crossing:
+        box_junction(canvas, track.crossing, half_width)
 
     # Start line: a chequered strip across the road, two squares deep.
     square = 4.0
-    y = -(OUTER - KERB)
+    sx, sy = track.start_line
+    y = sy - half_width
     row = 0
-    while y < -(INNER + KERB):
-        top = min(y + square, -(INNER + KERB))
+    while y < sy + half_width:
+        top = min(y + square, sy + half_width)
         for column in range(2):
-            x0 = START_LINE_X - square + column * square
+            x0 = sx - square + column * square
             colour = KERB_WHITE if (row + column) % 2 else LINE_DARK
             canvas.rect(x0, y, x0 + square, top, colour)
         y = top
         row += 1
 
     # Grid boxes: a white bracket in front of each starting slot.
-    for gx, gy in grid_slots():
+    for gx, gy in grid_slots(track):
         nose = gx + CAR_LENGTH / 2 + 2
         half = CAR_WIDTH / 2 + 2
         canvas.line(nose, gy - half, nose, gy + half, KERB_WHITE, 1.2)
         for edge in (gy - half, gy + half):
             canvas.line(nose - 6, edge, nose, edge, KERB_WHITE, 1.2)
 
-    canvas.save(ASSETS / "racing/track.png")
+    canvas.save(ASSETS / f"racing/{track.name}.png")
+
+
+def draw_chevron() -> None:
+    """Pointing right. White, tinted per player in the game, with a dark outline so it shows on
+    the road and the grass."""
+    length, width = CHEVRON_SIZE
+    canvas = Canvas(length, width)
+    x, y = length / 2 - 0.6, width / 2 - 0.6
+    arm = 4.0
+    canvas.polygon(
+        [(-x, y), (-x + arm, y), (x, 0.0), (-x + arm, -y), (-x, -y), (x - arm, 0.0)],
+        WHITE,
+        outline=OUTLINE,
+        width=0.8,
+    )
+    canvas.save(ASSETS / "racing/chevron.png")
 
 
 def draw_car() -> None:
@@ -466,13 +635,19 @@ def draw_pong_thumbnail() -> None:
 
 
 def draw_racing_thumbnail() -> None:
-    """Needs track.png and car.png. Four cars racing along the bottom straight, past the line."""
+    """Needs figure_eight.png and car.png. Three cars on the start straight, heading into the
+    crossing, and a fourth coming down at them."""
     folder = ASSETS / "racing"
-    base = Image.open(folder / "track.png").convert("RGBA")
+    track = FIGURE_EIGHT
+    assert track.crossing
+    base = Image.open(folder / f"{track.name}.png").convert("RGBA")
     car = Image.open(folder / "car.png").convert("RGBA")
-    lanes = (BOTTOM_Y + GRID_LANE, BOTTOM_Y - GRID_LANE)
-    for i, (tint, x) in enumerate(zip(PLAYER_TINTS, (110.0, 60.0, 5.0, -50.0))):
+    sx, sy = track.start_line
+    lanes = (sy + GRID_LANE, sy - GRID_LANE)
+    for i, (tint, x) in enumerate(zip(PLAYER_TINTS, (5.0, -45.0, -95.0))):
         place(base, tinted(car, tint), x, lanes[i % 2])
+    cx, cy = track.crossing
+    place(base, tinted(car, PLAYER_TINTS[3]), cx, cy + 62.0, -90.0)
     save_thumbnail(base, folder / "thumbnail.png")
 
 
@@ -582,8 +757,10 @@ def draw_frond() -> None:
 
 
 def main() -> None:
-    draw_track()
+    for track in TRACKS:
+        draw_track(track)
     draw_car()
+    draw_chevron()
     draw_arena()
     draw_paddle()
     draw_ball()
