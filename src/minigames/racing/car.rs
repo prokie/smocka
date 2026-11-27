@@ -19,6 +19,8 @@ use super::track::{START_HEADING, Surface, grid_position, surface_at};
 use crate::minigames::outcome::Participants;
 use crate::network::is_host;
 use crate::players::Player;
+use crate::standings::Points;
+use crate::standings::standings;
 
 /// Who drives this car. Set once at spawn, copied from the driver's [`Player`] so the car keeps
 /// them even if the player leaves mid-race.
@@ -97,35 +99,62 @@ impl Plugin for CarPlugin {
     }
 }
 
-/// One car per [`Participants`] player still here, on the grid in their order. Every driver predicts
-/// every car, with the other drivers' inputs rebroadcast by the host (see
+/// One car per [`Participants`] player still here, on the grid in reverse standings order: the
+/// player with the fewest points starts in front. Players on the same points keep joining order.
+/// Every driver predicts every car, with the other drivers' inputs rebroadcast by the host (see
 /// [`RacingInputPlugin`](super::racing_input::RacingInputPlugin)): cars that can bump each other
 /// must be simulated on the same timeline. Spectators interpolate them.
 fn spawn_cars(
     mut commands: Commands,
     participants: Single<&Participants>,
-    players: Query<(&Player, &ControlledBy)>,
+    players: Query<(&Player, &Points, &ControlledBy)>,
 ) {
-    let players: Vec<_> = participants
+    let active_participants: Vec<(&Player, Points, &ControlledBy)> = participants
         .0
         .iter()
-        .filter_map(|id| players.iter().find(|(player, _)| player.id == *id))
+        .filter_map(|id| {
+            players
+                .iter()
+                .find(|(player, _, _)| player.id == *id)
+                .map(|(player, points, link)| (player, *points, link))
+        })
         .collect();
-    let count = players.len();
-    let drivers: Vec<PeerId> = players.iter().map(|(player, _)| player.id).collect();
-    debug!(
-        "Spawning {count} cars: {:?}",
-        players
+
+    let drivers: Vec<PeerId> = active_participants
+        .iter()
+        .map(|(player, _, _)| player.id)
+        .collect();
+
+    let mut inverted_grid = standings(
+        active_participants
             .iter()
-            .map(|(player, _)| player.name())
+            .map(|(player, points, _)| ((*player).clone(), *points)),
+    );
+    // Last place first, so the fewest points start on pole (slot 0). The sort is stable, so
+    // players who share a place stay in joining order, as `standings` lists them.
+    inverted_grid.sort_by_key(|standing| std::cmp::Reverse(standing.place));
+
+    debug!(
+        "Spawning {} cars in inverted standing order: {:?}",
+        inverted_grid.len(),
+        inverted_grid
+            .iter()
+            .map(|s| format!("{} (#{})", s.player.name(), s.place))
             .collect::<Vec<_>>()
     );
-    for (slot, (player, link)) in players.into_iter().enumerate() {
+
+    for (slot, standing) in inverted_grid.into_iter().enumerate() {
+        let link = active_participants
+            .iter()
+            .find(|(player, _, _)| player.id == standing.player.id)
+            .map(|(_, _, link)| *link)
+            .expect("participant exists");
+
         commands.spawn((
             Car {
-                owner: player.id,
-                name: player.name.clone(),
-                color: player.color,
+                owner: standing.player.id,
+                name: standing.player.name,
+                color: standing.player.color,
             },
             CarState::parked(grid_position(slot), START_HEADING),
             RaceProgress::on_grid(),
