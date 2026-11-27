@@ -9,7 +9,7 @@ use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use super::PHASE;
-use super::config::SPAWNS;
+use super::config::{HITS_TO_KNOCK_OUT, SPAWNS};
 use crate::minigames::outcome::Participants;
 use crate::network::is_host;
 use crate::players::{Player, local_peer_id};
@@ -64,6 +64,37 @@ pub fn lerp_angle(start: f32, end: f32, t: f32) -> f32 {
     normalize_angle(start + turn * t)
 }
 
+/// How many hits this gunner can still take before being knocked out. Authoritative on the host,
+/// replicated to everyone (never predicted: only the host decides hits).
+#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Health {
+    pub remaining: u32,
+    pub max: u32,
+}
+
+impl Health {
+    /// Full health for a gunner that takes `max` hits to knock out.
+    pub fn full(max: u32) -> Self {
+        Self {
+            remaining: max,
+            max,
+        }
+    }
+}
+
+/// The earliest tick on which this gunner may fire again (`None` before its first shot).
+/// Predicted by the gunner's owner so it enforces the same cooldown as the host without dirtying
+/// the component every tick.
+#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct NextShot(pub Option<Tick>);
+
+impl NextShot {
+    /// Whether the gunner is off cooldown on `tick`.
+    pub fn ready(self, tick: Tick) -> bool {
+        self.0.is_none_or(|next| tick >= next)
+    }
+}
+
 /// Registers the replicated gunner components and spawns the gunners.
 pub struct GunnerPlugin;
 
@@ -74,6 +105,8 @@ impl Plugin for GunnerPlugin {
             .replicate()
             .predict()
             .add_linear_interpolation();
+        app.component::<Health>().replicate();
+        app.component::<NextShot>().replicate().predict();
 
         app.add_systems(OnEnter(PHASE), spawn_gunners.run_if(is_host));
     }
@@ -112,6 +145,8 @@ fn spawn_gunners(
                 color: player.color,
             },
             GunnerState::at(spawn),
+            Health::full(HITS_TO_KNOCK_OUT),
+            NextShot::default(),
             DespawnOnExit(PHASE),
             Replicate::to_clients(NetworkTarget::All),
             PredictionTarget::to_clients(NetworkTarget::Single(owner)),

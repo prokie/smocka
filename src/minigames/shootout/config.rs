@@ -7,6 +7,7 @@
 use bevy::math::{Rect, Vec2};
 
 use crate::config::display::{VIEW_HEIGHT, VIEW_WIDTH};
+use crate::config::network::TICK_RATE;
 
 /// Thickness of the wall around the edge of the arena.
 pub const BORDER: f32 = 8.0;
@@ -18,6 +19,19 @@ pub const ARENA_HALF_HEIGHT: f32 = VIEW_HEIGHT / 2.0 - BORDER;
 pub const GUNNER_RADIUS: f32 = 8.0;
 /// How fast a gunner walks, in world units per second: across the arena in about four seconds.
 pub const GUNNER_SPEED: f32 = 140.0;
+
+/// Distance from the gunner's centre to the tip of its barrel (matches `gunner.png`).
+pub const MUZZLE_OFFSET: f32 = GUNNER_RADIUS + 5.0;
+/// A paint ball is a circle this big.
+pub const PAINT_BALL_RADIUS: f32 = 3.0;
+/// How fast a paint ball flies, in world units per second: across the arena in about a second.
+pub const PAINT_BALL_SPEED: f32 = 600.0;
+/// Minimum time between two shots from the same gunner, in seconds.
+pub const FIRE_COOLDOWN_SECONDS: f32 = 0.35;
+/// [`FIRE_COOLDOWN_SECONDS`] in fixed ticks.
+pub const FIRE_COOLDOWN_TICKS: u32 = (FIRE_COOLDOWN_SECONDS * TICK_RATE as f32) as u32;
+/// How many hits knock a gunner out.
+pub const HITS_TO_KNOCK_OUT: u32 = 3;
 
 /// A block `width` by `height`, centred on (`x`, `y`).
 const fn block(x: f32, y: f32, width: f32, height: f32) -> Rect {

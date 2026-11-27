@@ -12,7 +12,7 @@ use crate::controls::{ACTUATION, Control, ControlAction, Controls, RESERVED_KEY,
 use crate::minigames::Minigame;
 
 /// The line under the bindings, saying how to change them.
-const HINT: &str = "Click a binding, then press a key or gamepad button, or push a stick.\n\
+const HINT: &str = "Click a binding, then press a key, mouse or gamepad button, or push a stick.\n\
                     Backspace clears it. Esc cancels.";
 /// How wide the column of action names is, in pixels.
 const ACTION_COLUMN_WIDTH: f32 = 172.0;
@@ -235,9 +235,15 @@ fn describe(action: ControlAction, slot: usize) -> String {
 }
 
 /// What the player pressed this frame, if anything a binding takes: a key (`Esc` cancels,
-/// `Backspace` or `Delete` clears), a gamepad button, or a stick pushed at least [`ACTUATION`].
+/// `Backspace` or `Delete` clears), a released mouse button, a gamepad button, or a stick pushed
+/// at least [`ACTUATION`].
+///
+/// Mouse buttons are captured on release (while [`on_menu_button`](super::on_menu_button) ignores
+/// clicks during [`Rebinding`]), so binding `Mouse left` while the cursor is over a button never
+/// triggers that button on release.
 pub fn captured_input<'a>(
     keys: &ButtonInput<KeyCode>,
+    mouse: &ButtonInput<MouseButton>,
     gamepads: impl IntoIterator<Item = &'a Gamepad>,
 ) -> Option<Captured> {
     if keys.just_pressed(RESERVED_KEY) {
@@ -248,6 +254,9 @@ pub fn captured_input<'a>(
     }
     if let Some(&key) = keys.get_just_pressed().next() {
         return Some(Captured::Bind(Control::Key(key)));
+    }
+    if let Some(&button) = mouse.get_just_released().next() {
+        return Some(Captured::Bind(Control::Mouse(button)));
     }
     for gamepad in gamepads {
         if let Some(&button) = gamepad.get_just_pressed().next() {
@@ -272,6 +281,7 @@ pub fn captured_input<'a>(
 pub(super) fn capture_control(
     mut rebinding: ResMut<Rebinding>,
     keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
     gamepads: Query<&Gamepad>,
     mut controls: ResMut<Controls>,
     mut focus: ResMut<InputFocus>,
@@ -281,7 +291,7 @@ pub(super) fn capture_control(
         rebinding.armed = true;
         return;
     }
-    let Some(captured) = captured_input(&keys, gamepads) else {
+    let Some(captured) = captured_input(&keys, &mouse, gamepads) else {
         return;
     };
     let Rebinding {
@@ -375,28 +385,59 @@ mod tests {
     use crate::controls::{Control, ControlAction, Controls, SLOTS};
     use crate::menu::MenuButton;
 
-    fn captured(keys: &[KeyCode], gamepad: Option<Gamepad>) -> Option<Captured> {
+    fn captured(
+        keys: &[KeyCode],
+        mouse_released: &[MouseButton],
+        gamepad: Option<Gamepad>,
+    ) -> Option<Captured> {
         let mut input = ButtonInput::default();
         for &key in keys {
             input.press(key);
         }
-        captured_input(&input, gamepad.as_ref())
+        let mut mouse = ButtonInput::default();
+        for &button in mouse_released {
+            mouse.press(button);
+            mouse.release(button);
+        }
+        captured_input(&input, &mouse, gamepad.as_ref())
     }
 
     #[test]
     fn a_key_press_is_captured() {
         assert_eq!(
-            captured(&[KeyCode::KeyK], None),
+            captured(&[KeyCode::KeyK], &[], None),
             Some(Captured::Bind(Control::Key(KeyCode::KeyK)))
         );
-        assert_eq!(captured(&[], None), None);
+        assert_eq!(captured(&[], &[], None), None);
+    }
+
+    #[test]
+    fn a_mouse_button_is_captured_on_release() {
+        assert_eq!(
+            captured(&[], &[MouseButton::Left], None),
+            Some(Captured::Bind(Control::Mouse(MouseButton::Left)))
+        );
+        // Pressing without releasing yet waits for release.
+        let keys = ButtonInput::default();
+        let mut mouse = ButtonInput::default();
+        mouse.press(MouseButton::Left);
+        assert_eq!(captured_input(&keys, &mouse, None), None);
     }
 
     #[test]
     fn escape_cancels_and_backspace_or_delete_clears() {
-        assert_eq!(captured(&[KeyCode::Escape], None), Some(Captured::Cancel));
-        assert_eq!(captured(&[KeyCode::Backspace], None), Some(Captured::Clear));
-        assert_eq!(captured(&[KeyCode::Delete], None), Some(Captured::Clear));
+        assert_eq!(
+            captured(&[KeyCode::Escape], &[], None),
+            Some(Captured::Cancel)
+        );
+        assert_eq!(
+            captured(&[KeyCode::Backspace], &[], None),
+            Some(Captured::Clear)
+        );
+        assert_eq!(
+            captured(&[KeyCode::Delete], &[], None),
+            Some(Captured::Clear)
+        );
     }
 
     #[test]
@@ -404,7 +445,7 @@ mod tests {
         let mut gamepad = Gamepad::default();
         gamepad.digital_mut().press(GamepadButton::South);
         assert_eq!(
-            captured(&[], Some(gamepad)),
+            captured(&[], &[], Some(gamepad)),
             Some(Captured::Bind(Control::Button(GamepadButton::South)))
         );
     }
@@ -414,7 +455,7 @@ mod tests {
         let pushed = |axis, value| {
             let mut gamepad = Gamepad::default();
             gamepad.analog_mut().set(axis, value);
-            captured(&[], Some(gamepad))
+            captured(&[], &[], Some(gamepad))
         };
         assert_eq!(
             pushed(GamepadAxis::LeftStickX, -0.9),
@@ -432,6 +473,7 @@ mod tests {
     fn waiting_for_throttle() -> (World, Entity) {
         let mut world = World::new();
         world.init_resource::<ButtonInput<KeyCode>>();
+        world.init_resource::<ButtonInput<MouseButton>>();
         world.init_resource::<Controls>();
         world.init_resource::<InputFocus>();
         let button = world.spawn_empty().id();

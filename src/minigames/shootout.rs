@@ -1,13 +1,12 @@
-//! Shootout: a top-down free-for-all in an arena with cover. The last player standing wins.
-//!
-//! Built a step at a time. So far: the arena, and a gunner per player that walks and aims around
-//! it.
+//! Shootout: a top-down free-for-all in an arena with cover. Players walk, aim and shoot
+//! dodgeable paint balls until one gunner is left standing.
 
 pub mod config;
 pub mod gunner;
 pub mod movement;
-mod round;
+pub mod round;
 mod shootout_input;
+pub mod shots;
 mod visuals;
 
 pub use shootout_input::ShootoutInput;
@@ -37,6 +36,12 @@ pub const INFO: MinigameInfo = MinigameInfo {
 pub enum ShootoutSystems {
     /// Walk and aim the gunners from this tick's input.
     Walk,
+    /// Spawn paint balls for gunners firing this tick.
+    Fire,
+    /// Move paint balls along their lines and resolve wall and gunner hits.
+    MoveBalls,
+    /// End the shootout when at most one gunner remains.
+    Finish,
 }
 
 /// Registers the shootout's replicated components, input and game logic.
@@ -49,7 +54,19 @@ impl Plugin for ShootoutPlugin {
             gunner::GunnerPlugin,
             shootout_input::ShootoutInputPlugin,
             movement::MovementPlugin,
+            shots::ShotsPlugin,
             round::RoundPlugin,
         ));
+        app.configure_sets(
+            FixedUpdate,
+            (
+                ShootoutSystems::Walk,
+                ShootoutSystems::Fire,
+                ShootoutSystems::MoveBalls,
+                ShootoutSystems::Finish,
+            )
+                .chain()
+                .run_if(in_state(PHASE)),
+        );
     }
 }

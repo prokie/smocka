@@ -17,6 +17,7 @@ pub use main_menu::{AddressInput, MenuMessage, NameInput};
 
 use bevy::app::OnAppExitSystems;
 use bevy::ecs::error::warn;
+use bevy::ecs::system::SystemParam;
 use bevy::input_focus::tab_navigation::TabNavigationPlugin;
 use bevy::prelude::*;
 use bevy::text::EditableText;
@@ -215,15 +216,27 @@ fn use_ui_font(mut fonts: ResMut<Assets<Font>>) {
     debug!("Using Fira Sans for all text");
 }
 
+/// Main-menu fields read when the Join button is activated.
+#[derive(SystemParam)]
+struct JoinButtonFields<'w, 's> {
+    address: Query<'w, 's, &'static EditableText, With<AddressInput>>,
+    last_address: ResMut<'w, LastAddress>,
+    message: Query<'w, 's, &'static mut Text, With<MenuMessage>>,
+}
+
 fn on_menu_button(
     trigger: On<Activate>,
     buttons: Query<&MenuButton>,
-    address: Query<&EditableText, With<AddressInput>>,
-    mut last_address: ResMut<LastAddress>,
-    mut message: Query<&mut Text, With<MenuMessage>>,
+    mut join_fields: JoinButtonFields,
     volume_check: Option<Res<sound::VolumeCheckSound>>,
+    rebinding: Option<Res<controls::Rebinding>>,
     mut commands: Commands,
 ) {
+    // While waiting for a binding, ignore button clicks so binding `Mouse left` can't also
+    // activate whatever button sits under the cursor.
+    if rebinding.is_some() {
+        return;
+    }
     let Ok(button) = buttons.get(trigger.entity) else {
         return;
     };
@@ -231,11 +244,17 @@ fn on_menu_button(
         // A failure leaves the app in this menu, and `show_session_end_reason` shows why.
         MenuButton::Host => commands.queue_handled(HostSession { addr: HOST_ADDR }, warn),
         MenuButton::Join => {
-            let typed = address
+            let typed = join_fields
+                .address
                 .single()
                 .map(|text| text.value().to_string())
                 .unwrap_or_default();
-            main_menu::join(&typed, &mut last_address, &mut commands, &mut message);
+            main_menu::join(
+                &typed,
+                &mut join_fields.last_address,
+                &mut commands,
+                &mut join_fields.message,
+            );
         }
         MenuButton::Quit => {
             commands.write_message(AppExit::Success);

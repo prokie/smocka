@@ -11,8 +11,11 @@ use lightyear::prelude::{Interpolated, PeerId, Predicted};
 use smocka::camera::GameplayCamera;
 use smocka::config::display::{VIEW_HEIGHT, VIEW_WIDTH};
 use smocka::minigames::Minigame;
-use smocka::minigames::shootout::config::SPAWNS;
-use smocka::minigames::shootout::gunner::{Gunner, GunnerState, normalize_angle};
+use smocka::minigames::outcome::MinigameResult;
+use smocka::minigames::shootout::config::{HITS_TO_KNOCK_OUT, SPAWNS};
+use smocka::minigames::shootout::gunner::{Gunner, GunnerState, Health, normalize_angle};
+use smocka::minigames::shootout::shots::PaintBall;
+use smocka::party::PartyRules;
 use smocka::session::SessionPhase;
 
 use crate::common::{TestApp, connected_pair, update_for, update_until};
@@ -62,6 +65,32 @@ fn hold(app: &mut TestApp, key: KeyCode) {
         .world_mut()
         .resource_mut::<ButtonInput<KeyCode>>()
         .press(key);
+}
+
+fn hold_mouse(app: &mut TestApp, button: MouseButton) {
+    app.0
+        .world_mut()
+        .resource_mut::<ButtonInput<MouseButton>>()
+        .press(button);
+}
+
+fn balls_from(app: &mut TestApp, is_shooter: impl Fn(PeerId) -> bool) -> Vec<PaintBall> {
+    let world = app.0.world_mut();
+    world
+        .query::<&PaintBall>()
+        .iter(world)
+        .filter(|ball| is_shooter(ball.shooter))
+        .copied()
+        .collect()
+}
+
+fn health(app: &mut TestApp, is_owner: impl Fn(PeerId) -> bool) -> Option<u32> {
+    let world = app.0.world_mut();
+    world
+        .query::<(&Gunner, &Health)>()
+        .iter(world)
+        .find(|(gunner, _)| is_owner(gunner.owner))
+        .map(|(_, health)| health.remaining)
 }
 
 /// Give a headless app a 640×360 primary window and matching gameplay camera so mouse cursor
@@ -224,4 +253,103 @@ fn the_host_aims_with_the_mouse_on_every_peer() {
         apps.iter_mut()
             .all(|app| aim(app, hosts).is_some_and(|now| close_angle(now, second_expected)))
     });
+}
+
+#[test]
+fn firing_spawns_a_paint_ball_locally_for_the_shooter_and_on_other_peers() {
+    let (mut host, mut client) = shootout_pair();
+
+    // Joiner fires with the default left mouse button binding: spawns a cosmetic ball on the
+    // joiner immediately and an authoritative ball on the host (no duplicate on the joiner).
+    hold_mouse(&mut client, MouseButton::Left);
+    update_until(&mut [&mut host, &mut client], |apps| {
+        !balls_from(apps[0], joiners).is_empty() && !balls_from(apps[1], joiners).is_empty()
+    });
+    assert!(
+        balls_from(&mut host, joiners)
+            .iter()
+            .all(|b| b.authoritative)
+    );
+    assert!(
+        balls_from(&mut client, joiners)
+            .iter()
+            .all(|b| !b.authoritative)
+    );
+    assert_eq!(balls_from(&mut client, joiners).len(), 1);
+
+    // Host fires with Space: joiner receives ShotFired and spawns a cosmetic ball for it.
+    hold(&mut host, KeyCode::Space);
+    update_until(&mut [&mut host, &mut client], |apps| {
+        !balls_from(apps[0], hosts).is_empty() && !balls_from(apps[1], hosts).is_empty()
+    });
+    assert!(balls_from(&mut host, hosts).iter().all(|b| b.authoritative));
+    assert!(
+        balls_from(&mut client, hosts)
+            .iter()
+            .all(|b| !b.authoritative)
+    );
+}
+
+#[test]
+fn cover_blocks_shots_between_opposite_corners() {
+    let (mut host, mut client) = shootout_pair();
+    // Default spawns (-280, 140) and (280, -140) aim straight at (0, 0), through the middle cover.
+    hold(&mut host, KeyCode::Space);
+    update_for(&mut [&mut host, &mut client], Duration::from_millis(500));
+    assert_eq!(health(&mut host, joiners), Some(HITS_TO_KNOCK_OUT));
+    assert_eq!(health(&mut client, joiners), Some(HITS_TO_KNOCK_OUT));
+}
+
+#[test]
+fn knocking_out_the_other_gunner_wins_the_shootout_on_every_peer() {
+    let (mut host, mut client) = shootout_pair();
+    // Put both gunners in the clear top lane facing each other.
+    {
+        let world = host.0.world_mut();
+        for (gunner, mut state) in world.query::<(&Gunner, &mut GunnerState)>().iter_mut(world) {
+            if hosts(gunner.owner) {
+                state.position = Vec2::new(-100.0, 140.0);
+                state.aim = 0.0;
+            } else {
+                state.position = Vec2::new(100.0, 140.0);
+                state.aim = std::f32::consts::PI;
+            }
+        }
+    }
+    // Wait for the joiner to receive the repositioned gunner, then aim left with the right stick
+    // and hold left click to knock out the host.
+    update_until(&mut [&mut host, &mut client], |apps| {
+        position(apps[1], joiners).is_some_and(|p| p.distance(Vec2::new(100.0, 140.0)) < 1.0)
+    });
+    let mut gamepad = Gamepad::default();
+    gamepad.analog_mut().set(GamepadAxis::RightStickX, -1.0);
+    gamepad.analog_mut().set(GamepadAxis::RightStickY, 0.0);
+    client.0.world_mut().spawn(gamepad);
+    hold_mouse(&mut client, MouseButton::Left);
+
+    // First verify damage replicates before the knockout.
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut()
+            .all(|app| health(app, hosts).is_some_and(|hp| hp < HITS_TO_KNOCK_OUT))
+    });
+
+    // Keep firing until the host's gunner is knocked out and both peers reach Results.
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut()
+            .all(|app| app.phase() == Some(SessionPhase::Results))
+    });
+    for app in [&mut host, &mut client] {
+        let world = app.0.world_mut();
+        let result = world.query::<&MinigameResult>().single(world).unwrap();
+        assert_eq!(result.placements.len(), 2);
+        assert!(joiners(result.placements[0].player));
+        assert_eq!(result.placements[0].place, 1);
+        assert!(hosts(result.placements[1].player));
+        assert_eq!(result.placements[1].place, 2);
+    }
+}
+
+#[test]
+fn parties_include_shootout_by_default() {
+    assert!(PartyRules::default().games.contains(&Minigame::Shootout));
 }

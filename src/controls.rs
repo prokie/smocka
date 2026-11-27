@@ -50,11 +50,13 @@ pub enum ControlAction {
     MoveLeft,
     /// Shootout: walk right.
     MoveRight,
+    /// Shootout: shoot a paint ball.
+    Fire,
 }
 
 impl ControlAction {
     /// Every action, in the order the Controls screen lists them.
-    pub const ALL: [ControlAction; 10] = [
+    pub const ALL: [ControlAction; 11] = [
         ControlAction::PaddleUp,
         ControlAction::PaddleDown,
         ControlAction::Throttle,
@@ -65,6 +67,7 @@ impl ControlAction {
         ControlAction::MoveDown,
         ControlAction::MoveLeft,
         ControlAction::MoveRight,
+        ControlAction::Fire,
     ];
 
     /// The minigame it's for. One control can do one thing per minigame.
@@ -78,7 +81,8 @@ impl ControlAction {
             ControlAction::MoveUp
             | ControlAction::MoveDown
             | ControlAction::MoveLeft
-            | ControlAction::MoveRight => Minigame::Shootout,
+            | ControlAction::MoveRight
+            | ControlAction::Fire => Minigame::Shootout,
         }
     }
 
@@ -95,6 +99,7 @@ impl ControlAction {
             ControlAction::MoveDown => "Move down",
             ControlAction::MoveLeft => "Move left",
             ControlAction::MoveRight => "Move right",
+            ControlAction::Fire => "Fire",
         }
     }
 }
@@ -103,6 +108,8 @@ impl ControlAction {
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Control {
     Key(KeyCode),
+    /// A mouse button.
+    Mouse(MouseButton),
     /// A gamepad button. Triggers count from [`ACTUATION`].
     Button(GamepadButton),
     /// Pushing a gamepad stick at least [`ACTUATION`] along `axis`: towards positive values (right
@@ -114,15 +121,28 @@ pub enum Control {
 }
 
 impl Control {
-    /// What the Controls screen calls it, short enough for its buttons: `W`, `Up`, `Pad RT`,
-    /// `LStick left`.
+    /// What the Controls screen calls it, short enough for its buttons: `W`, `Up`, `Mouse left`,
+    /// `Pad RT`, `LStick left`.
     pub fn name(self) -> String {
         match self {
             Control::Key(key) => key_name(key),
+            Control::Mouse(button) => mouse_name(button),
             Control::Button(button) => format!("Pad {}", button_name(button)),
             Control::Stick { axis, positive } => stick_name(axis, positive),
         }
     }
+}
+
+fn mouse_name(button: MouseButton) -> String {
+    let name = match button {
+        MouseButton::Left => "Mouse left",
+        MouseButton::Right => "Mouse right",
+        MouseButton::Middle => "Mouse middle",
+        MouseButton::Back => "Mouse back",
+        MouseButton::Forward => "Mouse fwd",
+        MouseButton::Other(number) => return format!("Mouse #{number}"),
+    };
+    name.into()
 }
 
 fn key_name(key: KeyCode) -> String {
@@ -215,10 +235,11 @@ pub struct Controls {
     move_down: Vec<Control>,
     move_left: Vec<Control>,
     move_right: Vec<Control>,
+    fire: Vec<Control>,
 }
 
 impl Default for Controls {
-    /// WASD and the arrow keys, and a gamepad's left stick and triggers.
+    /// WASD and the arrow keys, mouse click for firing, and a gamepad's left stick and triggers.
     fn default() -> Self {
         let stick = |axis, positive| Control::Stick { axis, positive };
         Self {
@@ -272,6 +293,11 @@ impl Default for Controls {
                 Control::Key(KeyCode::ArrowRight),
                 stick(GamepadAxis::LeftStickX, true),
             ],
+            fire: vec![
+                Control::Mouse(MouseButton::Left),
+                Control::Key(KeyCode::Space),
+                Control::Button(GamepadButton::RightTrigger2),
+            ],
         }
     }
 }
@@ -290,6 +316,7 @@ impl Controls {
             ControlAction::MoveDown => &self.move_down,
             ControlAction::MoveLeft => &self.move_left,
             ControlAction::MoveRight => &self.move_right,
+            ControlAction::Fire => &self.fire,
         }
     }
 
@@ -305,6 +332,7 @@ impl Controls {
             ControlAction::MoveDown => &mut self.move_down,
             ControlAction::MoveLeft => &mut self.move_left,
             ControlAction::MoveRight => &mut self.move_right,
+            ControlAction::Fire => &mut self.fire,
         }
     }
 
@@ -403,6 +431,7 @@ pub fn spawn_action<C: Component, A: InputAction>(
         let mut binding = commands.spawn((BindingOf(action), Down::new(ACTUATION)));
         match control {
             Control::Key(key) => binding.insert(Binding::from(key)),
+            Control::Mouse(button) => binding.insert(Binding::from(button)),
             Control::Button(button) => binding.insert(Binding::from(button)),
             // Clamped before the threshold: the threshold looks at how far the stick is pushed
             // either way.
@@ -450,8 +479,14 @@ mod tests {
         for action in ControlAction::ALL {
             let bound = controls.get(action);
             assert_eq!(bound.len(), SLOTS, "{action:?}");
-            assert!(matches!(bound[0], Control::Key(_)), "{action:?}");
-            assert!(!matches!(bound[2], Control::Key(_)), "{action:?}");
+            assert!(
+                matches!(bound[0], Control::Key(_) | Control::Mouse(_)),
+                "{action:?}"
+            );
+            assert!(
+                matches!(bound[2], Control::Button(_) | Control::Stick { .. }),
+                "{action:?}"
+            );
         }
         assert_eq!(controls.clone().sanitized(), controls, "defaults clash");
     }
@@ -542,6 +577,9 @@ mod tests {
             Control::Key(KeyCode::Numpad8),
             Control::Key(KeyCode::Space),
             Control::Key(KeyCode::ShiftLeft),
+            Control::Mouse(MouseButton::Left),
+            Control::Mouse(MouseButton::Right),
+            Control::Mouse(MouseButton::Middle),
             RT,
             Control::Button(GamepadButton::DPadRight),
             Control::Stick {
@@ -565,6 +603,9 @@ mod tests {
                 "Num 8",
                 "Space",
                 "LShift",
+                "Mouse left",
+                "Mouse right",
+                "Mouse middle",
                 "Pad RT",
                 "Pad D-right",
                 "LStick left",

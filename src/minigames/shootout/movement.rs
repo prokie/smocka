@@ -133,6 +133,7 @@ mod tests {
             walk_x,
             walk_y,
             aim: None,
+            fire: false,
         }
     }
 

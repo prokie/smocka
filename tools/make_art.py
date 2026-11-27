@@ -46,6 +46,7 @@ BALL_SIZE: Final[float] = 8.0  # BALL_SIZE
 # Keep in step with minigames::shootout::config.
 SHOOTOUT_BORDER: Final[float] = 8.0  # BORDER
 GUNNER_RADIUS: Final[float] = 8.0  # GUNNER_RADIUS
+PAINT_BALL_RADIUS: Final[float] = 3.0  # PAINT_BALL_RADIUS
 # COVER: (centre x, centre y, width, height) of each block.
 SHOOTOUT_COVER: Final[list[tuple[float, float, float, float]]] = [
     (0.0, 0.0, 48.0, 48.0),
@@ -348,6 +349,15 @@ def draw_gunner() -> None:
     canvas.save(ASSETS / "shootout/gunner.png")
 
 
+def draw_paint_ball() -> None:
+    """A small round paint ball, drawn white with a dark outline so the game tints it per player."""
+    size = 2 * PAINT_BALL_RADIUS
+    canvas = Canvas(size, size)
+    r = PAINT_BALL_RADIUS - 0.3
+    canvas.ellipse(-r, -r, r, r, WHITE, OUTLINE, 0.8)
+    canvas.save(ASSETS / "shootout/paint_ball.png")
+
+
 # Thumbnails: a minigame's art with a few players' things on it, as if mid-game.
 
 
@@ -446,6 +456,7 @@ def main() -> None:
     draw_ball()
     draw_shootout_arena()
     draw_gunner()
+    draw_paint_ball()
     # After the art they're made from.
     draw_pong_thumbnail()
     draw_racing_thumbnail()

@@ -37,6 +37,8 @@ pub struct ShootoutInput {
     /// Which way to aim, in radians anticlockwise from facing right (+x), or `None` to keep the
     /// gunner's current aim.
     pub aim: Option<f32>,
+    /// Whether the Fire control is held this tick.
+    pub fire: bool,
 }
 
 impl MapEntities for ShootoutInput {
@@ -44,13 +46,21 @@ impl MapEntities for ShootoutInput {
 }
 
 impl ShootoutInput {
-    /// The input for a player holding these directions and aiming at `aim`. Opposite directions at
-    /// once cancel out.
-    pub fn from_actions(up: bool, down: bool, left: bool, right: bool, aim: Option<f32>) -> Self {
+    /// The input for a player holding these directions, aiming at `aim`, and optionally firing.
+    /// Opposite directions at once cancel out.
+    pub fn from_actions(
+        up: bool,
+        down: bool,
+        left: bool,
+        right: bool,
+        aim: Option<f32>,
+        fire: bool,
+    ) -> Self {
         Self {
             walk_x: i8::from(right) - i8::from(left),
             walk_y: i8::from(up) - i8::from(down),
             aim,
+            fire,
         }
     }
 
@@ -163,6 +173,10 @@ struct MoveLeft;
 #[action_output(bool)]
 struct MoveRight;
 
+#[derive(InputAction)]
+#[action_output(bool)]
+struct Fire;
+
 /// Buffers this player's input for the host. Nobody else predicts a player's gunner, so the host
 /// doesn't pass inputs on.
 pub struct ShootoutInputPlugin;
@@ -211,6 +225,17 @@ fn spawn_shootout_controls(controls: Res<Controls>, mut commands: Commands) {
         context,
         bound(ControlAction::MoveRight),
     );
+    spawn_action::<ShootoutControls, Fire>(&mut commands, context, bound(ControlAction::Fire));
+}
+
+/// This player's bound shootout actions, read by [`buffer_shootout_input`].
+#[derive(SystemParam)]
+struct ShootoutActions<'w, 's> {
+    up: Single<'w, 's, &'static TriggerState, With<Action<MoveUp>>>,
+    down: Single<'w, 's, &'static TriggerState, With<Action<MoveDown>>>,
+    left: Single<'w, 's, &'static TriggerState, With<Action<MoveLeft>>>,
+    right: Single<'w, 's, &'static TriggerState, With<Action<MoveRight>>>,
+    fire: Single<'w, 's, &'static TriggerState, With<Action<Fire>>>,
 }
 
 pub struct AimReading {
@@ -252,10 +277,7 @@ impl AimDevices<'_, '_> {
 /// Only the locally controlled gunner has an [`InputMarker`]; without one (a spectator, or a
 /// player knocked out) this system is skipped.
 fn buffer_shootout_input(
-    up: Single<&TriggerState, With<Action<MoveUp>>>,
-    down: Single<&TriggerState, With<Action<MoveDown>>>,
-    left: Single<&TriggerState, With<Action<MoveLeft>>>,
-    right: Single<&TriggerState, With<Action<MoveRight>>>,
+    actions: ShootoutActions,
     mut aim_tracker: Single<&mut AimTracker, With<ShootoutControls>>,
     aim_devices: AimDevices,
     mut gunner: Single<
@@ -270,8 +292,14 @@ fn buffer_shootout_input(
     } = aim_devices.read();
     let (state, ref mut input) = *gunner;
     let aim = aim_tracker.aim(stick, cursor_screen, cursor_world, state.position);
-    input.0 =
-        ShootoutInput::from_actions(fired(&up), fired(&down), fired(&left), fired(&right), aim);
+    input.0 = ShootoutInput::from_actions(
+        fired(&actions.up),
+        fired(&actions.down),
+        fired(&actions.left),
+        fired(&actions.right),
+        aim,
+        fired(&actions.fire),
+    );
 }
 
 fn mark_controlled_gunner(
@@ -307,8 +335,9 @@ mod tests {
 
     #[test]
     fn held_directions_walk_that_way_and_opposites_cancel_out() {
-        let walk =
-            |up, down, left, right| ShootoutInput::from_actions(up, down, left, right, None).walk();
+        let walk = |up, down, left, right| {
+            ShootoutInput::from_actions(up, down, left, right, None, false).walk()
+        };
         assert_eq!(walk(true, false, false, false), Vec2::new(0.0, 1.0));
         assert_eq!(walk(false, true, true, false), Vec2::new(-1.0, -1.0));
         assert_eq!(walk(true, true, false, true), Vec2::new(1.0, 0.0));
