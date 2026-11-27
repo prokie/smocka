@@ -57,9 +57,6 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
       checkpoint it needs next (or an arrow towards it). `RaceProgress` is replicated, so each
       client already knows its own car's `next_checkpoint` and can check its own `CarState`
       against `checkpoint_at`, with no new message from the host.
-- [ ] **A new name is lost when quitting from the main menu.** `save_profile` only runs on
-      `OnExit(AppState::MainMenu)`. Clicking Quit or closing the window after typing a name
-      never leaves the main menu, so the name isn't saved. Save on `AppExit` too.
 - [ ] **Skid marks depend on the frame rate.** `leave_skid_marks` runs in `Update` and divides
       each change in `CarState` by the frame's `delta_secs`. Cars driven in `FixedUpdate` (all
       of them on the host, a joiner's own car) only change on 128 Hz ticks. On a 144–240 Hz

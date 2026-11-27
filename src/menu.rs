@@ -12,6 +12,7 @@ mod widgets;
 
 pub use main_menu::{AddressInput, MenuMessage, NameInput};
 
+use bevy::app::OnAppExitSystems;
 use bevy::ecs::error::warn;
 use bevy::input_focus::tab_navigation::TabNavigationPlugin;
 use bevy::prelude::*;
@@ -67,6 +68,15 @@ impl Plugin for MenuPlugin {
         app.init_resource::<main_menu::NameEdited>();
         app.add_systems(OnEnter(AppState::MainMenu), main_menu::spawn_main_menu);
         app.add_systems(OnExit(AppState::MainMenu), main_menu::save_profile);
+        // Quitting (the Quit button or closing the window) never leaves the main menu, so save a
+        // new name on the way out too. Runs after the window's own exit systems, which send
+        // `AppExit` in `Last`.
+        app.add_systems(
+            Last,
+            main_menu::save_profile
+                .in_set(OnAppExitSystems)
+                .run_if(on_message::<AppExit>),
+        );
         app.add_systems(OnEnter(AppState::Connecting), spawn_connecting_screen);
         app.add_systems(
             OnEnter(AppState::InSession),

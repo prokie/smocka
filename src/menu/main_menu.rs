@@ -97,7 +97,8 @@ pub(super) fn follow_name_input(
     edited.0 = true;
 }
 
-/// Leaving the main menu (to host or join): remember a newly typed name for next time.
+/// Leaving the main menu (to host or join) or quitting the game: remember a newly typed name for
+/// next time.
 pub(super) fn save_profile(profile: Res<LocalProfile>, mut edited: ResMut<NameEdited>) {
     if edited.0 {
         profile.save();
