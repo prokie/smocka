@@ -1,9 +1,6 @@
 # Smocka
 
-A multiplayer party game in the style of *Pummel Party*, built with [Bevy](https://bevyengine.org/) and [Lightyear](https://github.com/cBournhonesque/lightyear). Players gather in a shared session and play a series of short minigames against each other.
-
-> **Status:** early development. Two minigames: two-player Pong (first to 5 goals) and Racing
-> (3 laps on an oval track, with a countdown and a finishing order).
+A multiplayer party game, built with [Bevy](https://bevyengine.org/) and [Lightyear](https://github.com/cBournhonesque/lightyear). Players gather in a shared session and play a series of short minigames against each other.
 
 ## Download and play
 

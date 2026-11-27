@@ -1,10 +1,19 @@
-# The checks from the README's Development section, on every push to main and every pull request.
+# The checks from the README's Development section, on every push to main and every pull request
+# that touches something the build reads.
 name: CI
 
 on:
   push:
     branches: [main]
+    paths: &rust-paths
+      - "src/**"
+      - "tests/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "assets/fonts/**"
+      - ".github/workflows/ci.yml"
   pull_request:
+    paths: *rust-paths
 
 env:
   CARGO_TERM_COLOR: always
@@ -23,7 +32,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            pkg-config libudev-dev libwayland-dev libxkbcommon-dev libx11-dev
+            pkg-config libudev-dev libwayland-dev libxkbcommon-dev libx11-dev libasound2-dev
 
       - uses: Swatinem/rust-cache@v2
 
