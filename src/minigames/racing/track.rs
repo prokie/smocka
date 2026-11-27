@@ -69,9 +69,11 @@ impl TrackId {
     }
 
     pub fn layout(self) -> &'static Layout {
+        static FIGURE_EIGHT_LAYOUT: Layout = FIGURE_EIGHT;
+        static OVAL_LAYOUT: Layout = OVAL;
         match self {
-            TrackId::FigureEight => &FIGURE_EIGHT,
-            TrackId::Oval => &OVAL,
+            TrackId::FigureEight => &FIGURE_EIGHT_LAYOUT,
+            TrackId::Oval => &OVAL_LAYOUT,
         }
     }
 
