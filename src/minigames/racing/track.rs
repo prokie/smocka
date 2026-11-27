@@ -126,6 +126,9 @@ pub struct Layout {
     pub crossing: Option<Vec2>,
     /// Its art, which covers the whole screen.
     pub image: &'static str,
+    /// Racing's picture on its lobby tile while this track is picked (see
+    /// [`Minigame::thumbnail`](crate::minigames::Minigame::thumbnail)).
+    pub thumbnail: &'static str,
 }
 
 /// A figure of eight: tight and technical, with braking for a dip into the infield and two
@@ -138,6 +141,7 @@ pub const FIGURE_EIGHT: Layout = Layout {
     pieces: &FIGURE_EIGHT_PIECES,
     crossing: Some(Vec2::new(50.0, -40.0)),
     image: "minigames/racing/figure_eight.png",
+    thumbnail: "minigames/racing/figure_eight_thumbnail.png",
 };
 
 const FIGURE_EIGHT_PIECES: [Piece; 31] = [
@@ -188,6 +192,7 @@ pub const OVAL: Layout = Layout {
     pieces: &OVAL_PIECES,
     crossing: None,
     image: "minigames/racing/oval.png",
+    thumbnail: "minigames/racing/oval_thumbnail.png",
 };
 
 const OVAL_PIECES: [Piece; 12] = [

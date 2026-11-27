@@ -186,6 +186,7 @@ impl Plugin for MenuPlugin {
                     lobby::update_lobby_hint,
                     lobby::update_settings_summaries,
                     lobby::dim_disabled_thumbnails,
+                    lobby::update_thumbnails,
                     lobby::update_round_picker,
                 )
                     .run_if(in_state(SessionPhase::Lobby)),

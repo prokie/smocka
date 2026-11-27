@@ -42,7 +42,8 @@ pub struct MinigameInfo {
     /// [`Tournament`](crate::tournament::Tournament).
     pub max_players: usize,
     /// The picture on its tile in the lobby: a 16:9 image under `assets/`, made by
-    /// `tools/make_art.py`.
+    /// `tools/make_art.py`. A minigame whose look depends on its settings shows another picture
+    /// once they're known: see [`Minigame::thumbnail`].
     pub thumbnail: &'static str,
     /// What the host can pick before it's played, in the order its settings screen shows them.
     /// The minigame names each with a [`SettingId`](settings::SettingId) const.
@@ -63,6 +64,15 @@ impl Minigame {
             Minigame::TwoPlayerPong => two_player_pong::INFO,
             Minigame::Racing => racing::INFO,
             Minigame::Shootout => shootout::INFO,
+        }
+    }
+
+    /// The picture on this minigame's lobby tile with `settings` picked, such as the picked
+    /// track for racing. Otherwise its [`MinigameInfo::thumbnail`].
+    pub fn thumbnail(self, settings: &settings::SettingValues) -> &'static str {
+        match self {
+            Minigame::Racing => racing::thumbnail(settings),
+            Minigame::TwoPlayerPong | Minigame::Shootout => self.info().thumbnail,
         }
     }
 }
@@ -97,8 +107,47 @@ impl Plugin for MinigameVisualsPlugin {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
+    use super::racing::TRACK_SETTING;
+    use super::racing::track::TrackId;
+    use super::settings::SettingValues;
     use super::{Minigame, racing, shootout, two_player_pong};
     use crate::session::SessionPhase;
+
+    #[test]
+    fn racings_tile_shows_the_picked_track() {
+        let mut settings = SettingValues::default();
+        assert_eq!(
+            Minigame::Racing.thumbnail(&settings),
+            Minigame::Racing.info().thumbnail
+        );
+        for track in TrackId::ALL {
+            settings.set(TRACK_SETTING, track as u32);
+            assert_eq!(
+                Minigame::Racing.thumbnail(&settings),
+                track.layout().thumbnail
+            );
+        }
+        // Other minigames' tiles don't change with racing's track.
+        assert_eq!(
+            Minigame::Shootout.thumbnail(&settings),
+            Minigame::Shootout.info().thumbnail
+        );
+    }
+
+    #[test]
+    fn every_thumbnail_a_tile_can_show_exists() {
+        let assets = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets");
+        let mut thumbnails: Vec<&str> = Minigame::ALL
+            .iter()
+            .map(|game| game.info().thumbnail)
+            .collect();
+        thumbnails.extend(TrackId::ALL.map(|track| track.layout().thumbnail));
+        for thumbnail in thumbnails {
+            assert!(assets.join(thumbnail).is_file(), "{thumbnail} is missing");
+        }
+    }
 
     #[test]
     fn every_minigame_module_has_its_own_phase() {

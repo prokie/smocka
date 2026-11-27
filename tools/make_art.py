@@ -634,21 +634,27 @@ def draw_pong_thumbnail() -> None:
     save_thumbnail(base, folder / "thumbnail.png")
 
 
-def draw_racing_thumbnail() -> None:
-    """Needs figure_eight.png and car.png. Three cars on the start straight, heading into the
-    crossing, and a fourth coming down at them."""
+def draw_racing_thumbnails() -> None:
+    """Needs each track's art and car.png. Racing's lobby tile shows the picked track's:
+    <track>_thumbnail.png (see Layout::thumbnail in track.rs)."""
     folder = ASSETS / "racing"
-    track = FIGURE_EIGHT
-    assert track.crossing
-    base = Image.open(folder / f"{track.name}.png").convert("RGBA")
     car = Image.open(folder / "car.png").convert("RGBA")
-    sx, sy = track.start_line
-    lanes = (sy + GRID_LANE, sy - GRID_LANE)
-    for i, (tint, x) in enumerate(zip(PLAYER_TINTS, (5.0, -45.0, -95.0))):
-        place(base, tinted(car, tint), x, lanes[i % 2])
-    cx, cy = track.crossing
-    place(base, tinted(car, PLAYER_TINTS[3]), cx, cy + 62.0, -90.0)
-    save_thumbnail(base, folder / "thumbnail.png")
+    for track in TRACKS:
+        base = Image.open(folder / f"{track.name}.png").convert("RGBA")
+        sx, sy = track.start_line
+        lanes = (sy + GRID_LANE, sy - GRID_LANE)
+        if track.crossing:
+            # Three cars on the start straight, heading into the crossing, and a fourth coming
+            # down at them.
+            cx, cy = track.crossing
+            cars = [(5.0, lanes[0], 0.0), (-45.0, lanes[1], 0.0), (-95.0, lanes[0], 0.0),
+                    (cx, cy + 62.0, -90.0)]
+        else:
+            # Four cars racing along the start straight, past the line.
+            cars = [(sx + x, lanes[i % 2], 0.0) for i, x in enumerate((110.0, 60.0, 5.0, -50.0))]
+        for tint, (x, y, degrees) in zip(PLAYER_TINTS, cars):
+            place(base, tinted(car, tint), x, y, degrees)
+        save_thumbnail(base, folder / f"{track.name}_thumbnail.png")
 
 
 def draw_shootout_thumbnail() -> None:
@@ -772,7 +778,7 @@ def main() -> None:
     draw_buff_ring()
     # After the art they're made from.
     draw_pong_thumbnail()
-    draw_racing_thumbnail()
+    draw_racing_thumbnails()
     draw_shootout_thumbnail()
     draw_gear()
     draw_leaf()

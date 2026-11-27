@@ -15,7 +15,7 @@ pub use visuals::RacingVisualsPlugin;
 
 use bevy::prelude::*;
 
-use super::settings::{Setting, SettingId};
+use super::settings::{Setting, SettingId, SettingValues};
 use super::{Minigame, MinigameInfo};
 use crate::session::SessionPhase;
 use config::{GRID_SLOTS, LAPS, MAX_LAPS, MIN_LAPS};
@@ -30,7 +30,8 @@ pub const INFO: MinigameInfo = MinigameInfo {
     name: "Racing",
     min_players: 2,
     max_players: GRID_SLOTS,
-    thumbnail: "minigames/racing/thumbnail.png",
+    // The default track's: see `thumbnail`.
+    thumbnail: track::FIGURE_EIGHT.thumbnail,
     settings: &[
         Setting {
             name: "Laps",
@@ -55,6 +56,13 @@ pub const LAPS_SETTING: SettingId = SettingId::new(Minigame::Racing, 0);
 /// Which track the race is on, picked by the host: an index in [`TrackId::ALL`] (see
 /// [`TrackId::from_setting`]).
 pub const TRACK_SETTING: SettingId = SettingId::new(Minigame::Racing, 1);
+
+/// Racing's picture on its lobby tile with `settings` picked: the picked track's.
+pub fn thumbnail(settings: &SettingValues) -> &'static str {
+    TrackId::from_setting(settings.get(TRACK_SETTING))
+        .layout()
+        .thumbnail
+}
 
 /// The order racing's game logic runs in each `FixedUpdate` tick.
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]

@@ -83,8 +83,9 @@ name, at 3× its size in world units (e.g. a 16×10 car is 48×30 pixels; a full
 1920×1080), keeping the same proportions. Draw player-coloured parts in white or grey: the game
 tints them.
 
-Each minigame also has a `thumbnail.png` (480×270) for its tile in the lobby, and
-`assets/menu/gear.png` is the settings icon on the tiles.
+Each minigame also has a `thumbnail.png` (480×270) for its tile in the lobby, except racing,
+whose tile shows the picked track: `racing/<track>_thumbnail.png`. `assets/menu/gear.png` is the
+settings icon on the tiles.
 
 The placeholders come from `python3 tools/make_art.py`, which makes the thumbnails from the
 minigames' art, so replacing the art and running it again updates them. Each racing track's art

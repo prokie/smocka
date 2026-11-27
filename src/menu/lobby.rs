@@ -38,9 +38,13 @@ pub struct LobbyHint;
 #[derive(Component)]
 pub struct SettingsSummary(pub Minigame);
 
-/// A minigame's thumbnail on its tile in the lobby.
-#[derive(Component)]
-pub struct Thumbnail;
+/// A minigame's thumbnail on its tile in the lobby, and which picture it shows (see
+/// [`update_thumbnails`]).
+#[derive(Component, Debug)]
+pub struct Thumbnail {
+    pub game: Minigame,
+    pub shown: &'static str,
+}
 
 /// Space between the lobby's two columns, in pixels.
 const COLUMN_GAP: f32 = 64.0;
@@ -237,7 +241,10 @@ fn spawn_tile(
         .spawn(look)
         .with_children(|face| {
             face.spawn((
-                Thumbnail,
+                Thumbnail {
+                    game,
+                    shown: info.thumbnail,
+                },
                 ImageNode::new(image(info.thumbnail)),
                 Node {
                     width: px(THUMBNAIL_WIDTH),
@@ -282,6 +289,26 @@ fn spawn_tile(
         ));
     }
     tile
+}
+
+/// Show on each tile the picture that fits the host's picks, such as racing's picked track. From
+/// the replicated [`PublishedSettings`], so joiners' tiles change with the host's.
+pub(super) fn update_thumbnails(
+    settings: Option<Single<&PublishedSettings>>,
+    assets: Res<AssetServer>,
+    mut thumbnails: Query<(&mut Thumbnail, &mut ImageNode)>,
+) {
+    let Some(settings) = settings else {
+        return;
+    };
+    for (mut thumbnail, mut image) in &mut thumbnails {
+        let wanted = thumbnail.game.thumbnail(&settings);
+        if thumbnail.shown != wanted {
+            debug!("The {} tile now shows {wanted}", thumbnail.game.info().name);
+            thumbnail.shown = wanted;
+            image.image = assets.load(wanted);
+        }
+    }
 }
 
 /// Dim a thumbnail while its tile can't be started (too few players), as the tile itself is.
@@ -578,9 +605,14 @@ mod tests {
     use bevy::ui::InteractionDisabled;
     use bevy::ui_widgets::ScrollArea;
 
-    use super::{SettingsSummary, Thumbnail, lobby_hint, player_label, spawn_games};
+    use super::{
+        SettingsSummary, Thumbnail, lobby_hint, player_label, spawn_games, update_thumbnails,
+    };
     use crate::menu::MenuButton;
     use crate::minigames::Minigame;
+    use crate::minigames::racing::TRACK_SETTING;
+    use crate::minigames::racing::track::TrackId;
+    use crate::minigames::settings::{PublishedSettings, SettingValues};
     use crate::players::Player;
     use lightyear::prelude::PeerId;
 
@@ -661,6 +693,65 @@ mod tests {
         assert_eq!(
             lobby_hint(true, false),
             "Waiting for at least one more player."
+        );
+    }
+
+    /// The path of the picture `game`'s tile shows, as [`Thumbnail::shown`] and as the loaded
+    /// image.
+    fn tile_picture(app: &mut App, game: Minigame) -> (&'static str, String) {
+        let (thumbnail, image) = app
+            .world_mut()
+            .query::<(&Thumbnail, &ImageNode)>()
+            .iter(app.world())
+            .find(|(thumbnail, _)| thumbnail.game == game)
+            .unwrap();
+        let loaded = image
+            .image
+            .path()
+            .map(ToString::to_string)
+            .unwrap_or_default();
+        (thumbnail.shown, loaded)
+    }
+
+    #[test]
+    fn racings_tile_follows_the_hosts_track_on_every_peer() {
+        // What a joiner has: the replicated picks, not the host's own settings.
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default()))
+            .init_asset::<Image>()
+            .add_systems(Update, update_thumbnails);
+        for game in Minigame::ALL {
+            app.world_mut().spawn((
+                Thumbnail {
+                    game,
+                    shown: game.info().thumbnail,
+                },
+                ImageNode::default(),
+            ));
+        }
+        let mut picks = SettingValues::default();
+        picks.set(TRACK_SETTING, TrackId::Oval as u32);
+        let published = app.world_mut().spawn(PublishedSettings(picks.clone())).id();
+
+        app.update();
+        let oval = TrackId::Oval.layout().thumbnail;
+        assert_eq!(
+            tile_picture(&mut app, Minigame::Racing),
+            (oval, oval.into())
+        );
+        // The other tiles keep their pictures.
+        let pong = Minigame::TwoPlayerPong.info().thumbnail;
+        assert_eq!(tile_picture(&mut app, Minigame::TwoPlayerPong).0, pong);
+
+        picks.set(TRACK_SETTING, TrackId::FigureEight as u32);
+        app.world_mut()
+            .entity_mut(published)
+            .insert(PublishedSettings(picks));
+        app.update();
+        let figure_eight = TrackId::FigureEight.layout().thumbnail;
+        assert_eq!(
+            tile_picture(&mut app, Minigame::Racing),
+            (figure_eight, figure_eight.into())
         );
     }
 }
