@@ -1,22 +1,23 @@
 //! Racing: every player gets a car, each player's driving shows up on every peer, cars bump each
 //! other, the host counts laps, and the race ends with a result once the cars finish.
 
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use bevy::prelude::*;
-use lightyear::prelude::PeerId;
 use lightyear::prelude::input::native::ActionState;
+use lightyear::prelude::{LocalTimeline, PeerId, Rollback, Tick};
 use smocka::controls::{Control, ControlAction, Controls};
 use smocka::minigames::Minigame;
 use smocka::minigames::outcome::MinigameResult;
 use smocka::minigames::racing::LAPS_SETTING;
-use smocka::minigames::racing::RacingInput;
 use smocka::minigames::racing::bumps::contact;
 use smocka::minigames::racing::car::{Car, CarState};
 use smocka::minigames::racing::config::LAPS;
 use smocka::minigames::racing::progress::RaceProgress;
 use smocka::minigames::racing::race::{RaceRules, RaceStatus};
 use smocka::minigames::racing::track::{CHECKPOINTS, Surface, surface_at};
+use smocka::minigames::racing::{RacingInput, RacingSystems};
 use smocka::minigames::settings::{ChangeSetting, PublishedSettings};
 use smocka::network::LagPreset;
 use smocka::session::SessionPhase;
@@ -640,4 +641,68 @@ fn joiners_see_the_hosts_lap_pick_in_the_lobby() {
         race_laps(apps[1]) == Some(LAPS + 2)
     });
     assert_eq!(client.phase(), Some(SessionPhase::Lobby));
+}
+
+/// Where the joiner's car is on each tick this app simulates, the first time it simulates it:
+/// replays during a rollback (which correct a wrong prediction) don't count.
+#[derive(Resource, Default)]
+struct FirstSimulated(BTreeMap<Tick, Vec2>);
+
+fn record_first_simulated(
+    timeline: Res<LocalTimeline>,
+    rollback: Option<Res<Rollback>>,
+    cars: Query<(&Car, &CarState)>,
+    mut first: ResMut<FirstSimulated>,
+) {
+    if rollback.is_some() {
+        return;
+    }
+    if let Some((_, state)) = cars.iter().find(|(car, _)| joiners(car.owner)) {
+        first.0.entry(timeline.tick()).or_insert(state.position);
+    }
+}
+
+/// A joiner predicts their own car ahead of the host, so it must start on the same tick there as
+/// on the host. If it started only when the host's "racing" status arrived, it would wait a round
+/// trip too long, and jump forward when corrected.
+#[test]
+fn a_joiners_car_starts_on_the_same_tick_as_on_the_host() {
+    let (mut host, mut client) = lagged_pair(LagPreset::Average);
+    for app in [&mut host, &mut client] {
+        app.0.insert_resource(FirstSimulated::default());
+        app.0.add_systems(
+            FixedUpdate,
+            record_first_simulated.after(RacingSystems::Bump),
+        );
+    }
+    // Holding the throttle through the countdown, as players do.
+    hold(&mut client, KeyCode::KeyW);
+    let (mut host, mut client) = start_race(
+        host,
+        client,
+        RaceRules {
+            countdown: Duration::from_secs(1),
+            ..default()
+        },
+    );
+    update_for(&mut [&mut host, &mut client], Duration::from_secs(3));
+
+    let on_host = &host.0.world().resource::<FirstSimulated>().0;
+    let predicted = &client.0.world().resource::<FirstSimulated>().0;
+    let gaps: Vec<(Tick, f32)> = predicted
+        .iter()
+        .filter_map(|(tick, position)| Some((*tick, position.distance(*on_host.get(tick)?))))
+        .collect();
+    let start = on_host.values().next().unwrap();
+    assert!(
+        on_host.values().any(|position| position != start),
+        "the car should have started on the host"
+    );
+    assert!(gaps.len() > 100, "too few ticks to compare: {}", gaps.len());
+    let wrong: Vec<_> = gaps.iter().filter(|(_, gap)| *gap > 0.5).collect();
+    assert!(
+        wrong.is_empty(),
+        "predicted wrong on {} ticks: {wrong:?}",
+        wrong.len()
+    );
 }

@@ -13,7 +13,7 @@ use super::config::{
     SLIDE_DECELERATION, TURN_RATE,
 };
 use super::progress::RaceProgress;
-use super::race::RaceStatus;
+use super::race::RaceStart;
 use super::racing_input::RacingInput;
 use super::track::{START_HEADING, Surface, grid_position, surface_at};
 use crate::minigames::outcome::Participants;
@@ -172,14 +172,16 @@ fn spawn_cars(
 
 /// Runs on the host for every car and on each driver's machine for the cars it predicts (all of
 /// them). Spectators' cars are interpolated, so it leaves them alone, even though the host's
-/// rebroadcast gives them inputs too. A car with no input yet coasts. Until the countdown is over
-/// (or the race's status hasn't arrived yet), input is ignored.
+/// rebroadcast gives them inputs too. A car with no input yet coasts. Before the race's
+/// [`RaceStart`] tick (or before it has arrived), input is ignored: judged by the tick being
+/// simulated, so a rollback replaying ticks from before the start keeps the cars still.
 fn drive_cars(
     time: Res<Time>,
-    status: Option<Single<&RaceStatus>>,
+    timeline: Res<LocalTimeline>,
+    start: Option<Single<&RaceStart>>,
     mut cars: Query<(&mut CarState, Option<&ActionState<RacingInput>>), Without<Interpolated>>,
 ) {
-    let may_drive = status.is_some_and(|status| status.cars_may_drive());
+    let may_drive = start.is_some_and(|start| start.cars_may_drive(timeline.tick()));
     for (mut state, input) in &mut cars {
         let input = match input {
             Some(input) if may_drive => input.0,
@@ -284,11 +286,14 @@ mod tests {
     use lightyear::prelude::Interpolated;
     use lightyear::prelude::input::native::ActionState;
 
-    use super::{CarState, RaceStatus, RacingInput, drive, drive_cars, lerp_angle, wrap_angle};
+    use lightyear::prelude::{LocalTimeline, Tick};
+
+    use super::{CarState, RaceStart, RacingInput, drive, drive_cars, lerp_angle, wrap_angle};
     use crate::minigames::racing::config::{
         CAR_MAX_X, EDGE_MAX_SPEED, GRASS_MAX_SPEED, MAX_REVERSE_SPEED, MAX_SPEED,
         SLIDE_DECELERATION,
     };
+    use crate::minigames::racing::race::RaceStatus;
     use crate::minigames::racing::track::Surface;
 
     const DT: f32 = 1.0 / 128.0;
@@ -466,20 +471,27 @@ mod tests {
         assert_eq!(state.speed, -MAX_REVERSE_SPEED.min(GRASS_MAX_SPEED));
     }
 
-    /// A world one tick into a race in `status`, for running `drive_cars`.
-    fn race_world(status: RaceStatus) -> World {
+    /// The tick races start on in these tests.
+    const START: u32 = 100;
+
+    /// A world simulating tick `tick` of a race that starts on [`START`], for running
+    /// `drive_cars`.
+    fn race_world(tick: u32) -> World {
         let mut world = World::new();
         let mut time = Time::<()>::default();
         time.advance_by(Duration::from_secs_f32(DT));
         world.insert_resource(time);
-        world.spawn(status);
+        let mut timeline = LocalTimeline::default();
+        timeline.apply_delta(tick as i32);
+        world.insert_resource(timeline);
+        world.spawn(RaceStart(Tick(START)));
         world
     }
 
-    /// Whether one run of `drive_cars` during `status` marks a car in `state`, driven with
+    /// Whether one run of `drive_cars` on tick `tick` marks a car in `state`, driven with
     /// `input`, as changed.
-    fn drive_cars_marks_changed(status: RaceStatus, state: CarState, input: RacingInput) -> bool {
-        let mut world = race_world(status);
+    fn drive_cars_marks_changed(tick: u32, state: CarState, input: RacingInput) -> bool {
+        let mut world = race_world(tick);
         let car = world.spawn((state, ActionState(input))).id();
         world.clear_trackers();
         world.run_system_once(drive_cars).unwrap();
@@ -492,7 +504,7 @@ mod tests {
 
     #[test]
     fn a_car_with_no_input_yet_coasts() {
-        let mut world = race_world(RaceStatus::Racing);
+        let mut world = race_world(START);
         let car = world.spawn(moving(100.0)).id();
         world.run_system_once(drive_cars).unwrap();
         let speed = world.get::<CarState>(car).unwrap().speed;
@@ -501,7 +513,7 @@ mod tests {
 
     #[test]
     fn spectators_cars_are_left_to_interpolation() {
-        let mut world = race_world(RaceStatus::Racing);
+        let mut world = race_world(START);
         let car = world
             .spawn((moving(100.0), ActionState(THROTTLE), Interpolated))
             .id();
@@ -511,28 +523,39 @@ mod tests {
 
     #[test]
     fn a_parked_car_is_not_marked_as_changed() {
-        assert!(!drive_cars_marks_changed(
-            RaceStatus::Racing,
-            moving(0.0),
-            COAST
-        ));
+        assert!(!drive_cars_marks_changed(START, moving(0.0), COAST));
     }
 
     #[test]
     fn a_car_that_moves_is_marked_as_changed() {
-        assert!(drive_cars_marks_changed(
-            RaceStatus::Racing,
-            moving(0.0),
-            THROTTLE
-        ));
+        assert!(drive_cars_marks_changed(START, moving(0.0), THROTTLE));
     }
 
     #[test]
-    fn cars_cant_move_during_the_countdown() {
-        assert!(!drive_cars_marks_changed(
-            RaceStatus::Countdown(2),
-            moving(0.0),
-            THROTTLE
-        ));
+    fn cars_cant_move_before_the_start_tick() {
+        assert!(!drive_cars_marks_changed(START - 1, moving(0.0), THROTTLE));
+    }
+
+    #[test]
+    fn a_rollback_replaying_a_tick_before_the_start_keeps_the_car_still() {
+        // The host's status already says the race is on, but this tick is from before the start.
+        let mut world = race_world(START - 5);
+        world.spawn(RaceStatus::Racing);
+        let car = world.spawn((moving(0.0), ActionState(THROTTLE))).id();
+        world.run_system_once(drive_cars).unwrap();
+        assert_eq!(*world.get::<CarState>(car).unwrap(), moving(0.0));
+    }
+
+    #[test]
+    fn cars_cant_move_before_the_start_has_arrived() {
+        let mut world = race_world(START + 10);
+        let start = world
+            .query_filtered::<Entity, With<RaceStart>>()
+            .single(&world)
+            .unwrap();
+        world.despawn(start);
+        let car = world.spawn((moving(0.0), ActionState(THROTTLE))).id();
+        world.run_system_once(drive_cars).unwrap();
+        assert_eq!(*world.get::<CarState>(car).unwrap(), moving(0.0));
     }
 }

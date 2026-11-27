@@ -27,10 +27,26 @@ pub enum RaceStatus {
     Finishing(u32),
 }
 
-impl RaceStatus {
-    pub fn cars_may_drive(self) -> bool {
-        !matches!(self, RaceStatus::Countdown(_))
+/// The tick the race starts on: cars drive from it on. The host picks it as the race is set up, a
+/// whole countdown ahead, and it's replicated with the [`RaceStatus`], so every peer starts the
+/// cars it simulates on the same tick. A joiner predicts ahead of the host, so it would otherwise
+/// start them only once the host's [`RaceStatus::Racing`] arrived, too late, and its cars would
+/// jump when corrected. Rollbacks that replay ticks from before the start keep the cars still,
+/// too, which the current [`RaceStatus`] can't tell them.
+#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RaceStart(pub Tick);
+
+impl RaceStart {
+    /// Whether cars may drive on tick `tick`.
+    pub fn cars_may_drive(self, tick: Tick) -> bool {
+        tick >= self.0
     }
+}
+
+/// How many fixed ticks of `timestep` a countdown of `countdown` lasts: the tick its timer
+/// finishes on, counting the first tick after it starts as 1. (A countdown of 0 is over at once.)
+pub fn countdown_ticks(countdown: Duration, timestep: Duration) -> u32 {
+    countdown.as_nanos().div_ceil(timestep.as_nanos()) as u32
 }
 
 /// Host only: how the next race is timed. How many laps it has is a setting the host picks in
@@ -163,6 +179,7 @@ pub struct RacePlugin;
 impl Plugin for RacePlugin {
     fn build(&self, app: &mut App) {
         app.component::<RaceStatus>().replicate();
+        app.component::<RaceStart>().replicate();
         app.init_resource::<RaceRules>();
 
         app.add_systems(OnEnter(PHASE), start_race.run_if(is_host));
@@ -183,14 +200,26 @@ impl Plugin for RacePlugin {
 }
 
 /// Host only: when the race starts, spawn its status and start the countdown.
-fn start_race(rules: Res<RaceRules>, settings: Res<MinigameSettings>, mut commands: Commands) {
+///
+/// The countdown's timer (in [`RaceDirector`]) finishes on the same tick as [`RaceStart`], so the
+/// status says "GO!" on the tick the cars may first drive.
+fn start_race(
+    rules: Res<RaceRules>,
+    settings: Res<MinigameSettings>,
+    timeline: Res<LocalTimeline>,
+    fixed: Res<Time<Fixed>>,
+    mut commands: Commands,
+) {
     let laps = settings.get(LAPS_SETTING);
+    let start = timeline.tick() + countdown_ticks(rules.countdown, fixed.timestep()) as i32;
     info!(
-        "Race of {laps} laps starts in {} s",
-        rules.countdown.as_secs_f32().ceil() as u32
+        "Race of {laps} laps starts in {} s, on tick {}",
+        rules.countdown.as_secs_f32().ceil() as u32,
+        start.0
     );
     commands.spawn((
         RaceStatus::Countdown(whole_seconds(rules.countdown)),
+        RaceStart(start),
         DespawnOnExit(PHASE),
         Replicate::to_clients(NetworkTarget::All),
     ));
@@ -329,9 +358,11 @@ mod tests {
     use bevy::math::Vec2;
     use lightyear::prelude::PeerId;
 
+    use lightyear::prelude::Tick;
+
     use super::{
-        Car, FastestLap, RaceDirector, RaceRules, RaceStatus, lap_time_label, race_placements,
-        race_summary, status_label,
+        Car, FastestLap, RaceDirector, RaceRules, RaceStart, RaceStatus, countdown_ticks,
+        lap_time_label, race_placements, race_summary, status_label,
     };
     use crate::minigames::racing::progress::RaceProgress;
 
@@ -429,10 +460,43 @@ mod tests {
     }
 
     #[test]
-    fn only_the_countdown_keeps_cars_still() {
-        assert!(!RaceStatus::Countdown(1).cars_may_drive());
-        assert!(RaceStatus::Racing.cars_may_drive());
-        assert!(RaceStatus::Finishing(5).cars_may_drive());
+    fn cars_drive_from_the_start_tick_on() {
+        let start = RaceStart(Tick(100));
+        assert!(!start.cars_may_drive(Tick(99)));
+        assert!(start.cars_may_drive(Tick(100)));
+        assert!(start.cars_may_drive(Tick(5000)));
+    }
+
+    #[test]
+    fn the_countdown_timer_finishes_on_the_start_tick() {
+        // At 128 Hz and at 60 Hz, where a tick isn't a whole number of nanoseconds.
+        for rate in [128.0, 60.0] {
+            let timestep = Duration::from_secs_f64(1.0 / rate);
+            for countdown in [0, 1, 3, 10].map(Duration::from_secs) {
+                let ticks = countdown_ticks(countdown, timestep);
+                let mut director = RaceDirector::new(&rules_with_countdown(countdown), 3);
+                // The timer is ticked once per fixed tick, from the first one after it starts.
+                let mut finished_on = None;
+                for tick in 1..=ticks + 1 {
+                    if director.tick(timestep) == RaceStatus::Racing {
+                        finished_on = Some(tick);
+                        break;
+                    }
+                }
+                assert_eq!(
+                    finished_on,
+                    Some(ticks.max(1)),
+                    "{countdown:?} at {rate} Hz"
+                );
+            }
+        }
+    }
+
+    fn rules_with_countdown(countdown: Duration) -> RaceRules {
+        RaceRules {
+            countdown,
+            ..Default::default()
+        }
     }
 
     #[test]

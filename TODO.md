@@ -134,10 +134,6 @@ same build.
 - [ ] **Spectators don't hear bumps** in racing. Only the host and drivers work bumps out
       (`CarsBumped` in `bumps.rs`); a spectator's cars are interpolated. Spectators could check
       `contact` between the cars as they're drawn instead.
-- [ ] **Start on an agreed tick**, so predicted cars don't jump at the start. It also fixes a
-      rollback problem: `drive_cars` reads `RaceStatus`, which isn't predicted. A rollback that
-      replays ticks from before the start sees the current `Racing` and lets the car move early.
-      Comparing the tick being simulated with the start tick fixes both.
 - [ ] **Blend out rollback snaps on drivers' screens**, if playtests show they look bad. Every
       driver predicts every car from inputs the host rebroadcasts, which arrive late, so a
       rollback snaps other players' cars to the corrected spot in one frame. On a LAN that's a
