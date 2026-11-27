@@ -8,9 +8,9 @@ use lightyear::prelude::PeerId;
 use smocka::config::session::{RESULTS_DURATION, STANDINGS_DURATION};
 use smocka::minigames::Minigame;
 use smocka::minigames::outcome::MinigameResult;
+use smocka::minigames::two_player_pong::GOALS_TO_WIN_SETTING;
 use smocka::minigames::two_player_pong::ball::Ball;
 use smocka::minigames::two_player_pong::paddles::Paddle;
-use smocka::minigames::two_player_pong::score::PongRules;
 use smocka::players::Player;
 use smocka::session::SessionPhase;
 use smocka::standings::Points;
@@ -122,9 +122,7 @@ fn a_joiner_cannot_start() {
 #[test]
 fn winning_shows_the_result_then_the_standings_then_returns_to_the_lobby() {
     let (mut host, mut client, _) = connected_pair();
-    host.0
-        .world_mut()
-        .insert_resource(PongRules { goals_to_win: 1 });
+    host.set_setting(GOALS_TO_WIN_SETTING, 1);
     update_until(&mut [&mut host, &mut client], |apps| apps[0].players() == 2);
     host.start_minigame(Minigame::TwoPlayerPong);
 

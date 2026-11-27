@@ -49,7 +49,11 @@ pub const BALL_MAX_Y: f32 = VIEW_HEIGHT / 2.0 - WALL_THICKNESS - BALL_SIZE / 2.0
 /// How far left or right of the centre the ball centre must get to score a goal.
 /// At this distance the ball is fully off screen.
 pub const GOAL_X: f32 = VIEW_WIDTH / 2.0 + BALL_SIZE / 2.0;
-/// Goals a player needs to win, unless [`PongRules`](super::score::PongRules) says otherwise.
+/// Goals a player needs to win, unless the host picks another number in the lobby.
 pub const GOALS_TO_WIN: u32 = 5;
+/// The fewest goals to win the host can pick.
+pub const MIN_GOALS_TO_WIN: u32 = 1;
+/// The most goals to win the host can pick.
+pub const MAX_GOALS_TO_WIN: u32 = 10;
 /// Font size of the score at the top of the arena, in world units.
 pub const SCORE_FONT_SIZE: f32 = 32.0;

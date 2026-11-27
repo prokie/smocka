@@ -12,8 +12,10 @@ pub use visuals::PongVisualsPlugin;
 
 use bevy::prelude::*;
 
+use super::settings::{Setting, SettingId};
 use super::{Minigame, MinigameInfo};
 use crate::session::SessionPhase;
+use config::{GOALS_TO_WIN, MAX_GOALS_TO_WIN, MIN_GOALS_TO_WIN};
 
 /// The phase a game of Pong is played in.
 pub const PHASE: SessionPhase = SessionPhase::Playing(Minigame::TwoPlayerPong);
@@ -24,8 +26,16 @@ pub const INFO: MinigameInfo = MinigameInfo {
     name: "Pong",
     min_players: 2,
     max_players: 2,
-    settings: &[],
+    settings: &[Setting {
+        name: "Goals to win",
+        min: MIN_GOALS_TO_WIN,
+        max: MAX_GOALS_TO_WIN,
+        default: GOALS_TO_WIN,
+    }],
 };
+
+/// How many goals win a game, picked by the host (see [`settings`](super::settings)).
+pub const GOALS_TO_WIN_SETTING: SettingId = SettingId::new(Minigame::TwoPlayerPong, 0);
 
 /// The order Pong's game logic runs in each `FixedUpdate` tick.
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]

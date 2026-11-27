@@ -216,6 +216,6 @@ mod tests {
         let id = SettingId::all_of(Minigame::Racing).next().unwrap();
         values.set(id, 4);
         assert_eq!(values.summary(Minigame::Racing), "Laps: 4");
-        assert_eq!(values.summary(Minigame::TwoPlayerPong), "");
+        assert_eq!(values.summary(Minigame::TwoPlayerPong), "Goals to win: 5");
     }
 }

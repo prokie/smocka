@@ -39,7 +39,7 @@ on UDP port 5000 on every interface.
 In the lobby, everyone picks a colour: each colour can belong to only one player, and it's used
 for your car, your Pong paddle and your score. Once at least two players are there, the host
 picks a minigame. Next to each minigame, the host's **Settings** button opens its own settings,
-such as how many laps a race has; everyone sees the picks there.
+such as how many goals win Pong or how many laps a race has; everyone sees the picks there.
 `Esc` leaves the session (or closes a settings screen).
 
 To skip the menu while developing:

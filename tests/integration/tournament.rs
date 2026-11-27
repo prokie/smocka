@@ -6,8 +6,8 @@ use std::time::{Duration, Instant};
 use bevy::prelude::*;
 use smocka::minigames::Minigame;
 use smocka::minigames::outcome::{MinigameResult, Participants};
+use smocka::minigames::two_player_pong::GOALS_TO_WIN_SETTING;
 use smocka::minigames::two_player_pong::paddles::Paddle;
-use smocka::minigames::two_player_pong::score::PongRules;
 use smocka::players::Player;
 use smocka::session::SessionPhase;
 use smocka::standings::Points;
@@ -78,9 +78,7 @@ fn playing(host: &mut TestApp) -> Vec<u32> {
 #[test]
 fn three_players_play_a_tournament_to_one_result() {
     let (mut host, mut first, mut second) = trio();
-    host.0
-        .world_mut()
-        .insert_resource(PongRules { goals_to_win: 1 });
+    host.set_setting(GOALS_TO_WIN_SETTING, 1);
     host.start_minigame(Minigame::TwoPlayerPong);
 
     // Nobody moves, so each match ends 1-0 to whoever the serve goes away from: two matches,
@@ -136,9 +134,7 @@ fn a_player_leaving_mid_match_loses_it_by_walkover() {
     update_until(&mut [&mut host, &mut staying], |apps| {
         apps[0].players() == 2
     });
-    host.0
-        .world_mut()
-        .insert_resource(PongRules { goals_to_win: 1 });
+    host.set_setting(GOALS_TO_WIN_SETTING, 1);
 
     // With three players the first match is a semi-final, so the one who left comes 3rd.
     update_until_within(

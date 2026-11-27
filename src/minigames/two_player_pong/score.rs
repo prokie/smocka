@@ -2,29 +2,14 @@ use bevy::prelude::*;
 use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use super::PHASE;
-use super::PongSystems;
 use super::ball::{BallPosition, BallVelocity, serve_velocity};
-use super::config::{GOAL_X, GOALS_TO_WIN};
+use super::config::GOAL_X;
 use super::paddles::{Paddle, Side};
+use super::{GOALS_TO_WIN_SETTING, PHASE, PongSystems};
 use crate::minigames::outcome::{MinigameEnded, MinigameResult, Placement};
+use crate::minigames::settings::MinigameSettings;
 use crate::network::is_host;
 use crate::players::Player;
-
-/// Host only: how a game of Pong is won.
-#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PongRules {
-    /// Goals a player needs to win. Defaults to [`GOALS_TO_WIN`].
-    pub goals_to_win: u32,
-}
-
-impl Default for PongRules {
-    fn default() -> Self {
-        Self {
-            goals_to_win: GOALS_TO_WIN,
-        }
-    }
-}
 
 /// Goals scored by each side. One replicated entity per game, spawned by the host.
 #[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -63,7 +48,6 @@ pub struct ScorePlugin;
 impl Plugin for ScorePlugin {
     fn build(&self, app: &mut App) {
         app.component::<PongScore>().replicate();
-        app.init_resource::<PongRules>();
 
         app.add_systems(OnEnter(PHASE), spawn_score.run_if(is_host));
         app.add_systems(
@@ -95,12 +79,13 @@ fn score_goals(
     mut score: Single<&mut PongScore>,
     paddles: Query<&Paddle>,
     players: Query<&Player>,
-    rules: Res<PongRules>,
+    settings: Res<MinigameSettings>,
     mut commands: Commands,
 ) {
+    let goals_to_win = settings.get(GOALS_TO_WIN_SETTING);
     // The phase only changes at the start of the next frame, so more ticks can run after the
     // winning goal. The ball is left where it went out, so don't count it again.
-    if score.winner(rules.goals_to_win).is_some() {
+    if score.winner(goals_to_win).is_some() {
         return;
     }
     for (mut position, mut velocity) in &mut balls {
@@ -110,7 +95,7 @@ fn score_goals(
         score.add_goal(scorer);
         debug!("Goal for {scorer:?}: {} – {}", score.left, score.right);
 
-        if score.winner(rules.goals_to_win).is_none() {
+        if score.winner(goals_to_win).is_none() {
             position.0 = Vec2::ZERO;
             velocity.0 = serve_velocity(scorer.opponent(), &mut rand::rng());
             continue;

@@ -3,6 +3,8 @@
 use bevy::prelude::*;
 use lightyear::prelude::PeerId;
 use smocka::minigames::Minigame;
+use smocka::minigames::settings::PublishedSettings;
+use smocka::minigames::two_player_pong::GOALS_TO_WIN_SETTING;
 use smocka::minigames::two_player_pong::ball::{Ball, BallPosition};
 use smocka::minigames::two_player_pong::paddles::{Paddle, PaddlePosition};
 use smocka::minigames::two_player_pong::score::PongScore;
@@ -11,8 +13,9 @@ use std::time::Duration;
 
 use bevy::prelude::Command;
 use smocka::network::JoinSession;
+use smocka::session::SessionPhase;
 
-use crate::common::{TestApp, pair_in_pong, update_until, update_until_within};
+use crate::common::{TestApp, connected_pair, pair_in_pong, update_until, update_until_within};
 
 /// `y` of the paddle whose owner matches `is_owner`, if this app has it yet.
 fn paddle_y(app: &mut TestApp, is_owner: impl Fn(PeerId) -> bool) -> Option<f32> {
@@ -170,4 +173,45 @@ fn a_joiner_who_rejoins_can_still_move_their_paddle() {
         apps.iter_mut()
             .all(|app| paddle_y(app, joiners).is_some_and(|y| y > 10.0))
     });
+}
+
+#[test]
+fn the_host_picks_how_many_goals_win_and_joiners_see_it() {
+    let (mut host, mut client, _) = connected_pair();
+    host.set_setting(GOALS_TO_WIN_SETTING, 2);
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps[0].players() == 2 && goals_to_win(apps[1]) == Some(2)
+    });
+    host.start_minigame(Minigame::TwoPlayerPong);
+
+    // Nobody moves, so every serve flies past the paddle it goes to. After a goal, the ball is
+    // served to the side that let it in, so the same side scores again.
+    update_until_within(
+        &mut [&mut host, &mut client],
+        Duration::from_secs(10),
+        |apps| score(apps[1]).is_some_and(|score| score.left + score.right == 1),
+    );
+    assert_eq!(
+        host.phase(),
+        Some(SessionPhase::Playing(Minigame::TwoPlayerPong)),
+        "one goal doesn't win when two are needed"
+    );
+    update_until_within(
+        &mut [&mut host, &mut client],
+        Duration::from_secs(10),
+        |apps| {
+            apps.iter_mut()
+                .all(|app| app.phase() == Some(SessionPhase::Results))
+        },
+    );
+}
+
+/// How many goals this app has been told win Pong, if it knows yet.
+fn goals_to_win(app: &mut TestApp) -> Option<u32> {
+    app.0
+        .world_mut()
+        .query::<&PublishedSettings>()
+        .iter(app.0.world())
+        .next()
+        .map(|settings| settings.get(GOALS_TO_WIN_SETTING))
 }
