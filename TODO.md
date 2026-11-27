@@ -13,17 +13,21 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
       `add_correction` needs the component to implement `Default` and `Diffable`, which
       `CarState` and `PaddlePosition` don't yet. Insert `SkipFrameInterpolation` on intentional
       teleports, such as Pong's ball going back to the centre after a goal, so it doesn't smear
-      across the screen.
+      across the screen. Matters more for racing since bumping came in: every driver predicts
+      every car from rebroadcast inputs, which arrive late, so other players' cars snap a little
+      each time their driver changes input.
 - [ ] **Test under bad network conditions.** Everything is tested over clean localhost.
       `Link::with_conditioner(LinkConditionerConfig { .. })` (`lightyear_link`) adds latency,
       jitter and packet loss. Add a CLI flag (e.g. `--lag`) for manual play, and one
-      integration test with a conditioned link.
+      integration test with a conditioned link. Racing needs it most: other players' cars are
+      predicted from their rebroadcast inputs, and are wrong for longer the higher the latency.
 - [ ] **Reconsider `TICK_RATE` (128 Hz) and `SEND_INTERVAL` (64 Hz)** once frame interpolation is
       in. 64 Hz ticks and a 20–32 Hz send rate would roughly halve CPU and bandwidth. Measure
-      first. A lower tick rate also tightens two limits that are written in terms of it: the ball's
-      tunnelling limit (`BALL_MAX_SPEED`, see its doc in `src/config.rs`) and how thick racing
-      checkpoints must be. A lower send rate makes other players' cars and paddles show slightly
-      later.
+      first. A lower tick rate also tightens three limits that are written in terms of it: the
+      ball's tunnelling limit (`BALL_MAX_SPEED`, see its doc in `src/config.rs`), how thick racing
+      checkpoints must be, and how fast cars can drive at each other without passing through
+      (checked when `bumps.rs` compiles). A lower send rate makes other players' paddles, and cars
+      for spectators, show slightly later.
 - [ ] **Lightyear's debug tools, when chasing a desync**: `lightyear_tools` has a structured
       tracing layer and a debug UI covering sync, input buffering, rollbacks and correction.
       Check which `lightyear` feature enables it.
@@ -59,11 +63,11 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
       against `checkpoint_at`, with no new message from the host.
 - [ ] **Skid marks depend on the frame rate.** `leave_skid_marks` runs in `Update` and divides
       each change in `CarState` by the frame's `delta_secs`. Cars driven in `FixedUpdate` (all
-      of them on the host, a joiner's own car) only change on 128 Hz ticks. On a 144–240 Hz
+      of them on the host and on a driver's machine) only change on 128 Hz ticks. On a 144–240 Hz
       screen, a frame with a tick sees 7.8 ms of driving in a 4–7 ms frame, so cornering and
       braking look up to ~1.9× harder and marks start too easily. At 60 Hz, 2 or 3 ticks per
       frame make it swing between 0.9× and 1.4×. Moving the system to `FixedUpdate` would break
-      interpolated cars (other players' cars on a joiner), which change every frame. Divide by
+      interpolated cars (every car, for a spectator), which change every frame. Divide by
       the time the change covers instead: ticks run × the fixed timestep for driven cars, the
       frame time for interpolated ones.
 - [ ] **"Esc: leave" and the watching line overlap on narrow windows.** Both sit 8 px from the
@@ -92,7 +96,6 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
       finish. Racing's engine could follow speed with `AudioSink::set_speed`. For separate
       music/effects volumes or fades, look at `bevy_kira_audio` (check it supports Bevy 0.20
       first).
-- [ ] **Car-to-car bumping**: the hard prediction problem. Do it on its own.
 - [ ] **Start on an agreed tick**, so predicted cars don't jump at the start. It also fixes a
       rollback problem: `drive_cars` reads `RaceStatus`, which isn't predicted. A rollback that
       replays ticks from before the start sees the current `Racing` and lets the car move early.

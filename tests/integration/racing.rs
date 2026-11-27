@@ -1,12 +1,15 @@
-//! Racing: every player gets a car, each player's driving shows up on every peer, the host counts
-//! laps, and the race ends with a result once the cars finish.
+//! Racing: every player gets a car, each player's driving shows up on every peer, cars bump each
+//! other, the host counts laps, and the race ends with a result once the cars finish.
 
 use std::time::Duration;
 
 use bevy::prelude::*;
 use lightyear::prelude::PeerId;
+use lightyear::prelude::input::native::ActionState;
 use smocka::config::minigames::racing::LAPS;
 use smocka::minigames::Minigame;
+use smocka::minigames::racing::RacingInput;
+use smocka::minigames::racing::bumps::contact;
 use smocka::minigames::racing::car::{Car, CarState};
 use smocka::minigames::racing::progress::RaceProgress;
 use smocka::minigames::racing::race::{ChangeLaps, RaceLaps, RaceRules, RaceStatus};
@@ -23,6 +26,25 @@ fn car(app: &mut TestApp, is_driver: impl Fn(PeerId) -> bool) -> Option<CarState
         .iter(app.0.world())
         .find(|(car, _)| is_driver(car.owner))
         .map(|(_, state)| *state)
+}
+
+/// How far the host's and the joiner's cars overlap on this app: 0 if they don't, or if it can't
+/// see both yet.
+fn overlap(app: &mut TestApp) -> f32 {
+    match (car(app, hosts), car(app, joiners)) {
+        (Some(host), Some(joiner)) => contact(host, joiner).map_or(0.0, |contact| contact.depth),
+        _ => 0.0,
+    }
+}
+
+/// The input this app has for the car whose driver matches `is_driver`, if it has any.
+fn input(app: &mut TestApp, is_driver: impl Fn(PeerId) -> bool) -> Option<RacingInput> {
+    app.0
+        .world_mut()
+        .query::<(&Car, &ActionState<RacingInput>)>()
+        .iter(app.0.world())
+        .find(|(car, _)| is_driver(car.owner))
+        .map(|(_, input)| input.0)
 }
 
 /// The progress of the car whose driver matches `is_driver`, if this app has it yet.
@@ -189,6 +211,69 @@ fn host_steers_their_car_on_every_peer() {
     update_until(&mut [&mut host, &mut client], |apps| {
         apps.iter_mut()
             .all(|app| car(app, hosts).is_some_and(|car| car.heading > 0.5))
+    });
+}
+
+/// Host only: park the car whose driver matches `is_driver` at `position`, and wait until every
+/// app sees it there.
+fn park(apps: &mut [&mut TestApp], is_driver: impl Fn(PeerId) -> bool + Copy, position: Vec2) {
+    teleport(apps[0], is_driver, position);
+    update_until(apps, |apps| {
+        apps.iter_mut().all(|app| {
+            car(app, is_driver).is_some_and(|car| car.position.distance(position) < 0.01)
+        })
+    });
+}
+
+/// Update `apps` until the car whose driver matches `is_driver` is past `x` on all of them,
+/// checking on every update that no app shows the two cars inside each other.
+fn push_past(apps: &mut [&mut TestApp], is_driver: impl Fn(PeerId) -> bool + Copy, x: f32) {
+    update_until(apps, |apps| {
+        for app in apps.iter_mut() {
+            let overlap = overlap(app);
+            assert!(overlap < 1.0, "the cars overlap by {overlap}");
+        }
+        apps.iter_mut()
+            .all(|app| car(app, is_driver).is_some_and(|car| car.position.x > x))
+    });
+}
+
+#[test]
+fn the_joiner_bumps_the_hosts_car_along_on_every_peer() {
+    let (mut host, mut client) = race_pair();
+    // Park the host's car in the joiner's lane, a little way ahead of it.
+    let ahead = car(&mut host, joiners).unwrap().position + Vec2::new(40.0, 0.0);
+    park(&mut [&mut host, &mut client], hosts, ahead);
+
+    hold(&mut client, KeyCode::KeyW);
+
+    push_past(&mut [&mut host, &mut client], hosts, ahead.x + 10.0);
+}
+
+#[test]
+fn the_host_bumps_the_joiners_car_along_on_every_peer() {
+    let (mut host, mut client) = race_pair();
+    // Park the host's car in the joiner's lane, a little way behind it.
+    let joiner = car(&mut host, joiners).unwrap().position;
+    park(
+        &mut [&mut host, &mut client],
+        hosts,
+        joiner - Vec2::new(40.0, 0.0),
+    );
+
+    hold(&mut host, KeyCode::KeyW);
+
+    push_past(&mut [&mut host, &mut client], joiners, joiner.x + 10.0);
+}
+
+#[test]
+fn joiners_predict_the_hosts_car_from_the_hosts_input() {
+    let (mut host, mut client) = race_pair();
+
+    hold(&mut host, KeyCode::KeyW);
+
+    update_until(&mut [&mut host, &mut client], |apps| {
+        input(apps[1], hosts).is_some_and(|input| input.throttle)
     });
 }
 

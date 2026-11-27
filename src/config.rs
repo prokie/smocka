@@ -194,6 +194,12 @@ pub mod minigames {
         /// turn away from it.
         pub const EDGE_MAX_SPEED: f32 = 40.0;
 
+        /// How bouncy bumps between cars are, from 0 to 1. At 0, cars that hit each other move on
+        /// together; at 1 they bounce apart as fast as they came together.
+        pub const BUMP_RESTITUTION: f32 = 0.4;
+        /// How fast a car shoved sideways by a bump (or past its top speed) stops sliding.
+        pub const SLIDE_DECELERATION: f32 = 600.0;
+
         /// Top speed either way on grass.
         pub const GRASS_MAX_SPEED: f32 = 80.0;
         /// How fast a car going faster than [`GRASS_MAX_SPEED`] slows down on grass. Keep it above

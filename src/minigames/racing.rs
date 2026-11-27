@@ -1,3 +1,4 @@
+pub mod bumps;
 pub mod car;
 pub mod progress;
 pub mod race;
@@ -18,6 +19,8 @@ pub enum RacingSystems {
     Status,
     /// Move the cars from this tick's input.
     Drive,
+    /// Push touching cars apart, and bounce cars that hit each other.
+    Bump,
     /// Host only: count checkpoints, laps and finishes from where the cars ended up.
     Checkpoints,
     /// Host only: end the race when it's over.
@@ -34,6 +37,7 @@ impl Plugin for RacingPlugin {
             (
                 RacingSystems::Status,
                 RacingSystems::Drive,
+                RacingSystems::Bump,
                 RacingSystems::Checkpoints,
                 RacingSystems::Finish,
             )
@@ -46,6 +50,7 @@ impl Plugin for RacingPlugin {
             racing_input::RacingInputPlugin,
             progress::ProgressPlugin,
             race::RacePlugin,
+            bumps::BumpPlugin,
         ));
     }
 }

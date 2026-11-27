@@ -1,6 +1,7 @@
 use bevy::ecs::entity::{EntityMapper, MapEntities};
 use bevy::prelude::*;
 use lightyear::input::client::InputSystems;
+use lightyear::prelude::input::InputConfig;
 use lightyear::prelude::input::native::{ActionState, InputMarker};
 use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -23,6 +24,8 @@ impl MapEntities for RacingInput {
     fn map_entities<M: EntityMapper>(&mut self, _entity_mapper: &mut M) {}
 }
 
+/// Buffers this player's driving, and has the host pass every driver's input on to the others, who
+/// predict every car (see [`bumps`](super::bumps)).
 pub struct RacingInputPlugin;
 
 impl Plugin for RacingInputPlugin {
@@ -33,7 +36,12 @@ impl Plugin for RacingInputPlugin {
                 .in_set(InputSystems::WriteClientInputs)
                 .run_if(in_state(SessionPhase::Racing)),
         );
-        app.add_plugins(input::native::InputPlugin::<RacingInput>::default());
+        app.add_plugins(input::native::InputPlugin::<RacingInput> {
+            config: InputConfig {
+                rebroadcast_inputs: true,
+                ..default()
+            },
+        });
 
         app.add_observer(mark_controlled_car);
     }

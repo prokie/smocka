@@ -1,5 +1,5 @@
-//! Skid marks: dark strips behind a car's rear wheels when it corners or brakes hard, fading away
-//! after a few seconds. Local to each peer and worked out from the car states it sees, so nothing
+//! Skid marks: dark strips behind a car's rear wheels when it corners or brakes hard, or slides
+//! after a bump, fading away after a few seconds. Local to each peer and worked out from the car states it sees, so nothing
 //! extra is sent over the network.
 
 use bevy::prelude::*;
@@ -13,8 +13,11 @@ use crate::session::SessionPhase;
 const CORNERING: f32 = 450.0;
 /// Slowing down this fast (world units/s²) leaves marks: hard braking, not coasting.
 const BRAKING: f32 = 350.0;
-/// Slower cars never leave marks.
+/// Slower cars never leave marks from cornering or braking.
 const MIN_SPEED: f32 = 60.0;
+/// Sliding this fast after a bump (see [`CarState::slide`], world units/s) leaves marks, whatever
+/// the car's own speed.
+const SLIDING: f32 = 40.0;
 /// A car that moved further than this between two frames was snapped into place (by a rollback,
 /// say): don't draw a mark across the jump.
 const MAX_STEP: f32 = 12.0;
@@ -57,9 +60,12 @@ fn track_car(trigger: On<Add<Car>>, mut commands: Commands) {
     commands.entity(trigger.entity).insert(SkidTrail::default());
 }
 
-/// Whether a car that went from `before` to `after` in `dt` seconds is skidding: cornering or
-/// braking hard enough, and not too slow.
+/// Whether a car that went from `before` to `after` in `dt` seconds is skidding: sliding after a
+/// bump, or cornering or braking hard enough and not too slow.
 pub fn is_skidding(before: CarState, after: CarState, dt: f32) -> bool {
+    if after.slide.length() > SLIDING {
+        return true;
+    }
     if dt <= 0.0 || after.speed.abs() < MIN_SPEED {
         return false;
     }
@@ -173,6 +179,20 @@ mod tests {
             DT
         ));
         assert!(!is_skidding(car(40.0, 0.0), car(40.0, 1.0), DT));
+    }
+
+    #[test]
+    fn sliding_after_a_bump_leaves_marks_even_standing_still() {
+        let shoved = CarState {
+            slide: Vec2::new(0.0, 100.0),
+            ..car(0.0, 0.0)
+        };
+        assert!(is_skidding(car(0.0, 0.0), shoved, DT));
+        let nudged = CarState {
+            slide: Vec2::new(0.0, 10.0),
+            ..car(0.0, 0.0)
+        };
+        assert!(!is_skidding(car(0.0, 0.0), nudged, DT));
     }
 
     #[test]
