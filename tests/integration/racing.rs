@@ -393,18 +393,19 @@ fn the_host_counts_a_lap_and_every_peer_sees_it() {
 #[test]
 fn cars_wait_for_the_countdown() {
     let (mut host, mut client) = race_pair_with(RaceRules {
-        countdown: Duration::from_secs(1),
+        countdown: Duration::from_secs(2),
         ..default()
     });
     hold(&mut client, KeyCode::KeyW);
 
-    // The joiner holds the throttle, but nothing moves until the countdown is over.
-    for _ in 0..20 {
-        host.0.update();
-        client.0.update();
+    // The joiner holds the throttle, but nothing moves until the countdown is over. Long enough
+    // for their input to reach the host (a few hundred milliseconds over localhost); their own,
+    // predicted car would move at once.
+    update_for(&mut [&mut host, &mut client], Duration::from_millis(800));
+    for app in [&mut host, &mut client] {
+        assert!(matches!(status(app), Some(RaceStatus::Countdown(_))));
+        assert_eq!(car(app, joiners).unwrap().speed, 0.0);
     }
-    assert!(matches!(status(&mut host), Some(RaceStatus::Countdown(_))));
-    assert_eq!(car(&mut host, joiners).unwrap().speed, 0.0);
 
     update_until(&mut [&mut host, &mut client], |apps| {
         apps.iter_mut().all(|app| {
