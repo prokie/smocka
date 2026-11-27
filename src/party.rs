@@ -72,7 +72,7 @@ pub struct PartyRules {
     pub next_round: Duration,
     /// How long the winner is shown. Defaults to [`WINNER_DURATION`].
     pub winner: Duration,
-    /// The minigames each round picks from. Defaults to all of them.
+    /// The minigames each round picks from. Defaults to all of them but the unfinished shootout.
     pub games: Vec<Minigame>,
 }
 
@@ -82,7 +82,11 @@ impl Default for PartyRules {
             rounds: ROUNDS,
             next_round: NEXT_ROUND_DURATION,
             winner: WINNER_DURATION,
-            games: Minigame::ALL.to_vec(),
+            // The shootout can't be won yet, so a party mustn't pick it (see TODO.md).
+            games: Minigame::ALL
+                .into_iter()
+                .filter(|game| *game != Minigame::Shootout)
+                .collect(),
         }
     }
 }

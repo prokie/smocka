@@ -1,5 +1,20 @@
 # TODO
 
+## Shootout (in progress)
+
+A top-down last-one-standing shooter with mouse or right-stick aim and hitscan shots, built a step
+at a time (`minigames/shootout/`). Done: the arena and a gunner per player.
+
+- [ ] Moving: WASD / arrows / left stick, blocked by the walls and cover.
+- [ ] Aiming: the mouse (crosshair cursor) or the right stick.
+- [ ] Shooting: a Fire control (mouse buttons bindable too), hitscan against the walls and other
+      gunners, hit points, knockouts, last one standing wins. Then let parties pick it: remove the
+      filter in `PartyRules::default` (`party.rs`), and list it in the README.
+- [ ] Lag compensation: turn on `lag_compensation` in the input plugin's `InputConfig`, keep a few
+      ticks of each gunner's position on the host, and check each shot against where the targets
+      were on the shooter's screen (its `InterpolationDelay`).
+- [ ] Sounds, and a "hits to knock out" setting.
+
 ## Netcode and engine
 
 APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.cargo/registry`.

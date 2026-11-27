@@ -9,4 +9,5 @@ mod party;
 mod pong;
 mod racing;
 mod session;
+mod shootout;
 mod tournament;

@@ -5,6 +5,7 @@
 pub mod outcome;
 pub mod racing;
 pub mod settings;
+pub mod shootout;
 pub mod smoothing;
 pub mod sounds;
 pub mod two_player_pong;
@@ -24,6 +25,8 @@ pub enum Minigame {
     TwoPlayerPong,
     /// A top-down race for every player.
     Racing,
+    /// A top-down shootout for every player: the last one standing wins.
+    Shootout,
 }
 
 /// What the session and the menus need to know about a minigame. Each minigame's module has one,
@@ -48,13 +51,18 @@ pub struct MinigameInfo {
 
 impl Minigame {
     /// Every minigame, in the order the lobby offers them.
-    pub const ALL: [Minigame; 2] = [Minigame::TwoPlayerPong, Minigame::Racing];
+    pub const ALL: [Minigame; 3] = [
+        Minigame::TwoPlayerPong,
+        Minigame::Racing,
+        Minigame::Shootout,
+    ];
 
     /// What the session and the menus need to know about this minigame.
     pub const fn info(self) -> MinigameInfo {
         match self {
             Minigame::TwoPlayerPong => two_player_pong::INFO,
             Minigame::Racing => racing::INFO,
+            Minigame::Shootout => shootout::INFO,
         }
     }
 }
@@ -68,6 +76,7 @@ impl Plugin for MinigamesPlugin {
             settings::SettingsPlugin,
             two_player_pong::TwoPlayerPongPlugin,
             racing::RacingPlugin,
+            shootout::ShootoutPlugin,
         ));
     }
 }
@@ -81,13 +90,14 @@ impl Plugin for MinigameVisualsPlugin {
             sounds::MinigameSoundsPlugin,
             two_player_pong::PongVisualsPlugin,
             racing::RacingVisualsPlugin,
+            shootout::ShootoutVisualsPlugin,
         ));
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Minigame, racing, two_player_pong};
+    use super::{Minigame, racing, shootout, two_player_pong};
     use crate::session::SessionPhase;
 
     #[test]
@@ -97,6 +107,7 @@ mod tests {
             SessionPhase::Playing(Minigame::TwoPlayerPong)
         );
         assert_eq!(racing::PHASE, SessionPhase::Playing(Minigame::Racing));
+        assert_eq!(shootout::PHASE, SessionPhase::Playing(Minigame::Shootout));
     }
 
     #[test]

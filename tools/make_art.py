@@ -43,6 +43,24 @@ PADDLE_WIDTH: Final[float] = 8.0  # PADDLE_WIDTH
 PADDLE_HEIGHT: Final[float] = 48.0  # PADDLE_HEIGHT
 BALL_SIZE: Final[float] = 8.0  # BALL_SIZE
 
+# Keep in step with minigames::shootout::config.
+SHOOTOUT_BORDER: Final[float] = 8.0  # BORDER
+GUNNER_RADIUS: Final[float] = 8.0  # GUNNER_RADIUS
+# COVER: (centre x, centre y, width, height) of each block.
+SHOOTOUT_COVER: Final[list[tuple[float, float, float, float]]] = [
+    (0.0, 0.0, 48.0, 48.0),
+    (-170.0, 80.0, 90.0, 16.0),
+    (170.0, 80.0, 90.0, 16.0),
+    (-170.0, -80.0, 90.0, 16.0),
+    (170.0, -80.0, 90.0, 16.0),
+    (-260.0, 0.0, 16.0, 70.0),
+    (260.0, 0.0, 16.0, 70.0),
+]
+# SPAWNS, the first four.
+SHOOTOUT_SPAWNS: Final[list[tuple[float, float]]] = [
+    (-280.0, 140.0), (280.0, -140.0), (280.0, 140.0), (-280.0, -140.0),
+]
+
 BOTTOM_Y: Final[float] = -(INNER + OUTER) / 2
 KERB: Final[float] = 4.0  # kerb width, inside the road
 KERB_SEGMENT: Final[float] = 10.0  # length of each red/white piece
@@ -64,6 +82,12 @@ LINE_DARK: Final[RGBA] = (30, 30, 36, 255)
 ARENA: Final[RGBA] = (24, 24, 32, 255)
 ARENA_WALL: Final[RGBA] = (96, 100, 124, 255)
 ARENA_MARK: Final[RGBA] = (52, 54, 70, 255)
+FLOOR_A: Final[RGBA] = (62, 58, 54, 255)
+FLOOR_B: Final[RGBA] = (66, 62, 57, 255)
+FLOOR_LINE: Final[RGBA] = (54, 50, 47, 255)
+WALL: Final[RGBA] = (112, 104, 96, 255)
+WALL_TOP: Final[RGBA] = (138, 129, 119, 255)
+BARREL: Final[RGBA] = (44, 44, 50, 255)
 
 ASSETS: Final[Path] = Path("assets/minigames")
 MENU_ASSETS: Final[Path] = Path("assets/menu")
@@ -278,6 +302,52 @@ def draw_ball() -> None:
     canvas.save(ASSETS / "two_player_pong/ball.png")
 
 
+# Shootout
+
+
+def draw_shootout_arena() -> None:
+    """A tiled floor, the border wall, and the cover blocks, all seen from above."""
+    canvas = Canvas(VIEW_W, VIEW_H, WALL)
+    half_w, half_h = VIEW_W / 2 - SHOOTOUT_BORDER, VIEW_H / 2 - SHOOTOUT_BORDER
+    tile = 32.0
+    columns, rows = math.ceil(2 * half_w / tile), math.ceil(2 * half_h / tile)
+    for column in range(columns):
+        for row in range(rows):
+            x0, y0 = -half_w + column * tile, -half_h + row * tile
+            x1, y1 = min(x0 + tile, half_w), min(y0 + tile, half_h)
+            canvas.rect(x0, y0, x1, y1, (FLOOR_A, FLOOR_B)[(column + row) % 2])
+    for column in range(1, columns):
+        x = -half_w + column * tile
+        canvas.line(x, -half_h, x, half_h, FLOOR_LINE, 0.6)
+    for row in range(1, rows):
+        y = -half_h + row * tile
+        canvas.line(-half_w, y, half_w, y, FLOOR_LINE, 0.6)
+    # The border wall's inner edge, lit from above.
+    canvas.rect(-half_w, -half_h, half_w, half_h, None, outline=WALL_TOP, width=1.5)
+    for x, y, width, height in SHOOTOUT_COVER:
+        canvas.rect(
+            x - width / 2, y - height / 2, x + width / 2, y + height / 2, WALL,
+            radius=2.0, outline=OUTLINE, width=1.0,
+        )
+        canvas.rect(
+            x - width / 2 + 2.5, y - height / 2 + 2.5, x + width / 2 - 2.5, y + height / 2 - 2.5,
+            WALL_TOP, radius=1.5,
+        )
+    canvas.save(ASSETS / "shootout/arena.png")
+
+
+def draw_gunner() -> None:
+    """Seen from above, aiming right, centred on the body. White and light grey parts are tinted
+    per player; the barrel isn't."""
+    size = 2 * GUNNER_RADIUS + 12.0  # visuals::GUNNER_IMAGE_SIZE
+    canvas = Canvas(size, size)
+    canvas.rect(3.0, -2.0, 13.0, 2.0, BARREL, radius=1.0, outline=OUTLINE, width=0.6)
+    r = GUNNER_RADIUS - 0.4
+    canvas.ellipse(-r, -r, r, r, WHITE, OUTLINE, 0.9)
+    canvas.ellipse(-3.5, -3.5, 3.5, 3.5, LIGHT, LIGHT, 0.1)
+    canvas.save(ASSETS / "shootout/gunner.png")
+
+
 # Thumbnails: a minigame's art with a few players' things on it, as if mid-game.
 
 
@@ -327,6 +397,16 @@ def draw_racing_thumbnail() -> None:
     save_thumbnail(base, folder / "thumbnail.png")
 
 
+def draw_shootout_thumbnail() -> None:
+    """Needs shootout/arena.png and gunner.png. Four gunners, at their spawns, aiming in."""
+    folder = ASSETS / "shootout"
+    base = Image.open(folder / "arena.png").convert("RGBA")
+    gunner = Image.open(folder / "gunner.png").convert("RGBA")
+    for (x, y), tint in zip(SHOOTOUT_SPAWNS, PLAYER_TINTS):
+        place(base, tinted(gunner, tint), x, y, math.degrees(math.atan2(-y, -x)))
+    save_thumbnail(base, folder / "thumbnail.png")
+
+
 # Menu icons
 
 
@@ -364,9 +444,12 @@ def main() -> None:
     draw_arena()
     draw_paddle()
     draw_ball()
+    draw_shootout_arena()
+    draw_gunner()
     # After the art they're made from.
     draw_pong_thumbnail()
     draw_racing_thumbnail()
+    draw_shootout_thumbnail()
     draw_gear()
 
 
