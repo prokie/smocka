@@ -66,6 +66,22 @@ pub mod session {
     pub const NEXT_MATCH_DURATION: Duration = Duration::from_secs(4);
 }
 
+/// Parties: a set number of rounds, each a minigame the game picks. See [`crate::party`].
+pub mod party {
+    use std::time::Duration;
+
+    /// How many rounds a party has, unless the host picks another number in the lobby.
+    pub const ROUNDS: u32 = 5;
+    /// The fewest rounds the host can pick.
+    pub const MIN_ROUNDS: u32 = 1;
+    /// The most rounds the host can pick.
+    pub const MAX_ROUNDS: u32 = 20;
+    /// How long the board shows the coming round's minigame before it starts.
+    pub const BOARD_DURATION: Duration = Duration::from_secs(4);
+    /// How long the party's winner is shown before everyone goes back to the lobby.
+    pub const WINNER_DURATION: Duration = Duration::from_secs(8);
+}
+
 pub mod display {
     /// Width of the virtual screen in world units. The camera scales it to fit the window, and
     /// all gameplay sizes and speeds are in these units.

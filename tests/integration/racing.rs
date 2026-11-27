@@ -326,6 +326,46 @@ fn the_race_ends_when_the_only_other_player_leaves_after_you_finish() {
 }
 
 #[test]
+fn the_race_is_abandoned_when_the_only_other_player_leaves_before_anyone_finishes() {
+    let (mut host, mut client) = race_pair();
+
+    client.leave();
+
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps[0].phase() == Some(SessionPhase::Lobby) && cars(apps[0]) == 0
+    });
+    assert!(result(&mut host).is_none());
+}
+
+#[test]
+fn the_race_goes_on_while_two_cars_are_left() {
+    let (mut host, mut first, addr) = connected_pair();
+    let mut second = TestApp::join(addr);
+    host.0.world_mut().insert_resource(RaceRules {
+        countdown: Duration::ZERO,
+        ..default()
+    });
+    update_until(&mut [&mut host, &mut first, &mut second], |apps| {
+        apps.iter_mut().all(|app| app.players() == 3)
+    });
+    host.start_minigame(Minigame::Racing);
+    update_until(&mut [&mut host, &mut first, &mut second], |apps| {
+        apps.iter_mut()
+            .all(|app| app.phase() == Some(SessionPhase::Racing) && cars(app) == 3)
+    });
+
+    second.leave();
+    update_until(&mut [&mut host, &mut first, &mut second], |apps| {
+        cars(apps[0]) == 2 && cars(apps[1]) == 2
+    });
+    for _ in 0..20 {
+        host.0.update();
+        first.0.update();
+    }
+    assert_eq!(host.phase(), Some(SessionPhase::Racing));
+}
+
+#[test]
 fn cars_carry_their_drivers_name_and_colour() {
     let (_host, mut client) = race_pair();
     let players = client.player_list();

@@ -172,6 +172,23 @@ pub struct Countdown {
     prefix: &'static str,
 }
 
+impl Countdown {
+    /// Count down from the start again, for when the host restarts its timer.
+    pub fn restart(&mut self) {
+        self.timer.reset();
+    }
+
+    /// How long is left.
+    #[cfg(test)]
+    pub fn remaining(&self) -> Duration {
+        self.timer.remaining()
+    }
+
+    pub(super) fn tick(&mut self, delta: Duration) {
+        self.timer.tick(delta);
+    }
+}
+
 /// A [`Countdown`] from `duration`.
 pub fn countdown(duration: Duration, prefix: &'static str) -> impl Bundle {
     (
@@ -188,7 +205,7 @@ pub(super) fn update_countdowns(
     mut countdowns: Query<(&mut Countdown, &mut Text)>,
 ) {
     for (mut countdown, mut text) in &mut countdowns {
-        countdown.timer.tick(time.delta());
+        countdown.tick(time.delta());
         let shown = format!(
             "{} {}...",
             countdown.prefix,

@@ -3,8 +3,9 @@
 use bevy::prelude::*;
 use lightyear::prelude::*;
 
-use super::widgets::{ShownRows, countdown, label, screen, show_rows};
+use super::widgets::{HINT_COLOR, ShownRows, countdown, label, screen, show_rows};
 use crate::config::session::STANDINGS_DURATION;
+use crate::party::Party;
 use crate::players::{Player, local_peer_id};
 use crate::session::{SessionPhase, ordinal};
 use crate::standings::{Points, Standing, standings};
@@ -13,11 +14,15 @@ use crate::standings::{Points, Standing, standings};
 #[derive(Component)]
 pub struct StandingsList;
 
-pub(super) fn spawn_standings_screen(mut commands: Commands) {
+/// In a [`Party`], it says which round was just played, and what comes next.
+pub(super) fn spawn_standings_screen(party: Option<Single<&Party>>, mut commands: Commands) {
+    let party = party.map(|party| (*party).clone());
+    let (progress, next) = standings_captions(party.as_ref());
     commands.spawn((
         screen(SessionPhase::Standings),
         children![
             label("Standings", 48.0, Color::WHITE),
+            label(progress, 20.0, HINT_COLOR),
             (
                 StandingsList,
                 Node {
@@ -26,9 +31,21 @@ pub(super) fn spawn_standings_screen(mut commands: Commands) {
                     ..default()
                 },
             ),
-            countdown(STANDINGS_DURATION, "Back to the lobby in"),
+            countdown(STANDINGS_DURATION, next),
         ],
     ));
+}
+
+/// The line under the headline (how far the party is), and what the countdown counts down to.
+pub fn standings_captions(party: Option<&Party>) -> (String, &'static str) {
+    match party {
+        None => (String::new(), "Back to the lobby in"),
+        Some(party) if party.is_over() => ("After the final round".into(), "The winner in"),
+        Some(party) => (
+            format!("After round {} of {}", party.played, party.rounds),
+            "Next round in",
+        ),
+    }
 }
 
 pub(super) fn update_standings_screen(
@@ -73,7 +90,8 @@ pub fn standing_label(standing: &Standing, you: Option<PeerId>) -> String {
 mod tests {
     use lightyear::prelude::PeerId;
 
-    use super::standing_label;
+    use super::{standing_label, standings_captions};
+    use crate::party::Party;
     use crate::players::Player;
     use crate::standings::{Points, Standing};
 
@@ -88,6 +106,25 @@ mod tests {
             },
             points: Points { total, gained },
         }
+    }
+
+    #[test]
+    fn in_a_party_says_how_far_it_is() {
+        assert_eq!(
+            standings_captions(None),
+            (String::new(), "Back to the lobby in")
+        );
+        let mut party = Party::new(3);
+        party.played = 1;
+        assert_eq!(
+            standings_captions(Some(&party)),
+            ("After round 1 of 3".into(), "Next round in")
+        );
+        party.played = 3;
+        assert_eq!(
+            standings_captions(Some(&party)),
+            ("After the final round".into(), "The winner in")
+        );
     }
 
     #[test]

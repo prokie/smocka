@@ -1,7 +1,7 @@
 //! Knockout tournaments: Pong with more than two players plays match after match until one
 //! champion is left, and the bracket's placements are the minigame's result.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use bevy::prelude::*;
 use smocka::minigames::Minigame;
@@ -160,6 +160,48 @@ fn a_player_leaving_mid_match_loses_it_by_walkover() {
         assert_eq!(shown, [(1, ""), (2, ""), (3, "left")], "{result:?}");
         assert_eq!(result.placements[2].name, format!("Player {left}"));
     }
+}
+
+#[test]
+fn a_walkover_on_the_next_match_screen_restarts_the_countdown() {
+    let (mut host, mut first, mut second) = trio();
+    let countdown = Duration::from_millis(1500);
+    host.0.world_mut().insert_resource(TournamentRules {
+        next_match: countdown,
+    });
+    host.start_minigame(Minigame::TwoPlayerPong);
+    update_until(&mut [&mut host, &mut first, &mut second], |apps| {
+        apps.iter_mut().all(|app| has_tournament(app))
+    });
+    let started = Instant::now();
+
+    // Near the end of the countdown, a joiner in the first match leaves. With three players,
+    // the one who stays meets the player who had a bye.
+    let playing = playing(&mut host);
+    let mut leaving = if playing.contains(&first.own_player_number().unwrap()) {
+        first
+    } else {
+        second
+    };
+    update_until(&mut [&mut host, &mut leaving], |_| {
+        started.elapsed() >= Duration::from_millis(1000)
+    });
+    leaving.disconnect();
+    update_until(&mut [&mut host, &mut leaving], |apps| {
+        apps[0].players() == 2
+    });
+    assert_eq!(host.phase(), Some(SessionPhase::NextMatch));
+
+    // The old countdown would have run out half a second after the walkover at most. The new
+    // pair gets the whole countdown.
+    let walked_over = Instant::now();
+    update_until(&mut [&mut host], |_| {
+        walked_over.elapsed() >= Duration::from_millis(900)
+    });
+    assert_eq!(host.phase(), Some(SessionPhase::NextMatch));
+    update_until(&mut [&mut host], |apps| {
+        apps[0].phase() == Some(SessionPhase::TwoPlayerPong)
+    });
 }
 
 #[test]

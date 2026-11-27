@@ -4,7 +4,7 @@
 use bevy::prelude::*;
 use lightyear::prelude::*;
 
-use super::widgets::{BUTTON_COLOR, HINT_COLOR, countdown, label, screen};
+use super::widgets::{BUTTON_COLOR, Countdown, HINT_COLOR, countdown, label, screen};
 use crate::config::session::NEXT_MATCH_DURATION;
 use crate::players::{Player, local_peer_id, player_color};
 use crate::session::SessionPhase;
@@ -83,6 +83,27 @@ pub(super) fn update_next_match_screen(
             text.0 = shown;
         }
     }
+}
+
+/// When a walkover pairs a new match while this screen is up, the host gives it the whole
+/// countdown again (see `follow_tournament`), so start this screen's [`Countdown`] over too.
+pub(super) fn restart_countdown_for_a_new_match(
+    tournament: Option<Single<&Tournament>>,
+    mut countdown: Single<(Entity, &mut Countdown)>,
+    mut shown: Local<Option<(Entity, [PeerId; 2])>>,
+) {
+    let Some((_, next)) = tournament.and_then(|tournament| tournament.bracket.next_match()) else {
+        return;
+    };
+    let (entity, countdown) = &mut *countdown;
+    if let Some((shown_on, shown_match)) = *shown
+        && shown_on == *entity
+        && shown_match != next
+    {
+        debug!("Next match changed to {next:?}: restarting the countdown");
+        countdown.restart();
+    }
+    *shown = Some((*entity, next));
 }
 
 /// Rebuild the [`BracketView`] when the tournament changes, or the screen is new.
@@ -165,5 +186,74 @@ fn seat_label(tournament: &Tournament, pairing: &BracketMatch, seat: usize) -> (
         }
         None if pairing.bye => ("bye".into(), HINT_COLOR),
         None => ("?".into(), HINT_COLOR),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::restart_countdown_for_a_new_match;
+    use crate::menu::widgets::{Countdown, countdown};
+    use crate::minigames::Minigame;
+    use crate::players::Player;
+    use crate::tournament::Tournament;
+    use bevy::prelude::*;
+    use lightyear::prelude::PeerId;
+    use std::time::Duration;
+
+    const FULL: Duration = Duration::from_secs(4);
+
+    fn remaining(world: &mut World) -> Duration {
+        world
+            .query::<&Countdown>()
+            .single(world)
+            .unwrap()
+            .remaining()
+    }
+
+    #[test]
+    fn a_new_match_on_the_screen_restarts_the_countdown() {
+        let players: Vec<Player> = (1..=3)
+            .map(|number| Player {
+                id: PeerId::Netcode(number),
+                number: u32::try_from(number).unwrap(),
+                name: format!("Player {number}"),
+                color: 0,
+            })
+            .collect();
+        let mut world = World::new();
+        let tournament = Tournament::new(Minigame::TwoPlayerPong, players.clone()).unwrap();
+        let (_, first_match) = tournament.bracket.next_match().unwrap();
+        let tournament = world.spawn(tournament).id();
+        world.spawn(countdown(FULL, "Starting in"));
+        world
+            .query::<&mut Countdown>()
+            .single_mut(&mut world)
+            .unwrap()
+            .tick(Duration::from_secs(3));
+
+        // The same match: the countdown carries on.
+        world
+            .run_system_cached(restart_countdown_for_a_new_match)
+            .unwrap();
+        world
+            .run_system_cached(restart_countdown_for_a_new_match)
+            .unwrap();
+        assert_eq!(remaining(&mut world), Duration::from_secs(1));
+
+        // A player in it leaves, and the one who stays meets the player who had a bye.
+        let present: Vec<PeerId> = players
+            .iter()
+            .map(|player| player.id)
+            .filter(|id| *id != first_match[0])
+            .collect();
+        world
+            .get_mut::<Tournament>(tournament)
+            .unwrap()
+            .walk_over(&present)
+            .unwrap();
+        world
+            .run_system_cached(restart_countdown_for_a_new_match)
+            .unwrap();
+        assert_eq!(remaining(&mut world), FULL);
     }
 }

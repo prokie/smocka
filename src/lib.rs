@@ -4,6 +4,7 @@ pub mod config;
 pub mod menu;
 pub mod minigames;
 pub mod network;
+pub mod party;
 pub mod players;
 pub mod profile;
 pub mod session;
@@ -24,6 +25,7 @@ impl Plugin for SmockaPlugin {
             session::SessionPlugin,
             standings::StandingsPlugin,
             tournament::TournamentPlugin,
+            party::PartyPlugin,
             minigames::MinigamesPlugin,
         ));
     }

@@ -5,6 +5,7 @@ mod app_state;
 mod common;
 mod lobby;
 mod network;
+mod party;
 mod pong;
 mod racing;
 mod session;

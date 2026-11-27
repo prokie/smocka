@@ -269,7 +269,8 @@ fn run_race_clock(
 }
 
 /// Host only: end the race once every car still in it has finished, or the grace period after the
-/// first finish runs out. If every car has gone, abandon it.
+/// first finish runs out. If fewer than two cars are left before anyone has finished, abandon it:
+/// there's nobody left to race against.
 fn end_race(
     mut director: ResMut<RaceDirector>,
     cars: Query<(&Car, &RaceProgress, &CarState)>,
@@ -278,8 +279,15 @@ fn end_race(
     if director.over {
         return;
     }
-    if cars.is_empty() {
-        info!("Abandoning the race: every car's player has left");
+    if cars.iter().len() < 2 && director.finishers.is_empty() {
+        match cars.iter().next() {
+            Some((car, ..)) => info!(
+                "Abandoning the race: every other player left, leaving {} ({:?}) alone before \
+                 anyone finished",
+                car.name, car.owner
+            ),
+            None => info!("Abandoning the race: every car's player has left"),
+        }
         director.over = true;
         commands.trigger(MinigameEnded::Abandoned);
         return;

@@ -4,6 +4,7 @@ mod lobby;
 mod main_menu;
 mod next_match;
 mod notices;
+mod party;
 mod results;
 mod standings;
 mod watching;
@@ -23,6 +24,7 @@ use crate::config::network::HOST_ADDR;
 use crate::minigames::Minigame;
 use crate::minigames::racing::race::ChangeLaps;
 use crate::network::{HostSession, LeaveSession, close_session};
+use crate::party::{ChangeRounds, StartParty};
 use crate::profile::{LastAddress, LocalProfile};
 use crate::session::{SessionPhase, StartMinigame};
 use widgets::{HINT_COLOR, label, menu_button, screen};
@@ -41,8 +43,11 @@ pub enum MenuButton {
     Quit,
     Cancel,
     Start(Minigame),
+    StartParty,
     /// Change how many laps the next race has by this many.
     ChangeLaps(i32),
+    /// Change how many rounds the next party has by this many.
+    ChangeRounds(i32),
 }
 
 /// All local UI. Needs a renderer, so headless tests leave it out.
@@ -84,6 +89,11 @@ impl Plugin for MenuPlugin {
             OnEnter(SessionPhase::NextMatch),
             next_match::spawn_next_match_screen,
         );
+        app.add_systems(OnEnter(SessionPhase::Board), party::spawn_board_screen);
+        app.add_systems(
+            OnEnter(SessionPhase::PartyOver),
+            party::spawn_party_over_screen,
+        );
         app.add_observer(on_menu_button);
         app.add_observer(lobby::on_swatch);
         app.add_observer(notices::notice_player_left);
@@ -103,13 +113,21 @@ impl Plugin for MenuPlugin {
                     lobby::update_swatches,
                     lobby::update_lobby_hint,
                     lobby::update_lap_picker,
+                    lobby::update_round_picker,
                 )
                     .run_if(in_state(SessionPhase::Lobby)),
                 results::update_results_screen.run_if(in_state(SessionPhase::Results)),
-                standings::update_standings_screen.run_if(in_state(SessionPhase::Standings)),
+                standings::update_standings_screen.run_if(
+                    in_state(SessionPhase::Standings)
+                        .or_else(in_state(SessionPhase::Board))
+                        .or_else(in_state(SessionPhase::PartyOver)),
+                ),
+                party::update_board_screen.run_if(in_state(SessionPhase::Board)),
+                party::update_party_over_screen.run_if(in_state(SessionPhase::PartyOver)),
                 (
                     next_match::update_next_match_screen,
                     next_match::update_bracket_view,
+                    next_match::restart_countdown_for_a_new_match,
                 )
                     .run_if(in_state(SessionPhase::NextMatch)),
                 widgets::update_countdowns,
@@ -158,7 +176,9 @@ fn on_menu_button(
         }
         MenuButton::Cancel => commands.queue(LeaveSession),
         MenuButton::Start(game) => commands.queue(StartMinigame(*game)),
+        MenuButton::StartParty => commands.queue(StartParty),
         MenuButton::ChangeLaps(change) => commands.queue(ChangeLaps(*change)),
+        MenuButton::ChangeRounds(change) => commands.queue(ChangeRounds(*change)),
     }
 }
 

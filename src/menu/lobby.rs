@@ -9,9 +9,11 @@ use lightyear::prelude::*;
 use super::MenuButton;
 use super::widgets::{HINT_COLOR, ShownRows, label, menu_button, screen, show_rows, small_button};
 use crate::config::minigames::racing::{MAX_LAPS, MIN_LAPS};
+use crate::config::party::{MAX_ROUNDS, MIN_ROUNDS};
 use crate::minigames::Minigame;
 use crate::minigames::racing::race::RaceLaps;
 use crate::network::Hosting;
+use crate::party::PartyRounds;
 use crate::players::{
     PLAYER_COLORS, PickColor, Player, color_is_free, local_peer_id, player_color,
 };
@@ -33,6 +35,10 @@ pub struct LobbyHint;
 /// The host's pick of how many laps the next race has.
 #[derive(Component)]
 pub struct LapsText;
+
+/// The host's pick of how many rounds the next party has.
+#[derive(Component)]
+pub struct RoundsText;
 
 /// A clickable swatch that picks colour `.0` from [`PLAYER_COLORS`].
 #[derive(Component, Debug, Clone, Copy)]
@@ -67,27 +73,69 @@ pub(super) fn spawn_lobby_screen(hosting: Hosting, mut commands: Commands) {
     }
     commands.entity(root).add_child(swatches);
     if hosting.is_hosting() {
+        commands.entity(root).with_child((
+            menu_button(MenuButton::StartParty, "Start party"),
+            InteractionDisabled,
+        ));
+    }
+    let rounds = picker(
+        "Party rounds",
+        RoundsText,
+        hosting.is_hosting().then_some(MenuButton::ChangeRounds),
+        &mut commands,
+    );
+    commands.entity(root).add_child(rounds);
+    if hosting.is_hosting() {
+        commands
+            .entity(root)
+            .with_child(label("Or play one game:", 20.0, HINT_COLOR));
+        let games = commands
+            .spawn(Node {
+                column_gap: px(12),
+                ..default()
+            })
+            .id();
         for game in Minigame::ALL {
-            commands.entity(root).with_child((
+            commands.entity(games).with_child((
                 menu_button(MenuButton::Start(game), game.name()),
                 InteractionDisabled,
             ));
         }
+        commands.entity(root).add_child(games);
     }
-    // Everyone sees the host's pick; only the host gets "-" and "+".
-    let laps = commands
+    let laps = picker(
+        "Racing laps",
+        LapsText,
+        hosting.is_hosting().then_some(MenuButton::ChangeLaps),
+        &mut commands,
+    );
+    commands.entity(root).add_child(laps);
+    commands
+        .entity(root)
+        .with_child((LobbyHint, label("", 20.0, HINT_COLOR)));
+}
+
+/// A row showing one of the host's picks: `name`, then the value in a text marked with `marker`.
+/// Everyone sees it; only the host gets "-" and "+", which are `change(-1)` and `change(1)`.
+fn picker(
+    name: &str,
+    marker: impl Component,
+    change: Option<fn(i32) -> MenuButton>,
+    commands: &mut Commands,
+) -> Entity {
+    let row = commands
         .spawn((
             Node {
                 column_gap: px(12),
                 align_items: AlignItems::Center,
                 ..default()
             },
-            children![label("Racing laps", 20.0, HINT_COLOR)],
+            children![label(name, 20.0, HINT_COLOR)],
         ))
         .id();
-    let laps_text = commands
+    let text = commands
         .spawn((
-            LapsText,
+            marker,
             label("", 24.0, Color::WHITE),
             Node {
                 min_width: px(30),
@@ -97,19 +145,19 @@ pub(super) fn spawn_lobby_screen(hosting: Hosting, mut commands: Commands) {
             TextLayout::justify(Justify::Center),
         ))
         .id();
-    if hosting.is_hosting() {
-        commands
-            .entity(laps)
-            .with_child(small_button(MenuButton::ChangeLaps(-1), "-"))
-            .add_child(laps_text)
-            .with_child(small_button(MenuButton::ChangeLaps(1), "+"));
-    } else {
-        commands.entity(laps).add_child(laps_text);
+    match change {
+        Some(change) => {
+            commands
+                .entity(row)
+                .with_child(small_button(change(-1), "-"))
+                .add_child(text)
+                .with_child(small_button(change(1), "+"));
+        }
+        None => {
+            commands.entity(row).add_child(text);
+        }
     }
-    commands.entity(root).add_child(laps);
-    commands
-        .entity(root)
-        .with_child((LobbyHint, label("", 20.0, HINT_COLOR)));
+    row
 }
 
 fn swatch(index: u8) -> impl Bundle {
@@ -217,10 +265,11 @@ pub(super) fn update_lobby_hint(
         hint.0 = shown.to_string();
     }
     for (button, action, disabled) in &buttons {
-        let MenuButton::Start(game) = action else {
-            continue;
+        let startable = match action {
+            MenuButton::Start(game) => players.iter().len() >= game.min_players(),
+            MenuButton::StartParty => startable,
+            _ => continue,
         };
-        let startable = players.iter().len() >= game.min_players();
         match (startable, disabled) {
             (true, true) => {
                 commands.entity(button).remove::<InteractionDisabled>();
@@ -245,15 +294,62 @@ pub(super) fn update_lap_picker(
     let Some(laps) = laps.map(|laps| laps.0) else {
         return;
     };
-    let shown = laps.to_string();
+    show_pick(
+        laps,
+        (MIN_LAPS, MAX_LAPS),
+        &mut text,
+        &buttons,
+        &mut commands,
+        |action| match action {
+            MenuButton::ChangeLaps(change) => Some(*change),
+            _ => None,
+        },
+    );
+}
+
+/// Show the host's pick of rounds (to everyone, from the replicated [`PartyRounds`]), and on the
+/// host disable "-" and "+" at the limits.
+pub(super) fn update_round_picker(
+    rounds: Option<Single<&PartyRounds>>,
+    mut text: Single<&mut Text, With<RoundsText>>,
+    buttons: Query<(Entity, &MenuButton, Has<InteractionDisabled>)>,
+    mut commands: Commands,
+) {
+    let Some(rounds) = rounds.map(|rounds| rounds.0) else {
+        return;
+    };
+    show_pick(
+        rounds,
+        (MIN_ROUNDS, MAX_ROUNDS),
+        &mut text,
+        &buttons,
+        &mut commands,
+        |action| match action {
+            MenuButton::ChangeRounds(change) => Some(*change),
+            _ => None,
+        },
+    );
+}
+
+/// Show `value` in `text`, and disable the buttons that `change_of` says change it once it's at
+/// the end of `(min, max)` they move it towards.
+fn show_pick(
+    value: u32,
+    (min, max): (u32, u32),
+    text: &mut Text,
+    buttons: &Query<(Entity, &MenuButton, Has<InteractionDisabled>)>,
+    commands: &mut Commands,
+    change_of: impl Fn(&MenuButton) -> Option<i32>,
+) {
+    let shown = value.to_string();
     if text.0 != shown {
         text.0 = shown;
     }
-    for (button, action, disabled) in &buttons {
-        let MenuButton::ChangeLaps(change) = action else {
+    for (button, action, disabled) in buttons {
+        let Some(change) = change_of(action) else {
             continue;
         };
-        let at_limit = (*change < 0 && laps <= MIN_LAPS) || (*change > 0 && laps >= MAX_LAPS);
+        let at_limit = (change < 0 && value <= min) || (change > 0 && value >= max);
         match (at_limit, disabled) {
             (true, false) => {
                 commands.entity(button).insert(InteractionDisabled);
@@ -290,7 +386,7 @@ pub fn player_label(player: &Player, you: Option<PeerId>) -> String {
 
 pub fn lobby_hint(hosting: bool, startable: bool) -> &'static str {
     match (hosting, startable) {
-        (true, true) => "Pick a game when everyone is here.",
+        (true, true) => "Start a party when everyone is here.",
         (true, false) => "Waiting for at least one more player.",
         (false, _) => "Waiting for the host to start.",
     }
