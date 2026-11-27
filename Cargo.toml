@@ -12,6 +12,9 @@ bevy = { version = "0.20.1", default-features = false, features = [
     "bevy_audio",
     "wav",
     "vorbis",
+    # Copy/paste in text fields (e.g. the join address) uses the OS clipboard, not an
+    # in-game one.
+    "system_clipboard",
 ] }
 bevy_enhanced_input = { version = "0.27.2", default-features = false, features = [
     "serialize",
