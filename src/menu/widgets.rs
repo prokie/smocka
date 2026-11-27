@@ -9,7 +9,10 @@ use bevy::picking::hover::Hovered;
 use bevy::prelude::*;
 use bevy::text::{EditableText, TextCursorStyle};
 use bevy::ui::{InteractionDisabled, Pressed};
-use bevy::ui_widgets::{Button, ScrollIntoView, TextInput};
+use bevy::ui_widgets::{
+    Button, ControlOrientation, ScrollArea, ScrollIntoView, Scrollbar, ScrollbarDragState,
+    ScrollbarThumb, TextInput,
+};
 use lightyear::prelude::*;
 
 use super::MenuButton;
@@ -29,6 +32,19 @@ const ICON_SIZE: f32 = 22.0;
 
 /// Size of the colour square next to each player's name.
 const ROW_SWATCH_SIZE: f32 = 18.0;
+
+/// How wide a [`scroll_column`]'s scrollbar is, and the room kept clear for it either side of the
+/// content (so the content stays centred), in pixels.
+const SCROLLBAR_WIDTH: f32 = 6.0;
+const SCROLLBAR_ROOM: f32 = 20.0;
+/// The shortest a scrollbar's thumb gets, in pixels, so it's always easy to grab.
+const SCROLLBAR_MIN_THUMB: f32 = 32.0;
+const SCROLLBAR_COLOR: Color = Color::srgba(0.7, 0.7, 0.75, 0.45);
+const SCROLLBAR_ACTIVE_COLOR: Color = Color::srgb(0.85, 0.85, 0.9);
+
+/// A [`scroll_column`]'s scrollbar, shown only while the column has more than fits.
+#[derive(Component, Debug)]
+pub struct ColumnScrollbar;
 
 /// A full-window column, centred, that is despawned when `state` is left.
 pub fn screen<S: States>(state: S) -> impl Bundle {
@@ -344,6 +360,110 @@ type ButtonLook = (
 
 /// Buttons light up when hovered, or when reached with `Tab` (focus from the keyboard is
 /// "visible"; focus from a click isn't, so a clicked button doesn't stay lit).
+/// A centred column holding what `content` spawns, that scrolls up and down once it's taller than
+/// the room it gets. Put it in a column between things that must stay on screen (a title, a Back
+/// button) and give those `flex_shrink: 0`: it shrinks to the room they leave, and they don't
+/// scroll. What `content` spawns never shrinks: it scrolls instead.
+///
+/// It scrolls with the mouse wheel, by dragging the thin scrollbar on its right (shown only while
+/// something is cut off, see [`show_scrollbars_when_needed`]), and to whatever `Tab` or a gamepad
+/// focuses in it (see [`scroll_focus_into_view`]).
+pub fn scroll_column(
+    row_gap: f32,
+    content: impl FnOnce(&mut ChildSpawner) + Send + Sync + 'static,
+) -> impl Bundle {
+    (
+        Node {
+            flex_direction: FlexDirection::Column,
+            // Lets it shrink below its content's height when the window is short.
+            min_height: px(0),
+            ..default()
+        },
+        Children::spawn(SpawnWith(move |frame: &mut ChildSpawner| {
+            let area = frame
+                .spawn((
+                    ScrollArea,
+                    Node {
+                        flex_direction: FlexDirection::Column,
+                        min_height: px(0),
+                        padding: UiRect::horizontal(px(SCROLLBAR_WIDTH + SCROLLBAR_ROOM)),
+                        overflow: Overflow::scroll_y(),
+                        ..default()
+                    },
+                ))
+                .with_children(|area| {
+                    // Keeps its whole height, so what doesn't fit overflows to be scrolled to.
+                    area.spawn(Node {
+                        flex_direction: FlexDirection::Column,
+                        align_items: AlignItems::Center,
+                        row_gap: px(row_gap),
+                        flex_shrink: 0.0,
+                        ..default()
+                    })
+                    .with_children(content);
+                })
+                .id();
+            frame.spawn((
+                ColumnScrollbar,
+                Scrollbar::new(area, ControlOrientation::Vertical, SCROLLBAR_MIN_THUMB),
+                Node {
+                    position_type: PositionType::Absolute,
+                    top: px(0),
+                    bottom: px(0),
+                    right: px(0),
+                    width: px(SCROLLBAR_WIDTH),
+                    ..default()
+                },
+                Visibility::Hidden,
+                children![(
+                    Hovered::default(),
+                    BackgroundColor(SCROLLBAR_COLOR),
+                    ScrollbarThumb {
+                        border_radius: BorderRadius::all(px(SCROLLBAR_WIDTH / 2.0)),
+                        border: UiRect::ZERO,
+                    },
+                )],
+            ));
+        })),
+    )
+}
+
+/// Whether a scroll box laid out as `area` has content cut off, so it can scroll.
+pub fn can_scroll(area: &ComputedNode) -> bool {
+    // Physical pixels: half a pixel of rounding isn't worth a scrollbar.
+    area.content_size().y - area.size().y > 0.5
+}
+
+/// Show each [`scroll_column`]'s scrollbar only while its column has more than fits: with
+/// nothing to scroll, the thumb would fill the whole bar.
+pub(super) fn show_scrollbars_when_needed(
+    mut scrollbars: Query<(&Scrollbar, &mut Visibility), With<ColumnScrollbar>>,
+    areas: Query<&ComputedNode>,
+) {
+    for (scrollbar, mut visibility) in &mut scrollbars {
+        let needed = areas.get(scrollbar.target).is_ok_and(can_scroll);
+        visibility.set_if_neq(if needed {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        });
+    }
+}
+
+/// Scrollbar thumbs light up while hovered or dragged.
+pub(super) fn style_scrollbar_thumbs(
+    mut thumbs: Query<(&Hovered, &ScrollbarDragState, &mut BackgroundColor), With<ScrollbarThumb>>,
+) {
+    for (hovered, drag, mut background) in &mut thumbs {
+        let color = if hovered.get() || drag.dragging {
+            SCROLLBAR_ACTIVE_COLOR
+        } else {
+            SCROLLBAR_COLOR
+        };
+        background.set_if_neq(BackgroundColor(color));
+    }
+}
+
 /// When `Tab` or a gamepad moves keyboard focus to something scrolled out of sight in a
 /// [`ScrollArea`](bevy::ui_widgets::ScrollArea), such as a minigame tile in the lobby, scroll it
 /// into view. Bevy doesn't do this by itself. Clicks are left alone: what's clicked is in view.
@@ -380,9 +500,183 @@ pub(super) fn style_buttons(
 
 #[cfg(test)]
 mod tests {
+    use bevy::app::{HierarchyPropagatePlugin, PropagateSet};
+    use bevy::camera::{ComputedCameraValues, RenderTargetInfo, Viewport};
+    use bevy::ecs::system::RunSystemOnce;
     use bevy::prelude::*;
+    use bevy::text::RemSize;
+    use bevy::transform::systems::StaticTransformOptimizations;
+    use bevy::ui::ui_surface::UiSurface;
+    use bevy::ui::update::propagate_ui_target_cameras;
+    use bevy::ui::{
+        ComputedUiRenderTargetInfo, ComputedUiTargetCamera, UiGlobalTransform,
+        sync_font_size_to_em_size, ui_layout_system,
+    };
+    use bevy::ui_widgets::ScrollArea;
 
-    use super::{ShownRows, show_rows, skip_hint_label};
+    use super::{
+        ColumnScrollbar, ShownRows, can_scroll, scroll_column, show_rows,
+        show_scrollbars_when_needed, skip_hint_label,
+    };
+
+    /// An app that lays out UI on a `width` × `height` pixel window, set up as Bevy's own layout
+    /// tests do. It has no fonts, so these tests use boxes of a set size rather than text.
+    fn layout_app(width: u32, height: u32) -> App {
+        let mut app = App::new();
+        app.add_plugins((
+            TaskPoolPlugin::default(),
+            HierarchyPropagatePlugin::<ComputedUiTargetCamera>::new(PostUpdate),
+            HierarchyPropagatePlugin::<ComputedUiRenderTargetInfo>::new(PostUpdate),
+        ));
+        app.init_resource::<UiScale>()
+            .init_resource::<UiSurface>()
+            .init_resource::<bevy::text::TextPipeline>()
+            .init_resource::<bevy::text::FontCx>()
+            .init_resource::<RemSize>()
+            .init_resource::<bevy::text::ScaleCx>()
+            .init_resource::<StaticTransformOptimizations>();
+        app.add_systems(
+            PostUpdate,
+            (
+                ApplyDeferred,
+                propagate_ui_target_cameras,
+                sync_font_size_to_em_size,
+                ui_layout_system,
+            )
+                .chain(),
+        );
+        app.configure_sets(
+            PostUpdate,
+            PropagateSet::<ComputedUiTargetCamera>::default()
+                .after(propagate_ui_target_cameras)
+                .before(ui_layout_system),
+        );
+        app.configure_sets(
+            PostUpdate,
+            PropagateSet::<ComputedUiRenderTargetInfo>::default()
+                .after(propagate_ui_target_cameras)
+                .before(ui_layout_system),
+        );
+        let size = UVec2::new(width, height);
+        app.world_mut().spawn((
+            Camera2d,
+            Camera {
+                computed: ComputedCameraValues {
+                    target_info: Some(RenderTargetInfo {
+                        physical_size: size,
+                        scale_factor: 1.0,
+                    }),
+                    ..default()
+                },
+                viewport: Some(Viewport {
+                    physical_size: size,
+                    ..default()
+                }),
+                ..default()
+            },
+        ));
+        app
+    }
+
+    /// The button under a [`scroll_column`] that must stay in view.
+    #[derive(Component)]
+    struct Below;
+
+    /// A screen like the Controls screen, on a window `height` pixels tall: a title, a
+    /// [`scroll_column`] of twelve 30-pixel rows (448 pixels in all), and a button under it.
+    fn screen_on_window(height: u32) -> App {
+        let mut app = layout_app(1000, height);
+        app.world_mut().spawn((
+            Node {
+                // Over the rest of the menu, as the Controls screen is.
+                position_type: PositionType::Absolute,
+                width: percent(100),
+                height: percent(100),
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                row_gap: px(8),
+                padding: UiRect::vertical(px(24)),
+                ..default()
+            },
+            children![
+                Node {
+                    width: px(200),
+                    height: px(50),
+                    flex_shrink: 0.0,
+                    ..default()
+                },
+                scroll_column(8.0, |list| {
+                    for _ in 0..12 {
+                        list.spawn(Node {
+                            width: px(300),
+                            height: px(30),
+                            ..default()
+                        });
+                    }
+                }),
+                (
+                    Below,
+                    Node {
+                        width: px(100),
+                        height: px(40),
+                        flex_shrink: 0.0,
+                        ..default()
+                    },
+                ),
+            ],
+        ));
+        app.update();
+        app.world_mut()
+            .run_system_once(show_scrollbars_when_needed)
+            .unwrap();
+        app
+    }
+
+    fn scroll_area(app: &mut App) -> ComputedNode {
+        *app.world_mut()
+            .query_filtered::<&ComputedNode, With<ScrollArea>>()
+            .single(app.world())
+            .unwrap()
+    }
+
+    fn scrollbar_shown(app: &mut App) -> bool {
+        *app.world_mut()
+            .query_filtered::<&Visibility, With<ColumnScrollbar>>()
+            .single(app.world())
+            .unwrap()
+            != Visibility::Hidden
+    }
+
+    #[test]
+    fn a_scroll_column_shrinks_to_fit_a_short_window_and_scrolls() {
+        let mut app = screen_on_window(300);
+        let area = scroll_area(&mut app);
+        // 300 - 48 padding - 50 title - 40 button - 2 gaps of 8.
+        assert_eq!(area.size().y, 146.0);
+        // Every row keeps its height, to be scrolled to.
+        assert_eq!(area.content_size().y, 448.0);
+        assert!(can_scroll(&area), "{area:?}");
+        assert!(scrollbar_shown(&mut app));
+
+        // The button under it is still on the window.
+        let (button, at) = app
+            .world_mut()
+            .query_filtered::<(&ComputedNode, &UiGlobalTransform), With<Below>>()
+            .single(app.world())
+            .unwrap();
+        let bottom = at.translation.y + button.size().y / 2.0;
+        assert!(bottom <= 300.0, "the button's bottom is at {bottom}");
+    }
+
+    #[test]
+    fn a_scroll_column_that_fits_shows_everything_and_no_scrollbar() {
+        let mut app = screen_on_window(800);
+        let area = scroll_area(&mut app);
+        assert_eq!(area.size().y, 448.0);
+        assert!(!can_scroll(&area), "{area:?}");
+        assert!(!scrollbar_shown(&mut app));
+    }
 
     #[test]
     fn skip_hint_shows_prompt_then_vote_progress() {

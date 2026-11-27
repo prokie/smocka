@@ -6,7 +6,7 @@ use bevy::input_focus::{AutoFocus, FocusCause, InputFocus};
 use bevy::prelude::*;
 
 use super::MenuButton;
-use super::widgets::{HINT_COLOR, control_button, label, menu_button};
+use super::widgets::{HINT_COLOR, control_button, label, menu_button, scroll_column};
 use crate::app_state::AppState;
 use crate::controls::{ACTUATION, Control, ControlAction, Controls, RESERVED_KEY, SLOTS};
 use crate::minigames::Minigame;
@@ -20,6 +20,17 @@ const ACTION_COLUMN_WIDTH: f32 = 172.0;
 const WAITING_LABEL: &str = "Press...";
 /// Shown on an empty binding.
 const EMPTY_LABEL: &str = "-";
+/// Space kept clear above and below everything, in pixels.
+const SCREEN_PADDING: f32 = 24.0;
+
+/// For what's above and below the bindings: keeps its size when the window is short, leaving the
+/// bindings to scroll.
+fn keep_height() -> Node {
+    Node {
+        flex_shrink: 0.0,
+        ..default()
+    }
+}
 
 /// Sticks a binding can capture. A trigger reported as an axis (`LeftZ`, `RightZ`) is left out: on
 /// some gamepads it rests at -1, which would bind it straight away.
@@ -95,20 +106,23 @@ impl Command for OpenControls {
                     align_items: AlignItems::Center,
                     justify_content: JustifyContent::Center,
                     row_gap: px(8),
+                    padding: UiRect::vertical(px(SCREEN_PADDING)),
                     ..default()
                 },
                 BackgroundColor(background),
             ))
             .with_children(|screen| {
-                screen.spawn(label("Controls", 48.0, Color::WHITE));
-                for game in Minigame::ALL {
-                    screen.spawn(label(game.info().name, 24.0, HINT_COLOR));
-                    for action in ControlAction::ALL {
-                        if action.minigame() != game {
-                            continue;
-                        }
-                        screen
-                            .spawn(Node {
+                screen.spawn((label("Controls", 48.0, Color::WHITE), keep_height()));
+                // Every minigame's bindings: they scroll when the window is too short for them
+                // all, leaving the title above and the hint and buttons below in view.
+                screen.spawn(scroll_column(8.0, |list| {
+                    for game in Minigame::ALL {
+                        list.spawn(label(game.info().name, 24.0, HINT_COLOR));
+                        for action in ControlAction::ALL {
+                            if action.minigame() != game {
+                                continue;
+                            }
+                            list.spawn(Node {
                                 column_gap: px(8),
                                 align_items: AlignItems::Center,
                                 ..default()
@@ -129,16 +143,18 @@ impl Command for OpenControls {
                                     }
                                 }
                             });
+                        }
                     }
-                }
+                }));
                 screen.spawn((
                     label(HINT, 16.0, HINT_COLOR),
                     TextLayout::justify(Justify::Center),
+                    keep_height(),
                 ));
                 screen
                     .spawn(Node {
                         column_gap: px(12),
-                        ..default()
+                        ..keep_height()
                     })
                     .with_children(|buttons| {
                         buttons.spawn(menu_button(MenuButton::ResetControls, "Defaults"));
@@ -377,6 +393,7 @@ mod tests {
     use bevy::ecs::system::RunSystemOnce;
     use bevy::input_focus::InputFocus;
     use bevy::prelude::*;
+    use bevy::ui_widgets::ScrollArea;
 
     use super::{
         Captured, CloseControls, ControlsScreen, OpenControls, Rebinding, ResetControls,
@@ -587,6 +604,33 @@ mod tests {
         });
         world.run_system_once(update_control_labels).unwrap();
         assert_eq!(shown(&mut world, ControlAction::Throttle, 2), "Press...");
+    }
+
+    #[test]
+    fn the_bindings_scroll_but_the_buttons_under_them_dont() {
+        let mut world = World::new();
+        world.init_resource::<Controls>();
+        world.commands().queue(OpenControls);
+        world.flush();
+        let mut buttons = world.query::<(Entity, &MenuButton)>();
+        let buttons: Vec<(Entity, MenuButton)> = buttons
+            .iter(&world)
+            .map(|(entity, button)| (entity, *button))
+            .collect();
+        // Whether `entity` is somewhere inside a scroll area.
+        let scrolls = |mut entity: Entity| {
+            while let Some(parent) = world.get::<ChildOf>(entity) {
+                entity = parent.parent();
+                if world.get::<ScrollArea>(entity).is_some() {
+                    return true;
+                }
+            }
+            false
+        };
+        for (entity, button) in buttons {
+            let should_scroll = matches!(button, MenuButton::Rebind(..));
+            assert_eq!(scrolls(entity), should_scroll, "{button:?}");
+        }
     }
 
     #[test]

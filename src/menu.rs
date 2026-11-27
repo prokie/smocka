@@ -143,8 +143,12 @@ impl Plugin for MenuPlugin {
         app.add_systems(
             Update,
             (
-                widgets::style_buttons,
-                widgets::scroll_focus_into_view,
+                (
+                    widgets::style_buttons,
+                    widgets::scroll_focus_into_view,
+                    widgets::show_scrollbars_when_needed,
+                    widgets::style_scrollbar_thumbs,
+                ),
                 (
                     main_menu::join_on_enter.run_if(main_menu::address_input_focused),
                     main_menu::show_session_end_reason,
