@@ -44,8 +44,8 @@ class TrackLayout:
     name: str  # the art's file name, in assets/minigames/racing/
     start_line: tuple[float, float]
     road_half_width: float
-    # Its pieces, leaving out the checkpoints: ("straight", length) or ("turn", radius,
-    # degrees), with positive degrees turning left.
+    # Its pieces, leaving out the checkpoints and boost pads (the game draws those): ("straight",
+    # length) or ("turn", radius, degrees), with positive degrees turning left.
     pieces: list[tuple]
     crossing: tuple[float, float] | None = None
     # Which way cars face on the grid. Only 0 (right) is drawn.
@@ -70,10 +70,12 @@ FIGURE_EIGHT: Final[TrackLayout] = TrackLayout(
         ("turn", 32.0, -90.0),
         ("straight", 20.0),
         ("turn", 25.0, 90.0),
-        ("straight", 306.0),
+        ("straight", 40.0),
+        ("straight", 266.0),
         ("turn", 32.0, 90.0),
         ("turn", 32.0, 90.0),
-        ("straight", 230.0),
+        ("straight", 60.0),
+        ("straight", 170.0),
         ("turn", 40.0, -90.0),
         ("straight", 106.0),
         ("straight", 15.0),
@@ -93,7 +95,8 @@ OVAL: Final[TrackLayout] = TrackLayout(
         ("straight", 140.0),
         ("turn", 130.0, 90.0),
         ("turn", 130.0, 90.0),
-        ("straight", 140.0),
+        ("straight", 50.0),
+        ("straight", 90.0),
         ("straight", 140.0),
         ("turn", 130.0, 90.0),
         ("turn", 130.0, 90.0),
@@ -104,6 +107,11 @@ TRACKS: Final[list[TrackLayout]] = [FIGURE_EIGHT, OVAL]
 
 # Keep in step with minigames::racing::checkpoint_guide::CHEVRON_SIZE.
 CHEVRON_SIZE: Final[tuple[float, float]] = (10.0, 12.0)
+# Keep in step with minigames::racing::config::BOOST_PAD_LENGTH and BOOST_PAD_WIDTH.
+BOOST_PAD_SIZE: Final[tuple[float, float]] = (28.0, 18.0)
+# Keep in step with minigames::racing::boost_visuals::FLAME_SIZE and SLIPSTREAM_SIZE.
+FLAME_SIZE: Final[tuple[float, float]] = (10.0, 7.0)
+SLIPSTREAM_SIZE: Final[tuple[float, float]] = (24.0, 16.0)
 
 # Keep in step with minigames::pong_royale::config.
 ROYALE_ARENA_HALF: Final[float] = 172.0  # ARENA_HALF
@@ -164,6 +172,12 @@ WALL: Final[RGBA] = (112, 104, 96, 255)
 WALL_TOP: Final[RGBA] = (138, 129, 119, 255)
 BARREL: Final[RGBA] = (44, 44, 50, 255)
 BOX_JUNCTION: Final[RGBA] = (240, 196, 64, 255)
+BOOST_PAD: Final[RGBA] = (48, 40, 38, 255)
+BOOST_RIM: Final[RGBA] = (255, 176, 48, 255)
+# The boost pad's chevrons, back to front: brighter towards the way it pushes.
+BOOST_CHEVRONS: Final[list[RGBA]] = [(196, 104, 36, 255), (232, 144, 44, 255), (255, 196, 64, 255)]
+FLAME_OUTER: Final[RGBA] = (255, 128, 32, 255)
+FLAME_INNER: Final[RGBA] = (255, 228, 112, 255)
 
 ASSETS: Final[Path] = Path("assets/minigames")
 MENU_ASSETS: Final[Path] = Path("assets/menu")
@@ -427,6 +441,56 @@ def draw_chevron() -> None:
         width=0.8,
     )
     canvas.save(ASSETS / "racing/chevron.png")
+
+
+def draw_boost_pad() -> None:
+    """Pointing right, the way it pushes cars: three chevrons on a dark pad with a glowing rim."""
+    length, width = BOOST_PAD_SIZE
+    canvas = Canvas(length, width)
+    half_l, half_w = length / 2, width / 2
+    canvas.rect(
+        -half_l + 0.5, -half_w + 0.5, half_l - 0.5, half_w - 0.5, BOOST_PAD,
+        radius=3.0, outline=BOOST_RIM, width=1.0,
+    )
+    arm, span, y = 3.0, 7.0, half_w - 3.0
+    for colour, x in zip(BOOST_CHEVRONS, (-10.5, -3.5, 3.5)):
+        canvas.polygon(
+            [(x, y), (x + arm, y), (x + span, 0.0), (x + arm, -y), (x, -y), (x + span - arm, 0.0)],
+            colour,
+        )
+    canvas.save(ASSETS / "racing/boost_pad.png")
+
+
+def draw_flame() -> None:
+    """Pointing left: drawn behind the tail of a boosted car pointing right. A teardrop, round
+    at the car's end."""
+    length, width = FLAME_SIZE
+    canvas = Canvas(length, width)
+    half_l, half_w = length / 2, width / 2
+    for colour, tip, radius in ((FLAME_OUTER, -half_l + 0.3, half_w - 0.3), (FLAME_INNER, -1.5, 1.8)):
+        centre = half_l - half_w
+        canvas.polygon([(tip, 0.0), (centre, radius), (centre, -radius)], colour)
+        canvas.ellipse(centre - radius, -radius, centre + radius, radius, colour, colour, 0.0)
+    canvas.save(ASSETS / "racing/flame.png")
+
+
+def draw_slipstream() -> None:
+    """Streaks of wind beside and behind a car pointing right, fading away behind it. Drawn
+    under the car, centred 8 units behind its middle."""
+    length, width = SLIPSTREAM_SIZE
+    canvas = Canvas(length, width)
+    half_l = length / 2
+    # (y, from x, to x): two along the car's sides, two shorter ones behind it.
+    streaks = [(6.5, -half_l + 1.0, half_l - 1.0), (-6.5, -half_l + 1.0, half_l - 1.0),
+               (2.5, -half_l + 1.0, -1.0), (-2.5, -half_l + 3.0, -3.0)]
+    pieces = 8
+    for y, start, end in streaks:
+        step = (end - start) / pieces
+        for i in range(pieces):
+            alpha = round(190 * (i + 1) / pieces)
+            x0 = start + i * step
+            canvas.line(x0, y, x0 + step, y, (255, 255, 255, alpha), 0.8)
+    canvas.save(ASSETS / "racing/slipstream.png")
 
 
 def draw_car() -> None:
@@ -813,6 +877,9 @@ def main() -> None:
         draw_track(track)
     draw_car()
     draw_chevron()
+    draw_boost_pad()
+    draw_flame()
+    draw_slipstream()
     draw_arena()
     draw_royale_arena()
     draw_paddle()

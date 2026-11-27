@@ -3,7 +3,8 @@
 //!
 //! A track is a [`Layout`]: a centre line built from [`Piece`]s, with the road reaching
 //! [`Layout::road_half_width`] either side of it, and art drawn to match
-//! (`assets/minigames/racing/<track>.png`, from `tools/make_art.py`).
+//! (`assets/minigames/racing/<track>.png`, from `tools/make_art.py`). Its [`BoostPad`]s aren't in
+//! the art: the game draws them where the layout puts them.
 
 use std::f32::consts::{FRAC_PI_2, TAU};
 use std::sync::LazyLock;
@@ -12,15 +13,17 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use super::config::{
-    CHECKPOINT_DEPTH, CHECKPOINT_MARGIN, GRASS_MAX_SPEED, GRID_LANE_OFFSET, GRID_ROW_SPACING,
-    MAX_SPEED,
+    BOOST_MAX_SPEED, BOOST_PAD_LENGTH, BOOST_PAD_WIDTH, CHECKPOINT_DEPTH, CHECKPOINT_MARGIN,
+    GRASS_MAX_SPEED, GRID_LANE_OFFSET, GRID_ROW_SPACING,
 };
 use crate::config::network::TICK_RATE;
 
-// A car at top speed must land inside each checkpoint on at least one tick, with room to spare.
-const _: () = assert!(2.0 * MAX_SPEED as f64 / TICK_RATE < CHECKPOINT_DEPTH as f64);
+// A car at its fastest must land inside each checkpoint and boost pad on at least one tick, with
+// room to spare.
+const _: () = assert!(2.0 * BOOST_MAX_SPEED as f64 / TICK_RATE < CHECKPOINT_DEPTH as f64);
+const _: () = assert!(2.0 * BOOST_MAX_SPEED as f64 / TICK_RATE < BOOST_PAD_LENGTH as f64);
 
-/// What a car is driving on, which limits its speed.
+/// What a car is driving on, which can limit its speed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Surface {
     Road,
@@ -28,11 +31,12 @@ pub enum Surface {
 }
 
 impl Surface {
-    /// Top speed either way on this surface.
-    pub fn max_speed(self) -> f32 {
+    /// Top speed either way on this surface, if it holds cars back: grass does, the road
+    /// doesn't (the car's own [`top_speed`](super::car::CarState::top_speed) does).
+    pub fn speed_limit(self) -> Option<f32> {
         match self {
-            Surface::Road => MAX_SPEED,
-            Surface::Grass => GRASS_MAX_SPEED,
+            Surface::Road => None,
+            Surface::Grass => Some(GRASS_MAX_SPEED),
         }
     }
 }
@@ -89,6 +93,9 @@ pub enum Piece {
     Turn { radius: f32, angle: f32 },
     /// A [`Checkpoint`] across the road here. The first is the start/finish line.
     Checkpoint,
+    /// A [`BoostPad`] starting here, its middle `offset` to the left of the centre line (to the
+    /// right if negative).
+    BoostPad { offset: f32 },
 }
 
 /// A left turn through `degrees`.
@@ -144,7 +151,7 @@ pub const FIGURE_EIGHT: Layout = Layout {
     thumbnail: "minigames/racing/figure_eight_thumbnail.png",
 };
 
-const FIGURE_EIGHT_PIECES: [Piece; 31] = [
+const FIGURE_EIGHT_PIECES: [Piece; 35] = [
     Piece::Checkpoint,
     // The start straight, across the crossing.
     Piece::Straight(280.0),
@@ -162,13 +169,18 @@ const FIGURE_EIGHT_PIECES: [Piece; 31] = [
     right(32.0, 90.0),
     Piece::Straight(20.0),
     left(25.0, 90.0),
-    // The top straight, into the hairpin.
-    Piece::Straight(306.0),
+    // The top straight, into the hairpin: a boost on the inside, if you can still make the
+    // hairpin after it.
+    Piece::Straight(40.0),
+    Piece::BoostPad { offset: 10.0 },
+    Piece::Straight(266.0),
     left(32.0, 90.0),
     Piece::Checkpoint,
     left(32.0, 90.0),
-    // Back across, and down through the crossing.
-    Piece::Straight(230.0),
+    // Back across, and down through the crossing, with a boost on the right.
+    Piece::Straight(60.0),
+    Piece::BoostPad { offset: -10.0 },
+    Piece::Straight(170.0),
     right(40.0, 90.0),
     Piece::Straight(106.0),
     Piece::Checkpoint,
@@ -195,13 +207,18 @@ pub const OVAL: Layout = Layout {
     thumbnail: "minigames/racing/oval_thumbnail.png",
 };
 
-const OVAL_PIECES: [Piece; 12] = [
+const OVAL_PIECES: [Piece; 15] = [
     Piece::Checkpoint,
     Piece::Straight(140.0),
     left(130.0, 90.0),
     Piece::Checkpoint,
+    // A boost on the outside of the bend...
+    Piece::BoostPad { offset: -14.0 },
     left(130.0, 90.0),
-    Piece::Straight(140.0),
+    // ...and one on the inside of the top straight.
+    Piece::Straight(50.0),
+    Piece::BoostPad { offset: 14.0 },
+    Piece::Straight(90.0),
     Piece::Checkpoint,
     Piece::Straight(140.0),
     left(130.0, 90.0),
@@ -245,17 +262,59 @@ impl Checkpoint {
     }
 
     pub fn contains(self, position: Vec2) -> bool {
-        let local = Rot2::radians(-self.heading) * (position - self.centre);
-        local.abs().cmple(self.size / 2.0).all()
+        in_rectangle(self.centre, self.heading, self.size, position)
     }
 }
 
-/// A track worked out from its [`Layout`]: its centre line as exact straights and arcs, and its
-/// checkpoints.
+/// A patch of road a car on it is boosted by (see
+/// [`CarState::boost`](super::car::CarState::boost)): [`BOOST_PAD_LENGTH`] along the road and
+/// [`BOOST_PAD_WIDTH`] across it. A car is on it when its centre is.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BoostPad {
+    centre: Vec2,
+    /// Which way the road runs along it, in radians anticlockwise from +x.
+    heading: f32,
+}
+
+impl BoostPad {
+    pub fn center(self) -> Vec2 {
+        self.centre
+    }
+
+    /// Which way the road runs along it, in radians anticlockwise from +x.
+    pub fn heading(self) -> f32 {
+        self.heading
+    }
+
+    /// Its size along the road, then across it.
+    pub fn size(self) -> Vec2 {
+        Vec2::new(BOOST_PAD_LENGTH, BOOST_PAD_WIDTH)
+    }
+
+    /// Where it is and which way it points, for drawing it.
+    pub fn isometry(self) -> Isometry2d {
+        Isometry2d::new(self.centre, Rot2::radians(self.heading))
+    }
+
+    pub fn contains(self, position: Vec2) -> bool {
+        in_rectangle(self.centre, self.heading, self.size(), position)
+    }
+}
+
+/// Whether `position` is in the rectangle of `size` (along `heading`, then across it) centred on
+/// `centre`.
+fn in_rectangle(centre: Vec2, heading: f32, size: Vec2, position: Vec2) -> bool {
+    let local = Rot2::radians(-heading) * (position - centre);
+    local.abs().cmple(size / 2.0).all()
+}
+
+/// A track worked out from its [`Layout`]: its centre line as exact straights and arcs, its
+/// checkpoints and its boost pads.
 pub struct Track {
     layout: &'static Layout,
     segments: Vec<Segment>,
     checkpoints: Vec<Checkpoint>,
+    boost_pads: Vec<BoostPad>,
 }
 
 impl Track {
@@ -302,6 +361,18 @@ impl Track {
             .position(|checkpoint| checkpoint.contains(position))
     }
 
+    /// The boost pads, in the order its pieces list them.
+    pub fn boost_pads(&self) -> &[BoostPad] {
+        &self.boost_pads
+    }
+
+    /// The boost pad a car centred at `position` is on, if any.
+    pub fn boost_pad_at(&self, position: Vec2) -> Option<usize> {
+        self.boost_pads
+            .iter()
+            .position(|pad| pad.contains(position))
+    }
+
     /// Points all the way round the track, `offset` to the left of the centre line (to the
     /// right if negative), at most `step` apart: `±road_half_width` gives the road's edges. The
     /// last point repeats the first.
@@ -314,6 +385,7 @@ impl Track {
     fn build(layout: &'static Layout) -> Self {
         let mut segments: Vec<Segment> = Vec::new();
         let mut checkpoint_starts = Vec::new();
+        let mut pad_starts = Vec::new();
         let (mut position, mut heading, mut along) = (layout.start_line, layout.start_heading, 0.0);
         for piece in layout.pieces {
             let (shape, length) = match *piece {
@@ -342,6 +414,10 @@ impl Track {
                     checkpoint_starts.push(along);
                     continue;
                 }
+                Piece::BoostPad { offset } => {
+                    pad_starts.push((along, offset));
+                    continue;
+                }
             };
             let segment = Segment {
                 shape,
@@ -357,6 +433,7 @@ impl Track {
             layout,
             segments,
             checkpoints: Vec::new(),
+            boost_pads: Vec::new(),
         };
         let size = Vec2::new(
             CHECKPOINT_DEPTH,
@@ -371,6 +448,16 @@ impl Track {
                     heading,
                     size,
                     along,
+                }
+            })
+            .collect();
+        track.boost_pads = pad_starts
+            .into_iter()
+            .map(|(along, offset)| {
+                let (middle, heading) = track.point_at(along + BOOST_PAD_LENGTH / 2.0);
+                BoostPad {
+                    centre: middle + Vec2::from_angle(heading).perp() * offset,
+                    heading,
                 }
             })
             .collect();
@@ -787,6 +874,81 @@ mod tests {
             assert_eq!(first.along, 0.0, "{id:?}");
             assert!(first.contains(layout.start_line + forward), "{id:?}");
             assert!(!first.contains(layout.start_line - forward), "{id:?}");
+        }
+    }
+
+    /// The four corners of a car centred at `centre`, pointing `heading`.
+    fn car_corners(centre: Vec2, heading: f32) -> impl Iterator<Item = Vec2> {
+        let forward = Vec2::from_angle(heading);
+        let side = forward.perp();
+        [-CAR_LENGTH / 2.0, CAR_LENGTH / 2.0]
+            .into_iter()
+            .flat_map(move |along| {
+                [-CAR_WIDTH / 2.0, CAR_WIDTH / 2.0]
+                    .map(|across| centre + forward * along + side * across)
+            })
+    }
+
+    #[test]
+    fn every_track_has_boost_pads() {
+        for (id, track) in tracks() {
+            assert!(track.boost_pads().len() >= 2, "{id:?}");
+        }
+    }
+
+    #[test]
+    fn every_boost_pad_is_on_the_road() {
+        for (id, track) in tracks() {
+            for (i, pad) in track.boost_pads().iter().enumerate() {
+                let half = pad.size() / 2.0;
+                for corner in [
+                    Vec2::new(-half.x, -half.y),
+                    Vec2::new(-half.x, half.y),
+                    Vec2::new(half.x, -half.y),
+                    Vec2::new(half.x, half.y),
+                ] {
+                    let corner = pad.isometry() * corner;
+                    assert_eq!(
+                        track.surface_at(corner),
+                        Surface::Road,
+                        "{id:?} pad {i} at {corner}"
+                    );
+                }
+                assert_eq!(track.boost_pad_at(pad.center()), Some(i), "{id:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn boost_pads_reach_along_and_across_the_road_from_their_middle() {
+        let pad = TrackId::Oval.track().boost_pads()[1];
+        let along = Vec2::from_angle(pad.heading());
+        let across = along.perp();
+        let size = pad.size();
+        for (direction, reach) in [(along, size.x / 2.0), (across, size.y / 2.0)] {
+            for sign in [1.0, -1.0] {
+                let inside = pad.center() + direction * sign * (reach - 0.5);
+                let outside = pad.center() + direction * sign * (reach + 0.5);
+                assert!(pad.contains(inside), "{inside}");
+                assert!(!pad.contains(outside), "{outside}");
+            }
+        }
+    }
+
+    #[test]
+    fn no_car_starts_on_a_boost_pad() {
+        for (id, track) in tracks() {
+            let heading = track.layout().start_heading;
+            for slot in 0..GRID_SLOTS {
+                let centre = track.grid_position(slot);
+                for point in car_corners(centre, heading).chain([centre]) {
+                    assert_eq!(
+                        track.boost_pad_at(point),
+                        None,
+                        "{id:?} slot {slot} at {point}"
+                    );
+                }
+            }
         }
     }
 

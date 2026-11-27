@@ -31,10 +31,11 @@ every peer can work it out the same way from what it already has.
 
 ## Racing
 
-- [ ] **Boost pads and slipstream**: pads on the track, and a speed boost for driving close
+- [x] **Boost pads and slipstream**: pads on the track, and a speed boost for driving close
       behind another car. Slipstream lets the losers catch up, and makes bumping matter.
       **Cheap**: the track is the same fixed data on every peer, and drivers already predict
-      every car.
+      every car. (Done: pads are track data, see `minigames/racing/track.rs`, and slipstreams
+      are in `minigames/racing/slipstream.rs`.)
 - [ ] **Drift boost**: a long drift charges a short burst of speed. The skid-mark code already
       works out how much a car is sliding.
 - [ ] **Hazards**: oil slicks dropped from the car, or cones you can knock into others.

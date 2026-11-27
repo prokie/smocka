@@ -64,7 +64,8 @@ Keyboard or gamepad. These are the defaults: change them with **Controls** in th
 
 - **Pong:** `W` / `↑` / left stick up, `S` / `↓` / left stick down.
 - **Racing:** `W` / `↑` / right trigger accelerate, `S` / `↓` / left trigger brake and reverse,
-  `A` / `←` and `D` / `→` / left stick steer. `F3` draws the track's road edges over the art.
+  `A` / `←` and `D` / `→` / left stick steer. `F3` draws the track's road edges, checkpoints
+  and boost pads over the art.
 - **Shootout:** `W` / `A` / `S` / `D` / arrows / left stick move, mouse or right stick aim,
   left click / `Space` / right trigger fire.
 - **Pong Royale:** `W` / `S` / `↑` / `↓` / left stick move a paddle on the left or right side,
@@ -94,7 +95,8 @@ The placeholders come from `python3 tools/make_art.py`, which makes the thumbnai
 minigames' art, so replacing the art and running it again updates them. Each racing track's art
 (`racing/figure_eight.png`, `racing/oval.png`) must match its `Layout` in
 `src/minigames/racing/track.rs`, as must the copy of those layouts in the script; press `F3` in a
-race to check.
+race to check. Boost pads aren't in the track art: the game draws `racing/boost_pad.png` wherever
+a `Layout` puts one.
 
 ## Sound
 

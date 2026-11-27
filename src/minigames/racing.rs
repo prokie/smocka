@@ -1,3 +1,4 @@
+mod boost_visuals;
 pub mod bumps;
 pub mod car;
 mod checkpoint_guide;
@@ -6,6 +7,7 @@ pub mod progress;
 pub mod race;
 mod racing_input;
 mod skid_marks;
+pub mod slipstream;
 pub mod sounds;
 pub mod track;
 mod visuals;
@@ -69,7 +71,7 @@ pub fn thumbnail(settings: &SettingValues) -> &'static str {
 pub enum RacingSystems {
     /// Host only: run the countdown and the finish grace.
     Status,
-    /// Move the cars from this tick's input.
+    /// Move the cars from this tick's input, boosted by boost pads and slipstreams.
     Drive,
     /// Push touching cars apart, and bounce cars that hit each other.
     Bump,

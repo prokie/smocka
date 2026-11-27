@@ -12,14 +12,14 @@ use lightyear::prelude::{Interpolated, PeerId, Rollback};
 use super::PHASE;
 use super::RacingSystems;
 use super::car::{Car, CarState, on_screen};
-use super::config::{BUMP_RESTITUTION, CAR_LENGTH, CAR_WIDTH, MAX_REVERSE_SPEED, MAX_SPEED};
+use super::config::{BOOST_MAX_SPEED, BUMP_RESTITUTION, CAR_LENGTH, CAR_WIDTH, MAX_REVERSE_SPEED};
 use crate::config::network::TICK_RATE;
 
 // A car's outline is a capsule along its length, so it must be longer than it is wide.
 const _: () = assert!(CAR_LENGTH > CAR_WIDTH);
-// Two cars driving at each other at top speed must touch on some tick, not pass through each other
-// between two.
-const _: () = assert!(2.0 * MAX_SPEED as f64 / TICK_RATE < CAR_WIDTH as f64);
+// Two cars driving at each other at their fastest must touch on some tick, not pass through each
+// other between two.
+const _: () = assert!(2.0 * BOOST_MAX_SPEED as f64 / TICK_RATE < CAR_WIDTH as f64);
 
 /// Half the width of a car's outline: a capsule (a rectangle with round ends) as long and wide as
 /// the car.
@@ -114,10 +114,12 @@ pub fn bump(a: CarState, b: CarState) -> Option<Bump> {
 
 /// `car` after a bump changes its velocity by `change`. The part along the car's heading goes into
 /// its speed, as far as its top speeds allow; the rest (sideways, or past a top speed) into its
-/// slide, so the change is kept in full either way.
+/// slide, so the change is kept in full either way. A car already past its top speed (after a
+/// boost, say) keeps that speed.
 fn kicked(car: CarState, change: Vec2) -> CarState {
     let forward = Vec2::from_angle(car.heading);
-    let speed = (car.speed + change.dot(forward)).clamp(-MAX_REVERSE_SPEED, MAX_SPEED);
+    let top = car.top_speed().max(car.speed);
+    let speed = (car.speed + change.dot(forward)).clamp(-MAX_REVERSE_SPEED, top);
     CarState {
         speed,
         slide: car.slide + change - forward * (speed - car.speed),
@@ -223,7 +225,8 @@ mod tests {
     use super::{Bump, bump, bump_cars, contact};
     use crate::minigames::racing::car::{Car, CarState};
     use crate::minigames::racing::config::{
-        BUMP_RESTITUTION, CAR_LENGTH, CAR_MAX_X, CAR_WIDTH, MAX_REVERSE_SPEED, MAX_SPEED,
+        BOOST_MAX_SPEED, BUMP_RESTITUTION, CAR_LENGTH, CAR_MAX_X, CAR_WIDTH, MAX_REVERSE_SPEED,
+        MAX_SPEED,
     };
 
     /// A car at (`x`, `y`) facing `heading`, going `speed` along it.
@@ -306,6 +309,26 @@ mod tests {
         assert_close(bumped.a.slide, Vec2::ZERO);
         assert_close(bumped.b.slide, Vec2::ZERO);
         assert_close(momentum(&bumped), Vec2::new(300.0, 0.0));
+    }
+
+    #[test]
+    fn a_boosted_car_rear_ending_another_keeps_its_speed_rather_than_sliding() {
+        let behind = CarState {
+            boost: 0.5,
+            ..car(-15.0, 0.0, 0.0, BOOST_MAX_SPEED)
+        };
+        let front = car(0.0, 0.0, 0.0, BOOST_MAX_SPEED - 60.0);
+        let bumped = bump(behind, front).unwrap();
+        assert!(bumped.a.speed > MAX_SPEED, "{bumped:?}");
+        assert_close(bumped.a.slide, Vec2::ZERO);
+        // The car in front isn't boosted, so it's past its own top speed: it keeps that speed, and
+        // the rest of the shove is a slide that soon wears off.
+        assert_eq!(bumped.b.speed, BOOST_MAX_SPEED - 60.0);
+        assert!(bumped.b.slide.x > 0.0, "{bumped:?}");
+        assert_close(
+            momentum(&bumped),
+            Vec2::new(2.0 * BOOST_MAX_SPEED - 60.0, 0.0),
+        );
     }
 
     #[test]

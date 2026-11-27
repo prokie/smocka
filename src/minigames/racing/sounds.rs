@@ -1,9 +1,9 @@
-//! Racing's sounds: bumps, and for the car you drive, its engine, laps and finish. The countdown
-//! before the start is the shared one (see [`countdown`](crate::minigames::countdown)).
+//! Racing's sounds: bumps, and for the car you drive, its engine, boosts, laps and finish. The
+//! countdown before the start is the shared one (see [`countdown`](crate::minigames::countdown)).
 //!
 //! Each peer plays them from what it sees: laps and the finish from your car's replicated
-//! [`RaceProgress`], bumps from [`CarsBumped`], and the engine from your car's [`CarState`]. Bumps
-//! are only worked out by the host and drivers, so spectators don't hear them.
+//! [`RaceProgress`], bumps from [`CarsBumped`], and the engine and boosts from your car's
+//! [`CarState`]. Bumps are only worked out by the host and drivers, so spectators don't hear them.
 
 use bevy::prelude::*;
 use lightyear::prelude::input::native::InputMarker;
@@ -19,11 +19,13 @@ use crate::sound::{Sound, play_sound, play_varied_sound};
 const LAP_SOUND: &str = "minigames/racing/lap.wav";
 const FINISH_SOUND: &str = "minigames/racing/finish.wav";
 const BUMP_SOUND: &str = "minigames/racing/bump.wav";
+const BOOST_SOUND: &str = "minigames/racing/boost.wav";
 /// Loops seamlessly, and is played faster (so higher) the faster the car goes.
 const ENGINE_SOUND: &str = "minigames/racing/engine.wav";
 
 const LAP_VOLUME: f32 = 0.5;
 const FINISH_VOLUME: f32 = 0.5;
+const BOOST_VOLUME: f32 = 0.45;
 const ENGINE_VOLUME: f32 = 0.25;
 /// The loudest bump, for two cars meeting head-on at top speed.
 const BUMP_MAX_VOLUME: f32 = 0.8;
@@ -54,6 +56,12 @@ pub fn progress_sound(before: RaceProgress, now: RaceProgress) -> Option<Progres
     }
 }
 
+/// Whether a car's [`CarState::boost`] going from `before` to `now` means it just got onto a boost
+/// pad. A boost only runs down, except when a pad tops it up.
+pub fn boost_topped_up(before: f32, now: f32) -> bool {
+    now > before
+}
+
 /// How fast to play the engine sound for a car going at `speed` (forwards or in reverse).
 pub fn engine_speed(speed: f32) -> f32 {
     let throttle = (speed.abs() / MAX_SPEED).min(1.0);
@@ -79,6 +87,7 @@ struct RacingSounds {
     lap: Handle<AudioSource>,
     finish: Handle<AudioSource>,
     bump: Handle<AudioSource>,
+    boost: Handle<AudioSource>,
     engine: Handle<AudioSource>,
 }
 
@@ -91,7 +100,13 @@ impl Plugin for RacingSoundsPlugin {
         app.add_observer(play_bump_sound);
         app.add_systems(
             Update,
-            (play_progress_sounds, run_engine_sound, rev_engine_sound).run_if(in_state(PHASE)),
+            (
+                play_progress_sounds,
+                play_boost_sound,
+                run_engine_sound,
+                rev_engine_sound,
+            )
+                .run_if(in_state(PHASE)),
         );
     }
 }
@@ -101,6 +116,7 @@ fn load_sounds(assets: Res<AssetServer>, mut commands: Commands) {
         lap: assets.load(LAP_SOUND),
         finish: assets.load(FINISH_SOUND),
         bump: assets.load(BUMP_SOUND),
+        boost: assets.load(BOOST_SOUND),
         engine: assets.load(ENGINE_SOUND),
     });
 }
@@ -122,6 +138,24 @@ fn play_progress_sounds(
             }
             None => {}
         }
+    }
+    *seen = now;
+}
+
+/// Whoosh when your car gets onto a boost pad. `seen` is its boost last frame: `None` without a
+/// car.
+fn play_boost_sound(
+    own_car: Query<&CarState, OwnCar>,
+    sounds: Res<RacingSounds>,
+    mut seen: Local<Option<f32>>,
+    mut commands: Commands,
+) {
+    let now = own_car.single().ok().map(|state| state.boost);
+    if let (Some(before), Some(now)) = (*seen, now)
+        && boost_topped_up(before, now)
+    {
+        debug!("Your car hit a boost pad");
+        play_sound(&mut commands, &sounds.boost, BOOST_VOLUME);
     }
     *seen = now;
 }
@@ -179,9 +213,9 @@ fn rev_engine_sound(
 mod tests {
     use super::{
         BUMP_MAX_VOLUME, BUMP_MIN_IMPACT, ENGINE_IDLE_SPEED, ENGINE_TOP_SPEED, ProgressSound,
-        bump_volume, engine_speed, progress_sound,
+        boost_topped_up, bump_volume, engine_speed, progress_sound,
     };
-    use crate::minigames::racing::config::{MAX_REVERSE_SPEED, MAX_SPEED};
+    use crate::minigames::racing::config::{BOOST_TIME, MAX_REVERSE_SPEED, MAX_SPEED};
     use crate::minigames::racing::progress::RaceProgress;
 
     fn progress(laps: u32, place: Option<u32>) -> RaceProgress {
@@ -207,6 +241,17 @@ mod tests {
             progress_sound(progress(3, Some(1)), progress(3, Some(1))),
             None
         );
+    }
+
+    #[test]
+    fn whooshes_when_a_pad_tops_the_boost_up_but_not_as_it_runs_down() {
+        assert!(boost_topped_up(0.0, BOOST_TIME));
+        // A second pad before the first boost is over.
+        assert!(boost_topped_up(0.3, BOOST_TIME));
+        assert!(!boost_topped_up(BOOST_TIME, 0.9));
+        // Still on the pad: topped up to the same each tick.
+        assert!(!boost_topped_up(0.99, 0.99));
+        assert!(!boost_topped_up(0.0, 0.0));
     }
 
     #[test]

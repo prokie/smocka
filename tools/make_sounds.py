@@ -204,6 +204,12 @@ def racing_sounds() -> dict[str, Signal]:
             noise(0.16, 0.04, smoothing=0.88, seed=12),
             scaled(0.8, tone(90.0, 0.16, 0.05, SOFT, glide=0.6, bright_decay=0.02)),
         ),
+        # A rising whoosh when your car gets onto a boost pad: airy noise under a tone sliding up
+        # an octave.
+        "boost": mix(
+            noise(0.4, 0.18, smoothing=0.55, seed=21),
+            scaled(0.45, tone(330.0, 0.4, 0.2, SOFT, glide=2.0)),
+        ),
         "engine": engine(),
     }
     return sounds

@@ -4,6 +4,7 @@ use lightyear::prelude::input::native::InputMarker;
 use super::LAPS_SETTING;
 use super::PHASE;
 use super::RacingInput;
+use super::boost_visuals::BoostVisualsPlugin;
 use super::car::{Car, CarState};
 use super::checkpoint_guide::CheckpointGuidePlugin;
 use super::config::{CAR_LENGTH, CAR_WIDTH};
@@ -30,6 +31,7 @@ const TRACK_GIZMOS_KEY: KeyCode = KeyCode::F3;
 const ROAD_EDGE_GIZMO_COLOR: Color = Color::srgb(1.0, 0.9, 0.2);
 const START_LINE_GIZMO_COLOR: Color = Color::srgb(1.0, 0.3, 1.0);
 const CHECKPOINT_GIZMO_COLOR: Color = Color::srgb(0.3, 0.9, 1.0);
+const BOOST_PAD_GIZMO_COLOR: Color = Color::srgb(1.0, 0.5, 0.1);
 
 /// Lap counter in the top-left corner, in screen pixels.
 const LAP_TEXT_SIZE: f32 = 28.0;
@@ -53,7 +55,8 @@ pub struct PositionText;
 #[derive(Component)]
 pub struct StatusText;
 
-/// Whether to draw the track's road edges and start line over the art, to check the two line up.
+/// Whether to draw the track's road edges, start line, checkpoints and boost pads over the art, to
+/// check the two line up.
 #[derive(Resource, Debug, Default)]
 pub struct TrackGizmos(pub bool);
 
@@ -62,7 +65,12 @@ pub struct RacingVisualsPlugin;
 
 impl Plugin for RacingVisualsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((SkidMarksPlugin, RacingSoundsPlugin, CheckpointGuidePlugin));
+        app.add_plugins((
+            SkidMarksPlugin,
+            RacingSoundsPlugin,
+            CheckpointGuidePlugin,
+            BoostVisualsPlugin,
+        ));
         app.init_resource::<TrackGizmos>();
         app.add_systems(
             OnEnter(PHASE),
@@ -293,6 +301,9 @@ fn draw_track_gizmos(track: Option<Single<&TrackId>>, mut gizmos: Gizmos) {
             checkpoint.size(),
             CHECKPOINT_GIZMO_COLOR,
         );
+    }
+    for pad in track.boost_pads() {
+        gizmos.rect_2d(pad.isometry(), pad.size(), BOOST_PAD_GIZMO_COLOR);
     }
 }
 

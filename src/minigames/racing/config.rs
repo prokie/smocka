@@ -45,6 +45,40 @@ pub const BUMP_RESTITUTION: f32 = 0.4;
 /// How fast a car shoved sideways by a bump (or past its top speed) stops sliding.
 pub const SLIDE_DECELERATION: f32 = 600.0;
 
+/// Top speed going forwards while boosted by a boost pad (see
+/// [`Track::boost_pad_at`](super::track::Track::boost_pad_at)): the fastest a car goes.
+pub const BOOST_MAX_SPEED: f32 = 270.0;
+/// How fast a boosted car speeds up on the road. A boost pushes the car on even without the
+/// throttle held, unless the brake is.
+pub const BOOST_ACCELERATION: f32 = 700.0;
+/// How long a boost lasts after the car was last on a boost pad, in seconds.
+pub const BOOST_TIME: f32 = 1.0;
+/// A boost pad's size along the road. Draw `boost_pad.png` with the same proportions.
+pub const BOOST_PAD_LENGTH: f32 = 28.0;
+/// A boost pad's size across the road: wider than a car, but well short of the road, so taking it
+/// is a choice of line.
+pub const BOOST_PAD_WIDTH: f32 = 18.0;
+
+/// Top speed going forwards in another car's slipstream: fast enough to catch the car ahead.
+pub const SLIPSTREAM_MAX_SPEED: f32 = 230.0;
+/// How far behind a car (centre to centre) its slipstream reaches.
+pub const SLIPSTREAM_LENGTH: f32 = 72.0;
+/// How far either side of the line a car drives along its slipstream reaches, measured to the
+/// centre of the car behind.
+pub const SLIPSTREAM_HALF_WIDTH: f32 = 9.0;
+/// A car slower than this leaves no slipstream, so a car parked or crawling out of a crash
+/// doesn't pull the car behind along.
+pub const SLIPSTREAM_MIN_SPEED: f32 = 120.0;
+/// The car behind must point within this angle (in radians) of the way the car ahead does, so
+/// cars meeting at a crossing don't slipstream each other.
+pub const SLIPSTREAM_MAX_ANGLE: f32 = std::f32::consts::FRAC_PI_4;
+/// How long a car keeps its slipstream speed after leaving the slipstream, in seconds: long
+/// enough to pull out and pass.
+pub const SLIPSTREAM_LINGER: f32 = 0.6;
+/// How fast a car going faster than its top speed slows down to it on the road, once its boost or
+/// slipstream is over: gently, so the extra speed carries the car on a little.
+pub const OVERSPEED_DECELERATION: f32 = 100.0;
+
 /// Top speed either way on grass.
 pub const GRASS_MAX_SPEED: f32 = 80.0;
 /// How fast a car going faster than [`GRASS_MAX_SPEED`] slows down on grass. Keep it above
@@ -69,7 +103,7 @@ pub const MAX_LAPS: u32 = 10;
 /// everyone up. Unless [`RaceRules`](super::race::RaceRules) says otherwise.
 pub const FINISH_GRACE: Duration = Duration::from_secs(10);
 /// How far each checkpoint reaches along the track. A car must be seen inside it on some
-/// tick, so keep it well above how far a car moves in one tick (`MAX_SPEED / TICK_RATE`);
+/// tick, so keep it well above how far a car moves in one tick (`BOOST_MAX_SPEED / TICK_RATE`);
 /// `track.rs` checks this when it compiles.
 pub const CHECKPOINT_DEPTH: f32 = 16.0;
 /// How far each checkpoint reaches past both edges of the road, so a car running a little

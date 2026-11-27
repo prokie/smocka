@@ -12,7 +12,7 @@ use smocka::minigames::Minigame;
 use smocka::minigames::outcome::MinigameResult;
 use smocka::minigames::racing::bumps::contact;
 use smocka::minigames::racing::car::{Car, CarState};
-use smocka::minigames::racing::config::LAPS;
+use smocka::minigames::racing::config::{LAPS, MAX_SPEED};
 use smocka::minigames::racing::progress::RaceProgress;
 use smocka::minigames::racing::race::{RaceRules, RaceStatus};
 use smocka::minigames::racing::track::{Surface, Track, TrackId};
@@ -473,6 +473,50 @@ fn the_host_bumps_the_joiners_car_along_on_every_peer() {
     hold(&mut host, KeyCode::KeyW);
 
     push_past(&mut [&mut host, &mut client], joiners, joiner.x + 10.0);
+}
+
+#[test]
+fn a_joiner_driving_over_a_boost_pad_goes_past_top_speed_on_every_peer() {
+    let (mut host, mut client) = race_pair();
+    // A pad the joiner's car points along, straight from the grid.
+    let heading = car(&mut host, joiners).unwrap().heading;
+    let pad = *race_track(&mut host)
+        .unwrap()
+        .boost_pads()
+        .iter()
+        .find(|pad| (pad.heading() - heading).abs() < 1e-3)
+        .expect("a pad along the grid's heading");
+    park(
+        &mut [&mut host, &mut client],
+        joiners,
+        pad.center() - Vec2::from_angle(heading) * 40.0,
+    );
+
+    hold(&mut client, KeyCode::KeyW);
+
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut().all(|app| {
+            car(app, joiners).is_some_and(|car| car.boost > 0.0 && car.speed > MAX_SPEED)
+        })
+    });
+}
+
+#[test]
+fn a_joiner_close_behind_the_hosts_car_is_in_its_slipstream_on_every_peer() {
+    let (mut host, mut client) = race_pair();
+    // Park the host's car in the joiner's lane, a little way ahead of it, and race off together.
+    let ahead = car(&mut host, joiners).unwrap().position + Vec2::new(40.0, 0.0);
+    park(&mut [&mut host, &mut client], hosts, ahead);
+
+    hold(&mut host, KeyCode::KeyW);
+    hold(&mut client, KeyCode::KeyW);
+
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut()
+            .all(|app| car(app, joiners).is_some_and(|car| car.draft > 0.0))
+    });
+    // The host's car, in front, isn't in a slipstream.
+    assert_eq!(car(&mut host, hosts).unwrap().draft, 0.0);
 }
 
 #[test]
