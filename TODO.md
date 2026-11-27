@@ -80,9 +80,6 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
       hit but leaves it where the step ended: up to `BALL_MAX_SPEED / TICK_RATE` ≈ 4.7 units
       inside the paddle (the ball is 8 wide), for one tick. When it bounces, put it back in
       front of the face (or mirror the overshoot). Cosmetic.
-- [ ] **Two players can have the same name.** `spawn_player` keeps names as sent, so two "Ada"s
-      (or someone who types "Player 2") look the same on bracket cards, results and "… left."
-      notices. The host could add a number to a name that's taken ("Ada 2").
 
 ## Later
 

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::app_state::AppState;
 use crate::network::is_host;
-use crate::profile::{LocalProfile, clean_name, name_from_user_data};
+use crate::profile::{LocalProfile, MAX_NAME_CHARS, clean_name, name_from_user_data};
 use crate::standings::Points;
 
 /// A person in the session. Spawned by the host for every connected client (including its own)
@@ -17,7 +17,8 @@ pub struct Player {
     pub id: PeerId,
     /// Given out in joining order, starting at 1 for the host, and not reused in the same session.
     pub number: u32,
-    /// The name this player picked, or "Player {number}" if they didn't.
+    /// The name this player picked, or "Player {number}" if they didn't. If another player
+    /// already had it, the host adds a number to tell them apart ("Ada 2", see [`unique_name`]).
     pub name: String,
     /// Index into [`PLAYER_COLORS`]. The host keeps each colour to one player while there are
     /// enough to go round.
@@ -81,6 +82,29 @@ pub fn color_is_free<'a>(
             .all(|player| player.id == who || player.color != color)
 }
 
+/// `name`, or if a player in `taken` already has it (ignoring case), `name` followed by the
+/// lowest number from 2 that nobody has ("Ada 2"). The name is cut short if needed, so the result
+/// still fits in [`MAX_NAME_CHARS`].
+pub fn unique_name<'a>(name: &str, taken: impl IntoIterator<Item = &'a str>) -> String {
+    let taken: Vec<String> = taken.into_iter().map(str::to_lowercase).collect();
+    let is_free = |candidate: &str| !taken.contains(&candidate.to_lowercase());
+    if is_free(name) {
+        return name.to_string();
+    }
+    // Every number gives a different name, so one of the first `taken.len() + 1` is free.
+    let mut number = 2;
+    loop {
+        let suffix = format!(" {number}");
+        let room = MAX_NAME_CHARS.saturating_sub(suffix.chars().count());
+        let start: String = name.chars().take(room).collect();
+        let candidate = format!("{}{suffix}", start.trim_end());
+        if is_free(&candidate) {
+            return candidate;
+        }
+        number += 1;
+    }
+}
+
 /// Client to host: "I'd like this colour". Sent by [`PickColor`]; the host checks it's free.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ColorRequest(pub u8);
@@ -134,8 +158,9 @@ pub fn local_peer_id(clients: &Query<&LocalId, (With<Client>, With<Connected>)>)
 }
 
 /// The new player gets the name a joiner sent in its connect token (or the host's own
-/// [`LocalProfile`]), and the first free colour. `ControlledBy` with the default lifetime despawns
-/// the player when its client disconnects.
+/// [`LocalProfile`]), made [unique](unique_name) among the players already here, and the first
+/// free colour. `ControlledBy` with the default lifetime despawns the player when its client
+/// disconnects.
 fn spawn_player(
     trigger: On<Add<Connected>>,
     clients: Query<(&RemoteId, Option<&TokenUserData>), With<ClientOf>>,
@@ -154,14 +179,22 @@ fn spawn_player(
         // The host's own client is linked in-process, without a token.
         None => clean_name(&profile.name),
     };
+    let picked = if picked.is_empty() {
+        format!("Player {number}")
+    } else {
+        picked
+    };
+    let name = unique_name(&picked, players.iter().map(Player::name));
+    if name != picked {
+        info!(
+            "{:?} asked for the name \"{picked}\", which is taken, so they get \"{name}\"",
+            remote_id.0
+        );
+    }
     let player = Player {
         id: remote_id.0,
         number,
-        name: if picked.is_empty() {
-            format!("Player {number}")
-        } else {
-            picked
-        },
+        name,
         color: first_free_color(players.iter().map(|player| player.color)),
     };
     info!(
@@ -273,7 +306,8 @@ fn reset_player_numbers(mut next_number: ResMut<NextPlayerNumber>) {
 mod tests {
     use lightyear::prelude::PeerId;
 
-    use super::{PLAYER_COLORS, Player, color_is_free, first_free_color};
+    use super::{PLAYER_COLORS, Player, color_is_free, first_free_color, unique_name};
+    use crate::profile::MAX_NAME_CHARS;
 
     fn player(id: u64, color: u8) -> Player {
         Player {
@@ -306,5 +340,45 @@ mod tests {
             PeerId::Netcode(1),
             PLAYER_COLORS.len() as u8
         ));
+    }
+
+    #[test]
+    fn a_free_name_is_kept() {
+        assert_eq!(unique_name("Ada", []), "Ada");
+        assert_eq!(unique_name("Ada", ["Bo", "Ada 2"]), "Ada");
+    }
+
+    #[test]
+    fn a_taken_name_gets_the_first_free_number() {
+        assert_eq!(unique_name("Ada", ["Ada"]), "Ada 2");
+        assert_eq!(unique_name("Ada", ["Ada", "Ada 2"]), "Ada 3");
+        assert_eq!(unique_name("Ada", ["Ada", "Ada 3"]), "Ada 2");
+        // Someone who typed another player's default name.
+        assert_eq!(
+            unique_name("Player 2", ["Player 1", "Player 2"]),
+            "Player 2 2"
+        );
+    }
+
+    #[test]
+    fn names_differing_only_in_case_are_taken() {
+        assert_eq!(unique_name("ADA", ["ada"]), "ADA 2");
+        assert_eq!(unique_name("ada", ["Ada", "ADA 2"]), "ada 3");
+    }
+
+    #[test]
+    fn a_numbered_name_still_fits() {
+        let long = "x".repeat(MAX_NAME_CHARS);
+        let numbered = unique_name(&long, [long.as_str()]);
+        assert_eq!(numbered, format!("{} 2", "x".repeat(MAX_NAME_CHARS - 2)));
+        assert_eq!(
+            unique_name("fifteen letters", ["fifteen letters"]),
+            "fifteen letter 2"
+        );
+        // Cutting doesn't leave a space before the number.
+        assert_eq!(
+            unique_name("thirteen char xy", ["thirteen char xy"]),
+            "thirteen char 2"
+        );
     }
 }

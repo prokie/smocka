@@ -145,6 +145,22 @@ fn players_without_a_name_are_numbered() {
 }
 
 #[test]
+fn a_taken_name_gets_a_number() {
+    let (mut host, mut client) = named_pair("Ada", "Ada");
+    for app in [&mut host, &mut client] {
+        let names: Vec<String> = app.player_list().into_iter().map(|p| p.name).collect();
+        assert_eq!(names, ["Ada", "Ada 2"]);
+    }
+}
+
+#[test]
+fn typing_someone_elses_default_name_gets_a_number() {
+    let (_host, mut client) = named_pair("", "Player 1");
+    let names: Vec<String> = client.player_list().into_iter().map(|p| p.name).collect();
+    assert_eq!(names, ["Player 1", "Player 1 2"]);
+}
+
+#[test]
 fn new_players_get_different_colours() {
     let (mut host, _client) = named_pair("Ada", "Bo");
     let colors: Vec<u8> = host.player_list().into_iter().map(|p| p.color).collect();
