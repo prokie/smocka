@@ -5,16 +5,15 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use bevy::prelude::*;
-use lightyear::prelude::{server::Started, *};
+use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use super::PHASE;
-use super::RacingSystems;
 use super::car::{Car, CarState};
-use super::config::{COUNTDOWN, FINISH_GRACE, LAPS, MAX_LAPS, MIN_LAPS};
+use super::config::{COUNTDOWN, FINISH_GRACE};
 use super::progress::{RaceProgress, running_order};
-use crate::app_state::AppState;
+use super::{LAPS_SETTING, PHASE, RacingSystems};
 use crate::minigames::outcome::{MinigameEnded, MinigameResult, Placement};
+use crate::minigames::settings::MinigameSettings;
 use crate::network::is_host;
 
 /// Where the race is. One replicated entity per race, spawned by the host.
@@ -34,15 +33,14 @@ impl RaceStatus {
     }
 }
 
-/// Host only: how the next race is run. The host picks [`laps`](Self::laps) in the lobby.
+/// Host only: how the next race is timed. How many laps it has is a setting the host picks in
+/// the lobby: [`LAPS_SETTING`].
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RaceRules {
     /// Defaults to [`COUNTDOWN`].
     pub countdown: Duration,
     /// Defaults to [`FINISH_GRACE`].
     pub finish_grace: Duration,
-    /// From [`MIN_LAPS`] to [`MAX_LAPS`]. Defaults to [`LAPS`].
-    pub laps: u32,
 }
 
 impl Default for RaceRules {
@@ -50,40 +48,7 @@ impl Default for RaceRules {
         Self {
             countdown: COUNTDOWN,
             finish_grace: FINISH_GRACE,
-            laps: LAPS,
         }
-    }
-}
-
-/// How many laps races have: the host's [`RaceRules::laps`], so joiners see it in the lobby and
-/// in their lap counter. One per session, spawned by the host and replicated.
-#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
-pub struct RaceLaps(pub u32);
-
-/// Command: change how many laps the next race has by `.0`, keeping it from [`MIN_LAPS`] to
-/// [`MAX_LAPS`]. Only means something on the host, whose [`RaceRules`] the race is started with;
-/// the lobby only offers it there.
-#[derive(Debug, Clone, Copy)]
-pub struct ChangeLaps(pub i32);
-
-impl Command for ChangeLaps {
-    type Out = ();
-
-    fn apply(self, world: &mut World) {
-        let Some(mut rules) = world.get_resource_mut::<RaceRules>() else {
-            error!("Can't change the race laps: there are no race rules");
-            return;
-        };
-        let laps = rules
-            .laps
-            .saturating_add_signed(self.0)
-            .clamp(MIN_LAPS, MAX_LAPS);
-        if laps == rules.laps {
-            debug!("Race laps stay at {laps}: it goes from {MIN_LAPS} to {MAX_LAPS}");
-            return;
-        }
-        info!("Race laps {} -> {laps}", rules.laps);
-        rules.laps = laps;
     }
 }
 
@@ -116,9 +81,9 @@ pub struct RaceDirector {
 }
 
 impl RaceDirector {
-    fn new(rules: &RaceRules) -> Self {
+    fn new(rules: &RaceRules, laps: u32) -> Self {
         Self {
-            laps: rules.laps,
+            laps,
             countdown: Timer::new(rules.countdown, TimerMode::Once),
             clock: Duration::ZERO,
             lap_started: HashMap::new(),
@@ -198,9 +163,6 @@ pub struct RacePlugin;
 impl Plugin for RacePlugin {
     fn build(&self, app: &mut App) {
         app.component::<RaceStatus>().replicate();
-        app.component::<RaceLaps>().replicate();
-        app.add_observer(spawn_race_laps);
-        app.add_systems(Update, publish_race_laps.run_if(is_host));
         app.init_resource::<RaceRules>();
 
         app.add_systems(OnEnter(PHASE), start_race.run_if(is_host));
@@ -220,26 +182,11 @@ impl Plugin for RacePlugin {
     }
 }
 
-/// Host only: when the session starts, spawn the [`RaceLaps`] everyone sees.
-fn spawn_race_laps(_trigger: On<Add<Started>>, rules: Res<RaceRules>, mut commands: Commands) {
-    commands.spawn((
-        Name::from("RaceLaps"),
-        RaceLaps(rules.laps),
-        DespawnOnEnter(AppState::MainMenu),
-        Replicate::to_clients(NetworkTarget::All),
-    ));
-}
-
-/// Host only: keep [`RaceLaps`] up to date with the host's pick.
-fn publish_race_laps(rules: Res<RaceRules>, mut laps: Single<&mut RaceLaps>) {
-    laps.set_if_neq(RaceLaps(rules.laps));
-}
-
 /// Host only: when the race starts, spawn its status and start the countdown.
-fn start_race(rules: Res<RaceRules>, mut commands: Commands) {
+fn start_race(rules: Res<RaceRules>, settings: Res<MinigameSettings>, mut commands: Commands) {
+    let laps = settings.get(LAPS_SETTING);
     info!(
-        "Race of {} laps starts in {} s",
-        rules.laps,
+        "Race of {laps} laps starts in {} s",
         rules.countdown.as_secs_f32().ceil() as u32
     );
     commands.spawn((
@@ -247,7 +194,7 @@ fn start_race(rules: Res<RaceRules>, mut commands: Commands) {
         DespawnOnExit(PHASE),
         Replicate::to_clients(NetworkTarget::All),
     ));
-    commands.insert_resource(RaceDirector::new(&rules));
+    commands.insert_resource(RaceDirector::new(&rules, laps));
 }
 
 /// Host only: run the countdown and the finish grace, and publish the status they give.
@@ -383,8 +330,8 @@ mod tests {
     use lightyear::prelude::PeerId;
 
     use super::{
-        Car, ChangeLaps, FastestLap, RaceDirector, RaceRules, RaceStatus, lap_time_label,
-        race_placements, race_summary, status_label,
+        Car, FastestLap, RaceDirector, RaceRules, RaceStatus, lap_time_label, race_placements,
+        race_summary, status_label,
     };
     use crate::minigames::racing::progress::RaceProgress;
 
@@ -400,32 +347,12 @@ mod tests {
         RaceRules {
             countdown: Duration::from_secs(countdown),
             finish_grace: Duration::from_secs(finish_grace),
-            ..Default::default()
         }
     }
 
     #[test]
-    fn the_host_picks_laps_within_the_limits() {
-        use crate::minigames::racing::config::{LAPS, MAX_LAPS, MIN_LAPS};
-        use bevy::ecs::world::World;
-
-        let mut world = World::new();
-        world.insert_resource(RaceRules::default());
-        let laps = |world: &mut World, change: i32| {
-            world.commands().queue(ChangeLaps(change));
-            world.flush();
-            world.resource::<RaceRules>().laps
-        };
-        assert_eq!(laps(&mut world, 1), LAPS + 1);
-        assert_eq!(laps(&mut world, -2), LAPS - 1);
-        assert_eq!(laps(&mut world, -100), MIN_LAPS);
-        assert_eq!(laps(&mut world, 100), MAX_LAPS);
-        assert_eq!(laps(&mut world, 1), MAX_LAPS);
-    }
-
-    #[test]
     fn counts_down_then_races() {
-        let mut director = RaceDirector::new(&rules(3, 10));
+        let mut director = RaceDirector::new(&rules(3, 10), 3);
         assert_eq!(director.tick(Duration::ZERO), RaceStatus::Countdown(3));
         assert_eq!(
             director.tick(Duration::from_millis(500)),
@@ -440,7 +367,7 @@ mod tests {
 
     #[test]
     fn the_first_finish_starts_the_grace_period() {
-        let mut director = RaceDirector::new(&rules(0, 10));
+        let mut director = RaceDirector::new(&rules(0, 10), 3);
         assert_eq!(director.tick(Duration::ZERO), RaceStatus::Racing);
         assert_eq!(director.finish(&car(2)), 1);
         assert_eq!(director.finish(&car(1)), 2);
@@ -455,7 +382,7 @@ mod tests {
 
     #[test]
     fn times_laps_and_keeps_the_fastest() {
-        let mut director = RaceDirector::new(&rules(3, 10));
+        let mut director = RaceDirector::new(&rules(3, 10), 3);
         director.tick(Duration::from_secs(3));
         // First laps are timed from the end of the countdown.
         director.tick(Duration::from_secs(9));

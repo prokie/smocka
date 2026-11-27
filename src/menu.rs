@@ -3,6 +3,7 @@
 mod controls;
 mod lobby;
 mod main_menu;
+mod minigame_settings;
 mod next_match;
 mod notices;
 mod party;
@@ -26,7 +27,7 @@ use crate::app_state::AppState;
 use crate::config::network::HOST_ADDR;
 use crate::controls::{ControlAction, Controls};
 use crate::minigames::Minigame;
-use crate::minigames::racing::race::ChangeLaps;
+use crate::minigames::settings::{ChangeSetting, SettingId};
 use crate::network::{HostSession, LeaveSession, close_session};
 use crate::party::{ChangeRounds, StartParty};
 use crate::profile::{LastAddress, LocalProfile};
@@ -49,8 +50,6 @@ pub enum MenuButton {
     Cancel,
     Start(Minigame),
     StartParty,
-    /// Change how many laps the next race has by this many.
-    ChangeLaps(i32),
     /// Change how many rounds the next party has by this many.
     ChangeRounds(i32),
     /// Open the Controls screen.
@@ -67,6 +66,12 @@ pub enum MenuButton {
     CloseSound,
     /// Change one of the volumes by this many steps.
     ChangeVolume(VolumeControl, i32),
+    /// Open this minigame's settings screen (the host, in the lobby).
+    MinigameSettings(Minigame),
+    /// Close the minigame settings screen.
+    CloseMinigameSettings,
+    /// Change a minigame setting by this many.
+    ChangeSetting(SettingId, i32),
 }
 
 /// All local UI. Needs a renderer, so headless tests leave it out.
@@ -157,12 +162,20 @@ impl Plugin for MenuPlugin {
                     resource_changed::<VolumeSettings>
                         .and_then(not(resource_added::<VolumeSettings>)),
                 ),
-                leave_on_escape.run_if(not(in_state(AppState::MainMenu))),
+                // On a settings screen, `Esc` closes it instead.
+                leave_on_escape.run_if(not(in_state(AppState::MainMenu)).and_then(not(
+                    any_with_component::<minigame_settings::MinigameSettingsScreen>,
+                ))),
+                (
+                    minigame_settings::update_setting_values,
+                    minigame_settings::close_on_escape,
+                )
+                    .run_if(any_with_component::<minigame_settings::MinigameSettingsScreen>),
                 (
                     lobby::update_player_list,
                     lobby::update_swatches,
                     lobby::update_lobby_hint,
-                    lobby::update_lap_picker,
+                    lobby::update_settings_summaries,
                     lobby::update_round_picker,
                 )
                     .run_if(in_state(SessionPhase::Lobby)),
@@ -228,7 +241,6 @@ fn on_menu_button(
         MenuButton::Cancel => commands.queue(LeaveSession),
         MenuButton::Start(game) => commands.queue(StartMinigame(*game)),
         MenuButton::StartParty => commands.queue(StartParty),
-        MenuButton::ChangeLaps(change) => commands.queue(ChangeLaps(*change)),
         MenuButton::ChangeRounds(change) => commands.queue(ChangeRounds(*change)),
         MenuButton::Controls => commands.queue(controls::OpenControls),
         MenuButton::CloseControls => commands.queue(controls::CloseControls),
@@ -237,6 +249,16 @@ fn on_menu_button(
             action: *action,
             slot: *slot,
             button: trigger.entity,
+        }),
+        MenuButton::MinigameSettings(game) => {
+            commands.queue(minigame_settings::OpenMinigameSettings(*game));
+        }
+        MenuButton::CloseMinigameSettings => {
+            commands.queue(minigame_settings::CloseMinigameSettings);
+        }
+        MenuButton::ChangeSetting(setting, by) => commands.queue(ChangeSetting {
+            setting: *setting,
+            by: *by,
         }),
         MenuButton::Sound => commands.queue(sound::OpenSound),
         MenuButton::CloseSound => commands.queue(sound::CloseSound),

@@ -1,17 +1,19 @@
 use bevy::prelude::*;
 use lightyear::prelude::input::native::InputMarker;
 
+use super::LAPS_SETTING;
 use super::PHASE;
 use super::RacingInput;
 use super::car::{Car, CarState};
 use super::config::{CAR_LENGTH, CAR_WIDTH, START_LINE_X, TRACK_INNER_RADIUS, TRACK_OUTER_RADIUS};
 use super::progress::{RaceProgress, lap_label, position_label, running_order};
-use super::race::{RaceLaps, RaceStatus, status_label};
+use super::race::{RaceStatus, status_label};
 use super::skid_marks::SkidMarksPlugin;
 use super::sounds::RacingSoundsPlugin;
 use super::track::{CHECKPOINTS, outline};
 use crate::camera::gameplay_camera_2d;
 use crate::config::display::{VIEW_HEIGHT, VIEW_WIDTH};
+use crate::minigames::settings::PublishedSettings;
 use crate::minigames::smoothing::{Smoothed, remember_previous_tick, smoothed};
 use crate::players::player_color;
 
@@ -139,14 +141,14 @@ fn spawn_lap_text(mut commands: Commands) {
 }
 
 /// Show the lap of this player's own car: the one that takes this machine's input. Empty until
-/// the host's [`RaceLaps`] arrives.
+/// the host's [`PublishedSettings`] (with the race's laps) arrive.
 fn update_lap_text(
     own_car: Query<&RaceProgress, With<InputMarker<RacingInput>>>,
-    laps: Option<Single<&RaceLaps>>,
+    settings: Option<Single<&PublishedSettings>>,
     mut text: Single<&mut Text, With<LapText>>,
 ) {
-    let shown = match (own_car.single(), laps) {
-        (Ok(progress), Some(laps)) => lap_label(*progress, laps.0),
+    let shown = match (own_car.single(), settings) {
+        (Ok(progress), Some(settings)) => lap_label(*progress, settings.get(LAPS_SETTING)),
         _ => String::new(),
     };
     if text.0 != shown {

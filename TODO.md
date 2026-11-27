@@ -96,12 +96,15 @@ same build.
       `get` / `get_mut` matches. `#[serde(rename_all = "snake_case")]` on `ControlAction` keeps
       the saved `throttle = [...]` keys. Fill missing actions from the defaults in
       `sanitized()`. The settings-file tests in `controls.rs` check both.
-- [ ] **One generic host setting.** `RaceLaps` / `ChangeLaps` (`race.rs`) and `PartyRounds` /
-      `ChangeRounds` (`party.rs`) are the same feature written twice: a replicated number, a
-      command that changes it within limits, an observer spawning it on `Started`, a system
-      keeping it up to date, and a lobby picker (`update_lap_picker` / `update_round_picker` in
-      `menu/lobby.rs`). Written once, generic over the setting, the lobby can list settings
-      without importing racing, and `MenuButton::ChangeLaps` goes away.
+- [ ] **Party rounds as a setting.** Minigame settings are now generic
+      (`minigames/settings.rs`), but `PartyRounds` / `ChangeRounds` (`party.rs`) still repeat
+      the pattern on their own: a replicated number, a command that changes it within limits, an
+      observer spawning it on `Started`, a system keeping it up to date, and a lobby picker.
+      `SettingId` names a minigame's setting; letting it name the party's too would remove the
+      copy and `MenuButton::ChangeRounds`.
+- [ ] **Many minigames in the lobby.** Each one is a row (start button, settings summary,
+      Settings button), so the lobby grows by a row per minigame and runs off a 720-pixel-high
+      window after about three more. Past that it needs columns or scrolling.
 - [ ] **Small duplications.** `mark_controlled_car` and `mark_controlled_paddle` could be one
       generic observer. `spawn_cars` and `spawn_paddles` repeat a "participants still here"
       lookup that could be a `Participants` method.

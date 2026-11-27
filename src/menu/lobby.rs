@@ -7,11 +7,12 @@ use bevy::ui_widgets::{Activate, Button};
 use lightyear::prelude::*;
 
 use super::MenuButton;
-use super::widgets::{HINT_COLOR, ShownRows, label, menu_button, screen, show_rows, small_button};
+use super::widgets::{
+    HINT_COLOR, ShownRows, label, menu_button, screen, settings_button, show_rows, small_button,
+};
 use crate::config::party::{MAX_ROUNDS, MIN_ROUNDS};
 use crate::minigames::Minigame;
-use crate::minigames::racing::config::{MAX_LAPS, MIN_LAPS};
-use crate::minigames::racing::race::RaceLaps;
+use crate::minigames::settings::PublishedSettings;
 use crate::network::Hosting;
 use crate::party::PartyRounds;
 use crate::players::{
@@ -32,9 +33,12 @@ pub struct PlayerList;
 #[derive(Component)]
 pub struct LobbyHint;
 
-/// The host's pick of how many laps the next race has.
+/// Shows a minigame's settings as the host picked them, e.g. "Laps: 3".
 #[derive(Component)]
-pub struct LapsText;
+pub struct SettingsSummary(pub Minigame);
+
+/// How wide a minigame's settings summary is, in pixels, so the Settings buttons line up.
+const SUMMARY_WIDTH: f32 = 220.0;
 
 /// The host's pick of how many rounds the next party has.
 #[derive(Component)]
@@ -85,42 +89,84 @@ pub(super) fn spawn_lobby_screen(hosting: Hosting, mut commands: Commands) {
         &mut commands,
     );
     commands.entity(root).add_child(rounds);
-    if hosting.is_hosting() {
-        commands
-            .entity(root)
-            .with_child(label("Or play one game:", 20.0, HINT_COLOR));
-        let games = commands
-            .spawn(Node {
-                column_gap: px(12),
-                ..default()
-            })
-            .id();
-        for game in Minigame::ALL {
-            commands.entity(games).with_child((
-                menu_button(MenuButton::Start(game), game.info().name),
-                InteractionDisabled,
-            ));
-        }
-        commands.entity(root).add_child(games);
-    }
-    let laps = picker(
-        "Racing laps",
-        LapsText,
-        hosting.is_hosting().then_some(MenuButton::ChangeLaps),
-        &mut commands,
-    );
-    commands.entity(root).add_child(laps);
+    spawn_games(root, hosting.is_hosting(), &mut commands);
     commands
         .entity(root)
         .with_child((LobbyHint, label("", 20.0, HINT_COLOR)));
 }
 
+/// One row per minigame, under `root`. The host gets a button to start it, a summary of its
+/// settings, and a button to change them. Joiners see the minigames with settings, and the host's
+/// picks.
+fn spawn_games(root: Entity, hosting: bool, commands: &mut Commands) {
+    let games: Vec<Minigame> = Minigame::ALL
+        .into_iter()
+        .filter(|game| hosting || !game.info().settings.is_empty())
+        .collect();
+    if games.is_empty() {
+        return;
+    }
+    let heading = if hosting {
+        "Or play one game:"
+    } else {
+        "Minigame settings"
+    };
+    commands
+        .entity(root)
+        .with_child(label(heading, 20.0, HINT_COLOR));
+    let list = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Column,
+            row_gap: px(8),
+            ..default()
+        })
+        .id();
+    for game in games {
+        let row = commands
+            .spawn(Node {
+                column_gap: px(12),
+                align_items: AlignItems::Center,
+                ..default()
+            })
+            .id();
+        if hosting {
+            commands.entity(row).with_child((
+                menu_button(MenuButton::Start(game), game.info().name),
+                InteractionDisabled,
+            ));
+        } else {
+            commands.entity(row).with_child((
+                label(game.info().name, 24.0, Color::WHITE),
+                Node {
+                    width: px(120),
+                    ..default()
+                },
+            ));
+        }
+        commands.entity(row).with_child((
+            SettingsSummary(game),
+            label("", 18.0, HINT_COLOR),
+            Node {
+                width: px(SUMMARY_WIDTH),
+                ..default()
+            },
+        ));
+        if hosting && !game.info().settings.is_empty() {
+            commands
+                .entity(row)
+                .with_child(settings_button(MenuButton::MinigameSettings(game)));
+        }
+        commands.entity(list).add_child(row);
+    }
+    commands.entity(root).add_child(list);
+}
+
 /// A row showing one of the host's picks: `name`, then the value in a text marked with `marker`.
 /// Everyone sees it; only the host gets "-" and "+", which are `change(-1)` and `change(1)`.
-fn picker(
+pub(super) fn picker(
     name: &str,
     marker: impl Component,
-    change: Option<fn(i32) -> MenuButton>,
+    change: Option<impl Fn(i32) -> MenuButton>,
     commands: &mut Commands,
 ) -> Entity {
     let row = commands
@@ -282,29 +328,21 @@ pub(super) fn update_lobby_hint(
     }
 }
 
-/// Show the host's pick of laps (to everyone, from the replicated [`RaceLaps`]), and on the host
-/// disable "-" and "+" at the limits.
-pub(super) fn update_lap_picker(
-    laps: Option<Single<&RaceLaps>>,
-    mut text: Single<&mut Text, With<LapsText>>,
-    buttons: Query<(Entity, &MenuButton, Has<InteractionDisabled>)>,
-    mut commands: Commands,
+/// Show each minigame's settings as the host picked them (to everyone, from the replicated
+/// [`PublishedSettings`]). Empty until they arrive.
+pub(super) fn update_settings_summaries(
+    settings: Option<Single<&PublishedSettings>>,
+    mut summaries: Query<(&SettingsSummary, &mut Text)>,
 ) {
-    // A joiner may see the lobby a moment before the host's pick arrives.
-    let Some(laps) = laps.map(|laps| laps.0) else {
-        return;
-    };
-    show_pick(
-        laps,
-        (MIN_LAPS, MAX_LAPS),
-        &mut text,
-        &buttons,
-        &mut commands,
-        |action| match action {
-            MenuButton::ChangeLaps(change) => Some(*change),
-            _ => None,
-        },
-    );
+    for (SettingsSummary(game), mut text) in &mut summaries {
+        let shown = settings
+            .as_ref()
+            .map(|settings| settings.summary(*game))
+            .unwrap_or_default();
+        if text.0 != shown {
+            text.0 = shown;
+        }
+    }
 }
 
 /// Show the host's pick of rounds (to everyone, from the replicated [`PartyRounds`]), and on the
@@ -333,7 +371,7 @@ pub(super) fn update_round_picker(
 
 /// Show `value` in `text`, and disable the buttons that `change_of` says change it once it's at
 /// the end of `(min, max)` they move it towards.
-fn show_pick(
+pub(super) fn show_pick(
     value: u32,
     (min, max): (u32, u32),
     text: &mut Text,

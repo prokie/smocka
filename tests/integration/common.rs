@@ -9,6 +9,7 @@ use lightyear::prelude::*;
 use smocka::SmockaPlugin;
 use smocka::app_state::{AppState, SessionEndReason};
 use smocka::minigames::Minigame;
+use smocka::minigames::settings::{MinigameSettings, SettingId};
 use smocka::network::{HostSession, JoinSession, LagPreset, LeaveSession, SimulatedLag};
 use smocka::players::{Player, PlayerLeft};
 use smocka::profile::LocalProfile;
@@ -70,6 +71,14 @@ impl TestApp {
             .apply(self.0.world_mut())
             .expect("failed to host session");
         self.host_addr()
+    }
+
+    /// Host only: pick `value` for minigame setting `setting`, as the host does in the lobby.
+    pub fn set_setting(&mut self, setting: SettingId, value: u32) {
+        self.0
+            .world_mut()
+            .resource_mut::<MinigameSettings>()
+            .set(setting, value);
     }
 
     /// The address this app's host listens on: the port the OS gave it.

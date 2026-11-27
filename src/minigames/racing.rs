@@ -14,9 +14,10 @@ pub use visuals::RacingVisualsPlugin;
 
 use bevy::prelude::*;
 
+use super::settings::{Setting, SettingId};
 use super::{Minigame, MinigameInfo};
 use crate::session::SessionPhase;
-use config::GRID_SLOTS;
+use config::{GRID_SLOTS, LAPS, MAX_LAPS, MIN_LAPS};
 
 /// The phase a race is played in.
 pub const PHASE: SessionPhase = SessionPhase::Playing(Minigame::Racing);
@@ -27,7 +28,16 @@ pub const INFO: MinigameInfo = MinigameInfo {
     name: "Racing",
     min_players: 2,
     max_players: GRID_SLOTS,
+    settings: &[Setting {
+        name: "Laps",
+        min: MIN_LAPS,
+        max: MAX_LAPS,
+        default: LAPS,
+    }],
 };
+
+/// How many laps a race has, picked by the host (see [`settings`](super::settings)).
+pub const LAPS_SETTING: SettingId = SettingId::new(Minigame::Racing, 0);
 
 /// The order racing's game logic runs in each `FixedUpdate` tick.
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]

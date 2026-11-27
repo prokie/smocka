@@ -64,6 +64,11 @@ pub fn small_button(action: MenuButton, text: &str) -> impl Bundle {
     button(action, text, 48.0, 24.0)
 }
 
+/// A narrower [`menu_button`] reading "Settings", next to a minigame in the lobby.
+pub fn settings_button(action: MenuButton) -> impl Bundle {
+    button(action, "Settings", 120.0, 20.0)
+}
+
 /// A narrower [`menu_button`] with smaller text, for one binding on the Controls screen. It starts
 /// empty: the screen fills its text in.
 pub fn control_button(action: MenuButton) -> impl Bundle {

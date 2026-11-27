@@ -24,6 +24,7 @@ pub const INFO: MinigameInfo = MinigameInfo {
     name: "Pong",
     min_players: 2,
     max_players: 2,
+    settings: &[],
 };
 
 /// The order Pong's game logic runs in each `FixedUpdate` tick.

@@ -1,9 +1,10 @@
 //! The minigames. Each one lives in its own folder, with its own plugins, constants
-//! (`config.rs`), a [`MinigameInfo`] called `INFO`, and the
-//! [`SessionPhase`](crate::session::SessionPhase) it's played in, called `PHASE`.
+//! (`config.rs`), a [`MinigameInfo`] called `INFO` (with the [`settings`] the host can
+//! pick), and the [`SessionPhase`](crate::session::SessionPhase) it's played in, called `PHASE`.
 
 pub mod outcome;
 pub mod racing;
+pub mod settings;
 pub mod smoothing;
 pub mod sounds;
 pub mod two_player_pong;
@@ -17,7 +18,7 @@ use serde::{Deserialize, Serialize};
 /// minigame takes a variant here (and in [`ALL`](Self::ALL)), its module's `INFO` in
 /// [`info`](Self::info), its plugins in [`MinigamesPlugin`] and [`MinigameVisualsPlugin`], and
 /// the [`ControlAction`](crate::controls::ControlAction)s players bind for it.
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Minigame {
     /// Two-player Pong: the two lowest-numbered players play, everyone else watches.
     TwoPlayerPong,
@@ -37,6 +38,9 @@ pub struct MinigameInfo {
     /// for a minigame that seats two, it's played as a
     /// [`Tournament`](crate::tournament::Tournament).
     pub max_players: usize,
+    /// What the host can pick before it's played, in the order its settings screen shows them.
+    /// The minigame names each with a [`SettingId`](settings::SettingId) const.
+    pub settings: &'static [settings::Setting],
 }
 
 impl Minigame {
@@ -57,7 +61,11 @@ pub struct MinigamesPlugin;
 
 impl Plugin for MinigamesPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((two_player_pong::TwoPlayerPongPlugin, racing::RacingPlugin));
+        app.add_plugins((
+            settings::SettingsPlugin,
+            two_player_pong::TwoPlayerPongPlugin,
+            racing::RacingPlugin,
+        ));
     }
 }
 

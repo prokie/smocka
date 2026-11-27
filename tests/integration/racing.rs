@@ -9,13 +9,15 @@ use lightyear::prelude::input::native::ActionState;
 use smocka::controls::{Control, ControlAction, Controls};
 use smocka::minigames::Minigame;
 use smocka::minigames::outcome::MinigameResult;
+use smocka::minigames::racing::LAPS_SETTING;
 use smocka::minigames::racing::RacingInput;
 use smocka::minigames::racing::bumps::contact;
 use smocka::minigames::racing::car::{Car, CarState};
 use smocka::minigames::racing::config::LAPS;
 use smocka::minigames::racing::progress::RaceProgress;
-use smocka::minigames::racing::race::{ChangeLaps, RaceLaps, RaceRules, RaceStatus};
+use smocka::minigames::racing::race::{RaceRules, RaceStatus};
 use smocka::minigames::racing::track::{CHECKPOINTS, Surface, surface_at};
+use smocka::minigames::settings::{ChangeSetting, PublishedSettings};
 use smocka::network::LagPreset;
 use smocka::session::SessionPhase;
 
@@ -103,10 +105,10 @@ fn status(app: &mut TestApp) -> Option<RaceStatus> {
 fn race_laps(app: &mut TestApp) -> Option<u32> {
     app.0
         .world_mut()
-        .query::<&RaceLaps>()
+        .query::<&PublishedSettings>()
         .iter(app.0.world())
         .next()
-        .map(|laps| laps.0)
+        .map(|settings| settings.get(LAPS_SETTING))
 }
 
 /// The result this app is showing, if any.
@@ -508,7 +510,6 @@ fn the_race_ends_a_while_after_the_first_finish() {
     let (mut host, mut client) = race_pair_with(RaceRules {
         countdown: Duration::ZERO,
         finish_grace: Duration::from_secs(1),
-        ..default()
     });
 
     finish(&mut host, joiners);
@@ -596,11 +597,16 @@ fn cars_carry_their_drivers_name_and_colour() {
 
 #[test]
 fn the_host_picks_how_many_laps_the_race_has() {
-    let (mut host, mut client) = race_pair_with(RaceRules {
-        countdown: Duration::ZERO,
-        laps: 1,
-        ..default()
-    });
+    let (mut host, client, _) = connected_pair();
+    host.set_setting(LAPS_SETTING, 1);
+    let (mut host, mut client) = start_race(
+        host,
+        client,
+        RaceRules {
+            countdown: Duration::ZERO,
+            ..default()
+        },
+    );
     update_until(&mut [&mut host, &mut client], |apps| {
         apps.iter_mut().all(|app| race_laps(app) == Some(1))
     });
@@ -625,7 +631,10 @@ fn joiners_see_the_hosts_lap_pick_in_the_lobby() {
         apps[0].players() == 2 && race_laps(apps[1]) == Some(LAPS)
     });
 
-    host.0.world_mut().commands().queue(ChangeLaps(2));
+    host.0.world_mut().commands().queue(ChangeSetting {
+        setting: LAPS_SETTING,
+        by: 2,
+    });
     host.0.world_mut().flush();
     update_until(&mut [&mut host, &mut client], |apps| {
         race_laps(apps[1]) == Some(LAPS + 2)
