@@ -10,6 +10,7 @@ use smocka::SmockaPlugin;
 use smocka::app_state::{AppState, SessionEndReason};
 use smocka::minigames::Minigame;
 use smocka::minigames::settings::{MinigameSettings, SettingId};
+use smocka::minigames::two_player_pong::PongRules;
 use smocka::network::{HostSession, JoinSession, LagPreset, LeaveSession, SimulatedLag};
 use smocka::players::{Player, PlayerLeft};
 use smocka::profile::LocalProfile;
@@ -33,6 +34,11 @@ impl TestApp {
             bevy::state::app::StatesPlugin,
             SmockaPlugin,
         ));
+        // Pong is started all over the tests, a tournament's worth of matches at a time: none of
+        // them wait for its countdown, except a test of the countdown, which sets one.
+        app.insert_resource(PongRules {
+            countdown: Duration::ZERO,
+        });
         // `App::run` normally calls these; lightyear inserts resources in `finish`.
         app.init_resource::<Departures>();
         app.add_observer(|trigger: On<PlayerLeft>, mut seen: ResMut<Departures>| {

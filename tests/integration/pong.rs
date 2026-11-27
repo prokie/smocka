@@ -4,10 +4,10 @@ use bevy::prelude::*;
 use lightyear::prelude::PeerId;
 use smocka::minigames::Minigame;
 use smocka::minigames::settings::PublishedSettings;
-use smocka::minigames::two_player_pong::GOALS_TO_WIN_SETTING;
 use smocka::minigames::two_player_pong::ball::{Ball, BallPosition};
 use smocka::minigames::two_player_pong::paddles::{Paddle, PaddlePosition};
 use smocka::minigames::two_player_pong::score::PongScore;
+use smocka::minigames::two_player_pong::{GOALS_TO_WIN_SETTING, PongRules};
 
 use std::time::Duration;
 
@@ -15,7 +15,9 @@ use bevy::prelude::Command;
 use smocka::network::JoinSession;
 use smocka::session::SessionPhase;
 
-use crate::common::{TestApp, connected_pair, pair_in_pong, update_until, update_until_within};
+use crate::common::{
+    TestApp, connected_pair, pair_in_pong, update_for, update_until, update_until_within,
+};
 
 /// `y` of the paddle whose owner matches `is_owner`, if this app has it yet.
 fn paddle_y(app: &mut TestApp, is_owner: impl Fn(PeerId) -> bool) -> Option<f32> {
@@ -76,6 +78,33 @@ fn wait_for_paddles(host: &mut TestApp, client: &mut TestApp) {
     update_until(&mut [host, client], |apps| {
         apps.iter_mut()
             .all(|app| paddle_y(app, hosts).is_some() && paddle_y(app, joiners).is_some())
+    });
+}
+
+#[test]
+fn neither_paddles_nor_the_ball_move_until_the_countdown_is_over() {
+    let (mut host, mut client, _) = connected_pair();
+    host.0.world_mut().insert_resource(PongRules {
+        countdown: Duration::from_secs(2),
+    });
+    update_until(&mut [&mut host, &mut client], |apps| apps[0].players() == 2);
+    host.start_minigame(Minigame::TwoPlayerPong);
+    wait_for_paddles(&mut host, &mut client);
+
+    // The joiner holds up, but nothing moves until the start. That's long enough for their input
+    // to reach the host; their own, predicted paddle would move at once.
+    hold(&mut client, KeyCode::KeyW);
+    update_for(&mut [&mut host, &mut client], Duration::from_millis(800));
+    for app in [&mut host, &mut client] {
+        assert_eq!(paddle_y(app, joiners), Some(0.0));
+        assert_eq!(ball_position(app), Some(Vec2::ZERO));
+    }
+
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut().all(|app| {
+            paddle_y(app, joiners).is_some_and(|y| y > 0.0)
+                && ball_position(app).is_some_and(|ball| ball != Vec2::ZERO)
+        })
     });
 }
 
