@@ -1,5 +1,6 @@
 //! Each player's figure in the arena: a gunner. The host spawns one per participant, at its own
-//! spawn point. A player predicts their own gunner; everyone else's is interpolated.
+//! spawn point. A joiner predicts their own gunner and interpolates everyone else's. The host
+//! does neither: it holds every gunner as it really is.
 
 use std::f32::consts::{PI, TAU};
 
@@ -11,7 +12,7 @@ use super::PHASE;
 use super::config::SPAWNS;
 use crate::minigames::outcome::Participants;
 use crate::network::is_host;
-use crate::players::Player;
+use crate::players::{Player, local_peer_id};
 
 /// Who plays this gunner. Set once at spawn, copied from the [`Player`] so it keeps them even if
 /// the player leaves.
@@ -74,11 +75,17 @@ impl Plugin for GunnerPlugin {
 }
 
 /// Host only: one gunner per participant still here, each on its own spawn point.
+///
+/// The host's own player is left out of [`InterpolationTarget`]: otherwise the host marks other
+/// players' gunners [`Interpolated`] for itself, though it never interpolates them, and systems
+/// that skip interpolated gunners (walking, smoothing) would skip them on the host too.
 fn spawn_gunners(
     mut commands: Commands,
     participants: Single<&Participants>,
     players: Query<(&Player, &ControlledBy)>,
+    host: Query<&LocalId, (With<Client>, With<Connected>)>,
 ) {
+    let host = local_peer_id(&host);
     let here: Vec<_> = participants
         .0
         .iter()
@@ -103,7 +110,9 @@ fn spawn_gunners(
             DespawnOnExit(PHASE),
             Replicate::to_clients(NetworkTarget::All),
             PredictionTarget::to_clients(NetworkTarget::Single(owner)),
-            InterpolationTarget::to_clients(NetworkTarget::AllExceptSingle(owner)),
+            InterpolationTarget::to_clients(NetworkTarget::from_exclude(
+                [Some(owner), host].into_iter().flatten(),
+            )),
             // Despawned when its player's client disconnects.
             ControlledBy {
                 owner: link.owner,

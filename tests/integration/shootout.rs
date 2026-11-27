@@ -1,5 +1,5 @@
-//! Shootout: every player gets a gunner on its own spawn point, on every peer, and the shootout is
-//! abandoned when the other players leave.
+//! Shootout: every player gets a gunner on its own spawn point, on every peer, walks it around,
+//! and the shootout is abandoned when the other players leave.
 
 use bevy::prelude::*;
 use lightyear::prelude::{Interpolated, PeerId, Predicted};
@@ -22,8 +22,27 @@ fn gunners(app: &mut TestApp) -> Vec<(PeerId, Vec2, bool)> {
 }
 
 /// The host's own player has a local peer id; the joiner's comes from netcode.
+fn hosts(owner: PeerId) -> bool {
+    matches!(owner, PeerId::Local(_))
+}
+
 fn joiners(owner: PeerId) -> bool {
     matches!(owner, PeerId::Netcode(_))
+}
+
+/// Where the gunner whose player matches `is_owner` is on this app, if it has it.
+fn position(app: &mut TestApp, is_owner: impl Fn(PeerId) -> bool) -> Option<Vec2> {
+    gunners(app)
+        .into_iter()
+        .find(|(owner, _, _)| is_owner(*owner))
+        .map(|(_, position, _)| position)
+}
+
+fn hold(app: &mut TestApp, key: KeyCode) {
+    app.0
+        .world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(key);
 }
 
 /// Connect a host and a joiner, start a shootout, and wait until both see both gunners.
@@ -56,6 +75,13 @@ fn every_player_gets_a_gunner_on_its_own_spawn_point_on_every_peer() {
     for (owner, _, predicted) in gunners(&mut client) {
         assert_eq!(predicted, joiners(owner), "{owner:?}");
     }
+    // The host holds both as they really are: it would skip interpolated ones when walking them.
+    let world = host.0.world_mut();
+    let interpolated = world
+        .query_filtered::<(), (With<Gunner>, With<Interpolated>)>()
+        .iter(world)
+        .count();
+    assert_eq!(interpolated, 0);
 }
 
 #[test]
@@ -64,5 +90,33 @@ fn the_shootout_is_abandoned_when_the_other_player_leaves() {
     client.leave();
     update_until(&mut [&mut host, &mut client], |apps| {
         apps[0].phase() == Some(SessionPhase::Lobby) && gunners(apps[0]).is_empty()
+    });
+}
+
+#[test]
+fn the_joiner_walks_their_gunner_on_every_peer() {
+    let (mut host, mut client) = shootout_pair();
+    let start = position(&mut host, joiners).unwrap();
+    // The joiner starts in the bottom right corner: walk up and left, into the arena.
+    hold(&mut client, KeyCode::KeyW);
+    hold(&mut client, KeyCode::KeyA);
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut().all(|app| {
+            position(app, joiners)
+                .is_some_and(|now| now.x < start.x - 20.0 && now.y > start.y + 20.0)
+        })
+    });
+    // Nobody touched the host's gunner.
+    assert!(SPAWNS.contains(&position(&mut host, hosts).unwrap()));
+}
+
+#[test]
+fn the_host_walks_their_gunner_on_every_peer() {
+    let (mut host, mut client) = shootout_pair();
+    let start = position(&mut host, hosts).unwrap();
+    hold(&mut host, KeyCode::ArrowRight);
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut()
+            .all(|app| position(app, hosts).is_some_and(|now| now.x > start.x + 30.0))
     });
 }

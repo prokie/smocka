@@ -16,6 +16,8 @@ pub const ARENA_HALF_HEIGHT: f32 = VIEW_HEIGHT / 2.0 - BORDER;
 
 /// A player's figure is a circle this big.
 pub const GUNNER_RADIUS: f32 = 8.0;
+/// How fast a gunner walks, in world units per second: across the arena in about four seconds.
+pub const GUNNER_SPEED: f32 = 140.0;
 
 /// A block `width` by `height`, centred on (`x`, `y`).
 const fn block(x: f32, y: f32, width: f32, height: f32) -> Rect {

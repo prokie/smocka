@@ -2,17 +2,22 @@
 
 ## Shootout (in progress)
 
-A top-down last-one-standing shooter with mouse or right-stick aim and hitscan shots, built a step
-at a time (`minigames/shootout/`). Done: the arena and a gunner per player.
+A top-down last-one-standing shooter with mouse or right-stick aim and fast, dodgeable paint
+balls, built a step at a time (`minigames/shootout/`). Done: the arena, a gunner per player,
+and walking it with WASD / arrows / left stick, blocked by the walls and cover.
 
-- [ ] Moving: WASD / arrows / left stick, blocked by the walls and cover.
 - [ ] Aiming: the mouse (crosshair cursor) or the right stick.
-- [ ] Shooting: a Fire control (mouse buttons bindable too), hitscan against the walls and other
-      gunners, hit points, knockouts, last one standing wins. Then let parties pick it: remove the
-      filter in `PartyRules::default` (`party.rs`), and list it in the README.
-- [ ] Lag compensation: turn on `lag_compensation` in the input plugin's `InputConfig`, keep a few
-      ticks of each gunner's position on the host, and check each shot against where the targets
-      were on the shooter's screen (its `InterpolationDelay`).
+- [ ] Shooting: a Fire control (mouse buttons bindable too) that shoots a paint ball, fast (start
+      at ~600 units/s) but dodgeable. The host moves every ball each tick and checks the stretch it
+      covered against the walls and gunners (like Pong's ball against the paddles), so speed can't
+      make it skip through anyone; it decides hits, hit points and knockouts, and the last one
+      standing wins. Shots are sent as where, which way and on which tick, not as entities: every
+      peer moves the ball along that line itself, and a shooter draws their own the moment they
+      fire. Then let parties pick it: remove the filter in `PartyRules::default` (`party.rs`), and
+      list it in the README.
+- [ ] Playtest over `--lag`. Hits are judged where the targets are on the host, which is fair to
+      the one dodging, so no rewinding as hitscan would need. If others' shots look late, draw
+      them as far along as the host has them.
 - [ ] Sounds, and a "hits to knock out" setting.
 
 ## Netcode and engine
@@ -94,6 +99,13 @@ APIs below were checked against the Lightyear 0.31 / Bevy 0.20.1 sources in `~/.
       hit but leaves it where the step ended: up to `BALL_MAX_SPEED / TICK_RATE` ≈ 4.7 units
       inside the paddle (the ball is 8 wide), for one tick. When it bounces, put it back in
       front of the face (or mirror the overshoot). Cosmetic.
+
+- [ ] **The host draws the joiner's Pong paddle and the ball a tick at a time.** They're replicated
+      with `InterpolationTarget`s that include the host's own player (`AllExceptSingle(owner)`,
+      `All`), so the host marks them `Interpolated` though it never interpolates them, and
+      `remember_previous_tick` (`minigames/smoothing.rs`) leaves them unsmoothed: they stutter on
+      screens faster than 128 Hz. Leave the host's own player out of those targets, as racing
+      (`spawn_cars`) and the shootout (`spawn_gunners`) do.
 
 ## Code structure
 

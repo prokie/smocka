@@ -3,8 +3,9 @@
 //!
 //! They're read with [`bevy_enhanced_input`] on this machine only. Each minigame turns its actions
 //! into its own small input ([`PongInput`](crate::minigames::two_player_pong::PongInput),
-//! [`RacingInput`](crate::minigames::racing::RacingInput)) and sends that to the host, so the
-//! network never sees which controls anyone uses.
+//! [`RacingInput`](crate::minigames::racing::RacingInput),
+//! [`ShootoutInput`](crate::minigames::shootout::ShootoutInput)) and sends that to the host, so
+//! the network never sees which controls anyone uses.
 //!
 //! Players change them on the main menu's Controls screen, and they're remembered between launches
 //! (see [`Controls::load`]).
@@ -41,17 +42,29 @@ pub enum ControlAction {
     SteerLeft,
     /// Racing: turn clockwise.
     SteerRight,
+    /// Shootout: walk up the screen.
+    MoveUp,
+    /// Shootout: walk down the screen.
+    MoveDown,
+    /// Shootout: walk left.
+    MoveLeft,
+    /// Shootout: walk right.
+    MoveRight,
 }
 
 impl ControlAction {
     /// Every action, in the order the Controls screen lists them.
-    pub const ALL: [ControlAction; 6] = [
+    pub const ALL: [ControlAction; 10] = [
         ControlAction::PaddleUp,
         ControlAction::PaddleDown,
         ControlAction::Throttle,
         ControlAction::Brake,
         ControlAction::SteerLeft,
         ControlAction::SteerRight,
+        ControlAction::MoveUp,
+        ControlAction::MoveDown,
+        ControlAction::MoveLeft,
+        ControlAction::MoveRight,
     ];
 
     /// The minigame it's for. One control can do one thing per minigame.
@@ -62,6 +75,10 @@ impl ControlAction {
             | ControlAction::Brake
             | ControlAction::SteerLeft
             | ControlAction::SteerRight => Minigame::Racing,
+            ControlAction::MoveUp
+            | ControlAction::MoveDown
+            | ControlAction::MoveLeft
+            | ControlAction::MoveRight => Minigame::Shootout,
         }
     }
 
@@ -74,6 +91,10 @@ impl ControlAction {
             ControlAction::Brake => "Brake/reverse",
             ControlAction::SteerLeft => "Steer left",
             ControlAction::SteerRight => "Steer right",
+            ControlAction::MoveUp => "Move up",
+            ControlAction::MoveDown => "Move down",
+            ControlAction::MoveLeft => "Move left",
+            ControlAction::MoveRight => "Move right",
         }
     }
 }
@@ -190,6 +211,10 @@ pub struct Controls {
     brake: Vec<Control>,
     steer_left: Vec<Control>,
     steer_right: Vec<Control>,
+    move_up: Vec<Control>,
+    move_down: Vec<Control>,
+    move_left: Vec<Control>,
+    move_right: Vec<Control>,
 }
 
 impl Default for Controls {
@@ -227,6 +252,26 @@ impl Default for Controls {
                 Control::Key(KeyCode::ArrowRight),
                 stick(GamepadAxis::LeftStickX, true),
             ],
+            move_up: vec![
+                Control::Key(KeyCode::KeyW),
+                Control::Key(KeyCode::ArrowUp),
+                stick(GamepadAxis::LeftStickY, true),
+            ],
+            move_down: vec![
+                Control::Key(KeyCode::KeyS),
+                Control::Key(KeyCode::ArrowDown),
+                stick(GamepadAxis::LeftStickY, false),
+            ],
+            move_left: vec![
+                Control::Key(KeyCode::KeyA),
+                Control::Key(KeyCode::ArrowLeft),
+                stick(GamepadAxis::LeftStickX, false),
+            ],
+            move_right: vec![
+                Control::Key(KeyCode::KeyD),
+                Control::Key(KeyCode::ArrowRight),
+                stick(GamepadAxis::LeftStickX, true),
+            ],
         }
     }
 }
@@ -241,6 +286,10 @@ impl Controls {
             ControlAction::Brake => &self.brake,
             ControlAction::SteerLeft => &self.steer_left,
             ControlAction::SteerRight => &self.steer_right,
+            ControlAction::MoveUp => &self.move_up,
+            ControlAction::MoveDown => &self.move_down,
+            ControlAction::MoveLeft => &self.move_left,
+            ControlAction::MoveRight => &self.move_right,
         }
     }
 
@@ -252,6 +301,10 @@ impl Controls {
             ControlAction::Brake => &mut self.brake,
             ControlAction::SteerLeft => &mut self.steer_left,
             ControlAction::SteerRight => &mut self.steer_right,
+            ControlAction::MoveUp => &mut self.move_up,
+            ControlAction::MoveDown => &mut self.move_down,
+            ControlAction::MoveLeft => &mut self.move_left,
+            ControlAction::MoveRight => &mut self.move_right,
         }
     }
 
