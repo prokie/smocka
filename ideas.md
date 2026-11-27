@@ -70,8 +70,9 @@ every peer can work it out the same way from what it already has.
 ## New minigames that reuse what's built
 
 - [ ] **Sumo**: racing's car bump physics on a round platform that shrinks. Last car on it wins.
-- [ ] **Four-player Pong**: a paddle on each side of the screen, everyone plays at once. A
-      free-for-all, so no tournament wait.
+- [x] **Four-player Pong**: a paddle on each side of the screen, everyone plays at once. A
+      free-for-all, so no tournament wait. (Started: Pong Royale, with lives and walls.)
+- [ ] **Pong Royale: a second ball** once three or four are playing, if one feels slow.
 - [ ] **King of the Hill**: Shootout's movement with no guns, just shoving. Points for time spent
       in a zone that moves.
 - [ ] **Hot Potato**: tag games are cheap to network, and the "who has it" moments are a lot of

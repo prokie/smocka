@@ -105,6 +105,11 @@ TRACKS: Final[list[TrackLayout]] = [FIGURE_EIGHT, OVAL]
 # Keep in step with minigames::racing::checkpoint_guide::CHEVRON_SIZE.
 CHEVRON_SIZE: Final[tuple[float, float]] = (10.0, 12.0)
 
+# Keep in step with minigames::pong_royale::config.
+ROYALE_ARENA_HALF: Final[float] = 172.0  # ARENA_HALF
+ROYALE_CORNER: Final[float] = 40.0  # CORNER_SIZE
+ROYALE_PADDLE_DISTANCE: Final[float] = ROYALE_ARENA_HALF - 14.0  # PADDLE_DISTANCE
+
 # Keep in step with minigames::two_player_pong::config.
 WALL_THICKNESS: Final[float] = 4.0  # WALL_THICKNESS
 PADDLE_WIDTH: Final[float] = 8.0  # PADDLE_WIDTH
@@ -151,6 +156,7 @@ LINE_DARK: Final[RGBA] = (30, 30, 36, 255)
 ARENA: Final[RGBA] = (24, 24, 32, 255)
 ARENA_WALL: Final[RGBA] = (96, 100, 124, 255)
 ARENA_MARK: Final[RGBA] = (52, 54, 70, 255)
+ARENA_OUTSIDE: Final[RGBA] = (16, 16, 22, 255)
 FLOOR_A: Final[RGBA] = (62, 58, 54, 255)
 FLOOR_B: Final[RGBA] = (66, 62, 57, 255)
 FLOOR_LINE: Final[RGBA] = (54, 50, 47, 255)
@@ -457,6 +463,30 @@ def draw_arena() -> None:
     canvas.save(ASSETS / "two_player_pong/arena.png")
 
 
+def draw_royale_arena() -> None:
+    """A square arena in the middle, a goal on each side and a block in each corner. The walls
+    that close goals are drawn by the game, in ARENA_WALL like the corner blocks."""
+    half, corner = ROYALE_ARENA_HALF, ROYALE_CORNER
+    canvas = Canvas(VIEW_W, VIEW_H, ARENA_OUTSIDE)
+    canvas.rect(-half, -half, half, half, ARENA)
+    # A dashed line along each goal, between the corner blocks.
+    dash, gap = 10.0, 8.0
+    goal = half - corner
+    for sign in (1, -1):
+        along = -goal + gap / 2
+        while along + dash < goal:
+            line = half - 1.0
+            canvas.rect(sign * line - 1.0, along, sign * line + 1.0, along + dash, ARENA_MARK)
+            canvas.rect(along, sign * line - 1.0, along + dash, sign * line + 1.0, ARENA_MARK)
+            along += dash + gap
+    for x in (-1, 1):
+        for y in (-1, 1):
+            canvas.rect(x * half, y * half, x * (half - corner), y * (half - corner), ARENA_WALL,
+                        radius=3.0)
+    canvas.ellipse(-36, -36, 36, 36, None, ARENA_MARK, 3.0)
+    canvas.save(ASSETS / "pong_royale/arena.png")
+
+
 def draw_paddle() -> None:
     """Tinted per side in the game."""
     canvas = Canvas(PADDLE_WIDTH, PADDLE_HEIGHT)
@@ -634,6 +664,22 @@ def draw_pong_thumbnail() -> None:
     save_thumbnail(base, folder / "thumbnail.png")
 
 
+def draw_royale_thumbnail() -> None:
+    """Needs pong_royale/arena.png and Pong's paddle.png and ball.png. A paddle on every side."""
+    folder = ASSETS / "pong_royale"
+    base = Image.open(folder / "arena.png").convert("RGBA")
+    pong = ASSETS / "two_player_pong"
+    paddle = Image.open(pong / "paddle.png").convert("RGBA")
+    ball = Image.open(pong / "ball.png").convert("RGBA")
+    d = ROYALE_PADDLE_DISTANCE
+    # (x, y, degrees) for the left, right, bottom and top paddles, each part way along its side.
+    paddles = [(-d, 50.0, 0.0), (d, -60.0, 0.0), (40.0, -d, 90.0), (-70.0, d, 90.0)]
+    for tint, (x, y, degrees) in zip(PLAYER_TINTS, paddles):
+        place(base, tinted(paddle, tint), x, y, degrees)
+    place(base, ball, 60.0, 30.0)
+    save_thumbnail(base, folder / "thumbnail.png")
+
+
 def draw_racing_thumbnails() -> None:
     """Needs each track's art and car.png. Racing's lobby tile shows the picked track's:
     <track>_thumbnail.png (see Layout::thumbnail in track.rs)."""
@@ -768,6 +814,7 @@ def main() -> None:
     draw_car()
     draw_chevron()
     draw_arena()
+    draw_royale_arena()
     draw_paddle()
     draw_ball()
     draw_shootout_arena()
@@ -778,6 +825,7 @@ def main() -> None:
     draw_buff_ring()
     # After the art they're made from.
     draw_pong_thumbnail()
+    draw_royale_thumbnail()
     draw_racing_thumbnails()
     draw_shootout_thumbnail()
     draw_gear()

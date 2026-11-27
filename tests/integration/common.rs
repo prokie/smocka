@@ -9,6 +9,7 @@ use lightyear::prelude::*;
 use smocka::SmockaPlugin;
 use smocka::app_state::{AppState, SessionEndReason};
 use smocka::minigames::Minigame;
+use smocka::minigames::pong_royale::RoyaleRules;
 use smocka::minigames::settings::{MinigameSettings, SettingId};
 use smocka::minigames::two_player_pong::PongRules;
 use smocka::network::{HostSession, JoinSession, LagPreset, LeaveSession, SimulatedLag};
@@ -35,8 +36,12 @@ impl TestApp {
             SmockaPlugin,
         ));
         // Pong is started all over the tests, a tournament's worth of matches at a time: none of
-        // them wait for its countdown, except a test of the countdown, which sets one.
+        // them wait for its countdown, except a test of the countdown, which sets one. Nor do Pong
+        // Royale's.
         app.insert_resource(PongRules {
+            countdown: Duration::ZERO,
+        });
+        app.insert_resource(RoyaleRules {
             countdown: Duration::ZERO,
         });
         // `App::run` normally calls these; lightyear inserts resources in `finish`.

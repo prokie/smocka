@@ -67,6 +67,8 @@ Keyboard or gamepad. These are the defaults: change them with **Controls** in th
   `A` / `←` and `D` / `→` / left stick steer. `F3` draws the track's road edges over the art.
 - **Shootout:** `W` / `A` / `S` / `D` / arrows / left stick move, mouse or right stick aim,
   left click / `Space` / right trigger fire.
+- **Pong Royale:** `W` / `S` / `↑` / `↓` / left stick move a paddle on the left or right side,
+  `A` / `D` / `←` / `→` / left stick one on the bottom or top.
 - **Session:** Hold `Tab` (or gamepad Back) during a minigame, tournament wait, or results screen
   to view the current standings. Press `Space`, `Enter`, or gamepad `A` on waiting screens to vote
   to skip (moves on once everyone agrees). `Esc` leaves the session, except for the host outside

@@ -7,6 +7,7 @@ mod lobby;
 mod network;
 mod party;
 mod pong;
+mod pong_royale;
 mod racing;
 mod session;
 mod shootout;

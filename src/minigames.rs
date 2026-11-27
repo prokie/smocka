@@ -4,6 +4,7 @@
 
 pub mod countdown;
 pub mod outcome;
+pub mod pong_royale;
 pub mod racing;
 pub mod settings;
 pub mod shootout;
@@ -28,6 +29,8 @@ pub enum Minigame {
     Racing,
     /// A top-down shootout for every player: the last one standing wins.
     Shootout,
+    /// Pong for up to four, a player on each side: the last with lives left wins.
+    PongRoyale,
 }
 
 /// What the session and the menus need to know about a minigame. Each minigame's module has one,
@@ -53,10 +56,11 @@ pub struct MinigameInfo {
 
 impl Minigame {
     /// Every minigame, in the order the lobby offers them.
-    pub const ALL: [Minigame; 3] = [
+    pub const ALL: [Minigame; 4] = [
         Minigame::TwoPlayerPong,
         Minigame::Racing,
         Minigame::Shootout,
+        Minigame::PongRoyale,
     ];
 
     /// What the session and the menus need to know about this minigame.
@@ -65,6 +69,7 @@ impl Minigame {
             Minigame::TwoPlayerPong => two_player_pong::INFO,
             Minigame::Racing => racing::INFO,
             Minigame::Shootout => shootout::INFO,
+            Minigame::PongRoyale => pong_royale::INFO,
         }
     }
 
@@ -73,7 +78,9 @@ impl Minigame {
     pub fn thumbnail(self, settings: &settings::SettingValues) -> &'static str {
         match self {
             Minigame::Racing => racing::thumbnail(settings),
-            Minigame::TwoPlayerPong | Minigame::Shootout => self.info().thumbnail,
+            Minigame::TwoPlayerPong | Minigame::Shootout | Minigame::PongRoyale => {
+                self.info().thumbnail
+            }
         }
     }
 }
@@ -89,6 +96,7 @@ impl Plugin for MinigamesPlugin {
             two_player_pong::TwoPlayerPongPlugin,
             racing::RacingPlugin,
             shootout::ShootoutPlugin,
+            pong_royale::PongRoyalePlugin,
         ));
     }
 }
@@ -104,6 +112,7 @@ impl Plugin for MinigameVisualsPlugin {
             two_player_pong::PongVisualsPlugin,
             racing::RacingVisualsPlugin,
             shootout::ShootoutVisualsPlugin,
+            pong_royale::RoyaleVisualsPlugin,
         ));
     }
 }

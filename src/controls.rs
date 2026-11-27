@@ -4,7 +4,8 @@
 //! They're read with [`bevy_enhanced_input`] on this machine only. Each minigame turns its actions
 //! into its own small input ([`PongInput`](crate::minigames::two_player_pong::PongInput),
 //! [`RacingInput`](crate::minigames::racing::RacingInput),
-//! [`ShootoutInput`](crate::minigames::shootout::ShootoutInput)) and sends that to the host, so
+//! [`ShootoutInput`](crate::minigames::shootout::ShootoutInput),
+//! [`RoyaleInput`](crate::minigames::pong_royale::RoyaleInput)) and sends that to the host, so
 //! the network never sees which controls anyone uses.
 //!
 //! Players change them on the main menu's Controls screen, and they're remembered between launches
@@ -52,11 +53,19 @@ pub enum ControlAction {
     MoveRight,
     /// Shootout: shoot a paint ball.
     Fire,
+    /// Pong Royale: move a paddle on the left or right side up.
+    RoyaleUp,
+    /// Pong Royale: move a paddle on the left or right side down.
+    RoyaleDown,
+    /// Pong Royale: move a paddle on the bottom or top side left.
+    RoyaleLeft,
+    /// Pong Royale: move a paddle on the bottom or top side right.
+    RoyaleRight,
 }
 
 impl ControlAction {
     /// Every action, in the order the Controls screen lists them.
-    pub const ALL: [ControlAction; 11] = [
+    pub const ALL: [ControlAction; 15] = [
         ControlAction::PaddleUp,
         ControlAction::PaddleDown,
         ControlAction::Throttle,
@@ -68,6 +77,10 @@ impl ControlAction {
         ControlAction::MoveLeft,
         ControlAction::MoveRight,
         ControlAction::Fire,
+        ControlAction::RoyaleUp,
+        ControlAction::RoyaleDown,
+        ControlAction::RoyaleLeft,
+        ControlAction::RoyaleRight,
     ];
 
     /// The minigame it's for. One control can do one thing per minigame.
@@ -83,6 +96,10 @@ impl ControlAction {
             | ControlAction::MoveLeft
             | ControlAction::MoveRight
             | ControlAction::Fire => Minigame::Shootout,
+            ControlAction::RoyaleUp
+            | ControlAction::RoyaleDown
+            | ControlAction::RoyaleLeft
+            | ControlAction::RoyaleRight => Minigame::PongRoyale,
         }
     }
 
@@ -100,6 +117,10 @@ impl ControlAction {
             ControlAction::MoveLeft => "Move left",
             ControlAction::MoveRight => "Move right",
             ControlAction::Fire => "Fire",
+            ControlAction::RoyaleUp => "Up",
+            ControlAction::RoyaleDown => "Down",
+            ControlAction::RoyaleLeft => "Left",
+            ControlAction::RoyaleRight => "Right",
         }
     }
 }
@@ -236,6 +257,10 @@ pub struct Controls {
     move_left: Vec<Control>,
     move_right: Vec<Control>,
     fire: Vec<Control>,
+    royale_up: Vec<Control>,
+    royale_down: Vec<Control>,
+    royale_left: Vec<Control>,
+    royale_right: Vec<Control>,
 }
 
 impl Default for Controls {
@@ -298,6 +323,26 @@ impl Default for Controls {
                 Control::Key(KeyCode::Space),
                 Control::Button(GamepadButton::RightTrigger2),
             ],
+            royale_up: vec![
+                Control::Key(KeyCode::KeyW),
+                Control::Key(KeyCode::ArrowUp),
+                stick(GamepadAxis::LeftStickY, true),
+            ],
+            royale_down: vec![
+                Control::Key(KeyCode::KeyS),
+                Control::Key(KeyCode::ArrowDown),
+                stick(GamepadAxis::LeftStickY, false),
+            ],
+            royale_left: vec![
+                Control::Key(KeyCode::KeyA),
+                Control::Key(KeyCode::ArrowLeft),
+                stick(GamepadAxis::LeftStickX, false),
+            ],
+            royale_right: vec![
+                Control::Key(KeyCode::KeyD),
+                Control::Key(KeyCode::ArrowRight),
+                stick(GamepadAxis::LeftStickX, true),
+            ],
         }
     }
 }
@@ -317,6 +362,10 @@ impl Controls {
             ControlAction::MoveLeft => &self.move_left,
             ControlAction::MoveRight => &self.move_right,
             ControlAction::Fire => &self.fire,
+            ControlAction::RoyaleUp => &self.royale_up,
+            ControlAction::RoyaleDown => &self.royale_down,
+            ControlAction::RoyaleLeft => &self.royale_left,
+            ControlAction::RoyaleRight => &self.royale_right,
         }
     }
 
@@ -333,6 +382,10 @@ impl Controls {
             ControlAction::MoveLeft => &mut self.move_left,
             ControlAction::MoveRight => &mut self.move_right,
             ControlAction::Fire => &mut self.fire,
+            ControlAction::RoyaleUp => &mut self.royale_up,
+            ControlAction::RoyaleDown => &mut self.royale_down,
+            ControlAction::RoyaleLeft => &mut self.royale_left,
+            ControlAction::RoyaleRight => &mut self.royale_right,
         }
     }
 
