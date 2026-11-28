@@ -72,10 +72,12 @@ impl Command for OpenMinigameSettings {
             .id();
         let mut commands = world.commands();
         for (row_index, id) in SettingId::all_of(game).enumerate() {
+            let setting = id.setting();
             let change = move |by| MenuButton::ChangeSetting(id, by);
             let row = picker(
-                id.setting().name,
+                setting.name,
                 SettingValue(id),
+                setting.step_labels(),
                 Some(change),
                 &mut commands,
             );

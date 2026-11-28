@@ -132,10 +132,12 @@ pub(super) fn spawn_setup_screen(
             .entity(left)
             .with_child(label("Settings", 20.0, HINT_COLOR));
         for id in SettingId::all_of(game) {
+            let setting = id.setting();
             let change = is_hosting.then_some(move |by| MenuButton::ChangeSetting(id, by));
             let row = picker(
-                id.setting().name,
+                setting.name,
                 SetupSettingValue(id),
+                setting.step_labels(),
                 change,
                 &mut commands,
             );

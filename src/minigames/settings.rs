@@ -39,6 +39,16 @@ impl Setting {
             .and_then(|index| self.labels.get(index as usize))
             .map_or_else(|| value.to_string(), |label| (*label).to_string())
     }
+
+    /// Button labels for stepping this setting down and up: `("←", "→")` for named choices (such
+    /// as racing's track) and `("-", "+")` for numbers.
+    pub const fn step_labels(self) -> (&'static str, &'static str) {
+        if self.labels.is_empty() {
+            ("-", "+")
+        } else {
+            ("←", "→")
+        }
+    }
 }
 
 /// Which setting: a minigame, and where the setting is in that minigame's
@@ -279,6 +289,8 @@ mod tests {
         let mut values = SettingValues::default();
         let mut racing = SettingId::all_of(Minigame::Racing);
         let (laps, track) = (racing.next().unwrap(), racing.next().unwrap());
+        assert_eq!(laps.setting().step_labels(), ("-", "+"));
+        assert_eq!(track.setting().step_labels(), ("←", "→"));
         values.set(laps, 4);
         assert_eq!(
             values.summary(Minigame::Racing),

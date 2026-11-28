@@ -143,6 +143,7 @@ pub(super) fn spawn_lobby_screen(
     let rounds = picker(
         "Party rounds",
         RoundsText,
+        ("-", "+"),
         hosting.is_hosting().then_some(MenuButton::ChangeRounds),
         &mut commands,
     );
@@ -335,10 +336,12 @@ pub(super) fn dim_disabled_thumbnails(
 }
 
 /// A row showing one of the host's picks: `name`, then the value in a text marked with `marker`.
-/// Everyone sees it; only the host gets "-" and "+", which are `change(-1)` and `change(1)`.
+/// Everyone sees it; only the host gets step buttons labelled `step_labels` (e.g. `("-", "+")` or
+/// `("←", "→")`), which are `change(-1)` and `change(1)`.
 pub(super) fn picker(
     name: &str,
     marker: impl Component,
+    step_labels: (&str, &str),
     change: Option<impl Fn(i32) -> MenuButton>,
     commands: &mut Commands,
 ) -> Entity {
@@ -368,9 +371,9 @@ pub(super) fn picker(
         Some(change) => {
             commands
                 .entity(row)
-                .with_child(small_button(change(-1), "-"))
+                .with_child(small_button(change(-1), step_labels.0))
                 .add_child(text)
-                .with_child(small_button(change(1), "+"));
+                .with_child(small_button(change(1), step_labels.1));
         }
         None => {
             commands.entity(row).add_child(text);
