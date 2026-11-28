@@ -128,24 +128,19 @@ fn label_side(gunner_y: f32) -> f32 {
     if gunner_y > LABEL_FLIP_Y { -1.0 } else { 1.0 }
 }
 
-type HealthBarQuery<'w, 's> = Query<
-    'w,
-    's,
-    (
-        Entity,
-        &'static HealthBar,
-        &'static mut Transform,
-        &'static Children,
-    ),
-    (Without<Gunner>, Without<GunnerName>),
->;
+type HealthBarParts = (
+    Entity,
+    &'static HealthBar,
+    &'static mut Transform,
+    &'static Children,
+);
 
 /// Keep each gunner's health bar and name above it (or below near the top edge) and lit for its
 /// remaining hits; rebuild the bar if a Shield pickup grows `health.max`, and despawn bars whose
 /// gunner was knocked out or left.
 fn sync_health_bars(
     gunners: Query<(&Gunner, &Transform, &Health)>,
-    mut bars: HealthBarQuery,
+    mut bars: Query<HealthBarParts, (Without<Gunner>, Without<GunnerName>)>,
     mut pips: Query<(&HealthPip, &mut Sprite)>,
     mut names: Query<&mut Transform, (With<GunnerName>, Without<Gunner>)>,
     mut commands: Commands,

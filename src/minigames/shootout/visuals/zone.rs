@@ -171,34 +171,24 @@ fn zone_border_rect(border: ZoneBorder, half_w: f32, half_h: f32) -> (Vec2, Vec2
     }
 }
 
-type ZoneStripQuery<'w, 's> = Query<
-    'w,
-    's,
-    (
-        &'static ZoneStrip,
-        &'static mut Sprite,
-        &'static mut Transform,
-        &'static mut Visibility,
-    ),
-    Without<ZoneBorder>,
->;
+type ZoneStripParts = (
+    &'static ZoneStrip,
+    &'static mut Sprite,
+    &'static mut Transform,
+    &'static mut Visibility,
+);
 
-type ZoneBorderQuery<'w, 's> = Query<
-    'w,
-    's,
-    (
-        &'static ZoneBorder,
-        &'static mut Sprite,
-        &'static mut Transform,
-        &'static mut Visibility,
-    ),
-    Without<ZoneStrip>,
->;
+type ZoneBorderParts = (
+    &'static ZoneBorder,
+    &'static mut Sprite,
+    &'static mut Transform,
+    &'static mut Visibility,
+);
 
 fn sync_safe_zone_visuals(
     zones: Query<&SafeZone>,
-    mut strips: ZoneStripQuery,
-    mut borders: ZoneBorderQuery,
+    mut strips: Query<ZoneStripParts, Without<ZoneBorder>>,
+    mut borders: Query<ZoneBorderParts, Without<ZoneStrip>>,
 ) {
     let active_zone = zones.iter().find(|zone| zone.active).copied();
     for (strip, mut sprite, mut transform, mut visibility) in &mut strips {

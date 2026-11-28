@@ -88,23 +88,18 @@ fn animate_pickups(time: Res<Time>, mut pickups: Query<(&Pickup, &mut Transform)
     }
 }
 
-type BuffHaloQuery<'w, 's> = Query<
-    'w,
-    's,
-    (
-        &'static mut Sprite,
-        &'static mut Visibility,
-        &'static mut Transform,
-    ),
-    With<BuffHalo>,
->;
+type BuffHaloParts = (
+    &'static mut Sprite,
+    &'static mut Visibility,
+    &'static mut Transform,
+);
 
 /// Show and pulse each gunner's [`BuffHalo`] while it holds an active weapon buff.
 fn sync_buff_halos(
     time: Res<Time>,
     timeline: Option<Res<LocalTimeline>>,
     gunners: Query<(&GunnerBuff, &Children), With<Gunner>>,
-    mut halos: BuffHaloQuery,
+    mut halos: Query<BuffHaloParts, With<BuffHalo>>,
 ) {
     let Some(timeline) = timeline else {
         return;
