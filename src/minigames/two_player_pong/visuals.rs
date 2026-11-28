@@ -1,6 +1,8 @@
 use bevy::prelude::*;
+use lightyear::prelude::input::native::InputMarker;
 
 use super::PHASE;
+use super::PongInput;
 use super::ball::{Ball, BallPosition};
 use super::config::{BALL_MAX_SPEED, BALL_SIZE, SCORE_FONT_SIZE, WALL_THICKNESS};
 use super::paddles::{Paddle, PaddlePosition, Side};
@@ -28,6 +30,9 @@ const BALL_RESET_STEP: f32 = 2.0 * BALL_MAX_SPEED / TICK_RATE as f32;
 
 const SCORE_X_OFFSET: f32 = 40.0;
 const SCORE_Y: f32 = VIEW_HEIGHT / 2.0 - WALL_THICKNESS - SCORE_FONT_SIZE / 2.0 - 4.0;
+const NAME_FONT_SIZE: f32 = 13.0;
+const NAME_X_OFFSET: f32 = 160.0;
+const NAME_Y: f32 = VIEW_HEIGHT / 2.0 - WALL_THICKNESS - NAME_FONT_SIZE / 2.0 - 6.0;
 
 #[derive(Component)]
 pub struct Arena;
@@ -35,6 +40,10 @@ pub struct Arena;
 /// Local text showing one side's score.
 #[derive(Component)]
 pub struct ScoreText(pub Side);
+
+/// Local text showing who is playing on one side of the arena.
+#[derive(Component)]
+pub struct PlayerNameText(pub Side);
 
 /// Local-only sprites, score text and sounds for Pong.
 pub struct PongVisualsPlugin;
@@ -44,7 +53,7 @@ impl Plugin for PongVisualsPlugin {
         app.add_plugins(PongSoundsPlugin);
         app.add_systems(
             OnEnter(PHASE),
-            (spawn_camera, spawn_arena, spawn_score_text),
+            (spawn_camera, spawn_arena, spawn_score_text, spawn_name_text),
         );
         app.add_observer(add_paddle_sprite);
         app.add_observer(add_ball_sprite);
@@ -62,7 +71,10 @@ impl Plugin for PongVisualsPlugin {
                 .before(TransformSystems::Propagate)
                 .run_if(in_state(PHASE)),
         );
-        app.add_systems(Update, update_score_text.run_if(in_state(PHASE)));
+        app.add_systems(
+            Update,
+            (update_score_text, update_name_text).run_if(in_state(PHASE)),
+        );
     }
 }
 
@@ -187,14 +199,63 @@ fn update_score_text(
     }
 }
 
+/// What one side's player name label shows: their name, plus `" (you)"` on this player's side.
+pub fn player_name_label(name: &str, you: bool) -> String {
+    if you {
+        format!("{name} (you)")
+    } else {
+        name.to_string()
+    }
+}
+
+fn spawn_name_text(mut commands: Commands) {
+    for side in [Side::Left, Side::Right] {
+        commands.spawn((
+            PlayerNameText(side),
+            DespawnOnExit(PHASE),
+            Text2d::new(""),
+            TextFont {
+                font_size: FontSize::Px(NAME_FONT_SIZE * ART_SCALE),
+                ..default()
+            },
+            TextLayout::justify(Justify::Center),
+            TextColor(Color::WHITE),
+            Transform::from_xyz(side.x_pos().signum() * NAME_X_OFFSET, NAME_Y, SCORE_Z)
+                .with_scale(Vec3::splat(1.0 / ART_SCALE)),
+        ));
+    }
+}
+
+/// Show each side's player name in their colour once their paddle has arrived.
+fn update_name_text(
+    paddles: Query<(&Paddle, Has<InputMarker<PongInput>>)>,
+    mut texts: Query<(&PlayerNameText, &mut Text2d, &mut TextColor)>,
+) {
+    for (PlayerNameText(side), mut text, mut color) in &mut texts {
+        if let Some((paddle, you)) = paddles.iter().find(|(paddle, _)| paddle.side == *side) {
+            let shown = player_name_label(&paddle.name, you);
+            if text.0 != shown {
+                text.0 = shown;
+            }
+            color.set_if_neq(TextColor(player_color(paddle.color)));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use bevy::prelude::*;
 
-    use super::{BallPosition, shown_ball_position};
+    use super::{BallPosition, player_name_label, shown_ball_position};
     use crate::config::network::TICK_RATE;
     use crate::minigames::smoothing::PreviousTick;
     use crate::minigames::two_player_pong::config::{BALL_MAX_SPEED, GOAL_X};
+
+    #[test]
+    fn player_name_marks_the_local_side() {
+        assert_eq!(player_name_label("Ada", true), "Ada (you)");
+        assert_eq!(player_name_label("Bo", false), "Bo");
+    }
 
     #[test]
     fn the_ball_is_drawn_between_its_last_two_ticks() {

@@ -14,10 +14,12 @@ use crate::network::is_host;
 use crate::party::Party;
 use crate::players::Player;
 
-/// Which player controls this paddle, and what shape it has. Set once at spawn.
-#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+/// Which player controls this paddle, and what shape it has. Set once at spawn, copied from
+/// [`Player`] so names and colours stay available even if a player disconnects.
+#[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Paddle {
     pub owner: PeerId,
+    pub name: String,
     pub side: Side,
     /// The owner's [`Player::color`], an index for [`player_color`](crate::players::player_color).
     pub color: u8,
@@ -139,6 +141,7 @@ fn spawn_paddle(
     commands.spawn((
         Paddle {
             owner,
+            name: player.name.clone(),
             side,
             color: player.color,
             shape,

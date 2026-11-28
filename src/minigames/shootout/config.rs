@@ -27,11 +27,11 @@ pub const MUZZLE_OFFSET: f32 = GUNNER_RADIUS + 5.0;
 /// A paint ball is a circle this big.
 pub const PAINT_BALL_RADIUS: f32 = 3.0;
 /// How fast a paint ball flies, in world units per second: across the arena in about a second.
-pub const PAINT_BALL_SPEED: f32 = 600.0;
+pub const PAINT_BALL_SPEED: f32 = 500.0;
 /// How many times a paint ball ricochets off walls and cover before splatting.
 pub const PAINT_BALL_BOUNCES: u8 = 1;
 /// Minimum time between two shots from the same gunner, in seconds.
-pub const FIRE_COOLDOWN_SECONDS: f32 = 0.35;
+pub const FIRE_COOLDOWN_SECONDS: f32 = 0.5;
 /// [`FIRE_COOLDOWN_SECONDS`] in fixed ticks.
 pub const FIRE_COOLDOWN_TICKS: u32 = (FIRE_COOLDOWN_SECONDS * TICK_RATE as f32) as u32;
 /// How many hits knock a gunner out by default, and the limits the host can pick between.
