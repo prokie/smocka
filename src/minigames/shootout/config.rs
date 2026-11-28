@@ -13,9 +13,12 @@ use crate::config::network::TICK_RATE;
 
 /// Thickness of the wall around the edge of the arena.
 pub const BORDER: f32 = 8.0;
+/// Arena world width and height: 1.5× the virtual screen, so the camera pans smoothly as you move.
+pub const ARENA_WIDTH: f32 = 1.5 * VIEW_WIDTH;
+pub const ARENA_HEIGHT: f32 = 1.5 * VIEW_HEIGHT;
 /// Half the size of the floor inside the border wall.
-pub const ARENA_HALF_WIDTH: f32 = VIEW_WIDTH / 2.0 - BORDER;
-pub const ARENA_HALF_HEIGHT: f32 = VIEW_HEIGHT / 2.0 - BORDER;
+pub const ARENA_HALF_WIDTH: f32 = ARENA_WIDTH / 2.0 - BORDER;
+pub const ARENA_HALF_HEIGHT: f32 = ARENA_HEIGHT / 2.0 - BORDER;
 
 /// A player's figure is a circle this big.
 pub const GUNNER_RADIUS: f32 = 8.0;
@@ -55,10 +58,10 @@ pub const SPREAD_ANGLE: f32 = 0.17;
 pub const RAPID_FIRE_COOLDOWN_TICKS: u32 = FIRE_COOLDOWN_TICKS / 2;
 /// Symmetric spots around the centre cover where pickups can appear.
 pub const PICKUP_SPOTS: [Vec2; 4] = [
-    Vec2::new(0.0, 56.0),
-    Vec2::new(0.0, -56.0),
-    Vec2::new(-72.0, 0.0),
-    Vec2::new(72.0, 0.0),
+    Vec2::new(0.0, 62.0),
+    Vec2::new(0.0, -62.0),
+    Vec2::new(-78.0, 0.0),
+    Vec2::new(78.0, 0.0),
 ];
 
 /// How long into a round sudden death starts closing the safe zone, and how long it takes to
@@ -66,8 +69,8 @@ pub const PICKUP_SPOTS: [Vec2; 4] = [
 pub const SUDDEN_DEATH_DELAY: Duration = Duration::from_secs(25);
 pub const SUDDEN_DEATH_SHRINK: Duration = Duration::from_secs(20);
 /// Minimum half-size of the sudden-death safe zone, leaving corridors all around the centre cover.
-pub const SAFE_ZONE_MIN_HALF_WIDTH: f32 = 76.0;
-pub const SAFE_ZONE_MIN_HALF_HEIGHT: f32 = 56.0;
+pub const SAFE_ZONE_MIN_HALF_WIDTH: f32 = 92.0;
+pub const SAFE_ZONE_MIN_HALF_HEIGHT: f32 = 72.0;
 /// How often a gunner standing outside the sudden-death safe zone takes a hit.
 pub const ZONE_DAMAGE_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -79,29 +82,34 @@ const fn block(x: f32, y: f32, width: f32, height: f32) -> Rect {
     }
 }
 
-/// The blocks inside the arena to take cover behind: one in the middle, four bars around it and
-/// one in front of each side. Symmetric, so no spawn is better than another.
-pub const COVER: [Rect; 7] = [
-    block(0.0, 0.0, 48.0, 48.0),
-    block(-170.0, 80.0, 90.0, 16.0),
-    block(170.0, 80.0, 90.0, 16.0),
-    block(-170.0, -80.0, 90.0, 16.0),
-    block(170.0, -80.0, 90.0, 16.0),
-    block(-260.0, 0.0, 16.0, 70.0),
-    block(260.0, 0.0, 16.0, 70.0),
+/// The blocks inside the arena to take cover behind: one in the middle, four inner bars around it,
+/// one vertical wall on each side, and four outer corner flank bars. Symmetric, so no spawn is
+/// better than another.
+pub const COVER: [Rect; 11] = [
+    block(0.0, 0.0, 52.0, 52.0),
+    block(-170.0, 95.0, 92.0, 16.0),
+    block(170.0, 95.0, 92.0, 16.0),
+    block(-170.0, -95.0, 92.0, 16.0),
+    block(170.0, -95.0, 92.0, 16.0),
+    block(-270.0, 0.0, 16.0, 84.0),
+    block(270.0, 0.0, 16.0, 84.0),
+    block(-350.0, 155.0, 84.0, 16.0),
+    block(350.0, 155.0, 84.0, 16.0),
+    block(-350.0, -155.0, 84.0, 16.0),
+    block(350.0, -155.0, 84.0, 16.0),
 ];
 
 /// Where players start, in the order they're handed out: opposite corners first, so two players
 /// start as far apart as they can.
 pub const SPAWNS: [Vec2; 8] = [
-    Vec2::new(-280.0, 140.0),
-    Vec2::new(280.0, -140.0),
-    Vec2::new(280.0, 140.0),
-    Vec2::new(-280.0, -140.0),
-    Vec2::new(0.0, 140.0),
-    Vec2::new(0.0, -140.0),
-    Vec2::new(-200.0, 0.0),
-    Vec2::new(200.0, 0.0),
+    Vec2::new(-420.0, 215.0),
+    Vec2::new(420.0, -215.0),
+    Vec2::new(420.0, 215.0),
+    Vec2::new(-420.0, -215.0),
+    Vec2::new(0.0, 215.0),
+    Vec2::new(0.0, -215.0),
+    Vec2::new(-370.0, 0.0),
+    Vec2::new(370.0, 0.0),
 ];
 
 #[cfg(test)]

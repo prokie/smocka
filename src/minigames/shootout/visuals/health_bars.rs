@@ -3,9 +3,9 @@
 use bevy::prelude::*;
 
 use super::{HEALTH_BAR_Z, SyncGunnerTransform};
-use crate::config::display::{ART_SCALE, VIEW_HEIGHT};
+use crate::config::display::ART_SCALE;
 use crate::minigames::shootout::PHASE;
-use crate::minigames::shootout::config::GUNNER_RADIUS;
+use crate::minigames::shootout::config::{ARENA_HEIGHT, GUNNER_RADIUS};
 use crate::minigames::shootout::gunner::{Gunner, GunnerState, Health};
 
 const PIP_SIZE: f32 = 3.0;
@@ -13,9 +13,9 @@ const PIP_GAP: f32 = 1.5;
 const HEALTH_BAR_OFFSET_Y: f32 = GUNNER_RADIUS + 5.5;
 const NAME_FONT_SIZE: f32 = 6.5;
 const NAME_OFFSET_Y: f32 = (PIP_SIZE + 2.0) / 2.0 + NAME_FONT_SIZE / 2.0 + 1.5;
-/// Above this y, the name would reach past the top of the screen, so flip the bar and name below.
+/// Above this y, the name would reach past the top of the arena, so flip the bar and name below.
 const LABEL_FLIP_Y: f32 =
-    VIEW_HEIGHT / 2.0 - (HEALTH_BAR_OFFSET_Y + NAME_OFFSET_Y + NAME_FONT_SIZE / 2.0);
+    ARENA_HEIGHT / 2.0 - (HEALTH_BAR_OFFSET_Y + NAME_OFFSET_Y + NAME_FONT_SIZE / 2.0);
 const HEALTH_BACK_COLOR: Color = Color::srgba(0.1, 0.1, 0.14, 0.85);
 const HEALTH_FULL_COLOR: Color = Color::WHITE;
 const HEALTH_LOST_COLOR: Color = Color::srgb(0.28, 0.28, 0.34);

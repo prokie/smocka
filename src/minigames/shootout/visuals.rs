@@ -2,6 +2,7 @@
 //! flash, crosshair cursor, and the focused sub-plugins for paint splatters, health bars, centre
 //! pickups and the sudden-death border.
 
+mod camera;
 mod health_bars;
 mod pickups;
 mod splats;
@@ -13,12 +14,10 @@ use lightyear::prelude::input::native::InputMarker;
 
 use super::PHASE;
 use super::ShootoutInput;
-use super::config::{GUNNER_RADIUS, PAINT_BALL_RADIUS};
+use super::config::{ARENA_HEIGHT, ARENA_WIDTH, GUNNER_RADIUS, PAINT_BALL_RADIUS};
 use super::gunner::{Gunner, GunnerState, Health};
 use super::shots::{PaintBall, PaintBallPosition};
 use super::sounds::ShootoutSoundsPlugin;
-use crate::camera::gameplay_camera_2d;
-use crate::config::display::{VIEW_HEIGHT, VIEW_WIDTH};
 use crate::minigames::smoothing::{Smoothed, remember_previous_tick, smoothed};
 use crate::players::player_color;
 
@@ -66,12 +65,13 @@ impl Plugin for ShootoutVisualsPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((
             ShootoutSoundsPlugin,
+            camera::ShootoutCameraPlugin,
             splats::PaintSplatsPlugin,
             health_bars::HealthBarsPlugin,
             pickups::PickupVisualsPlugin,
             zone::ZoneVisualsPlugin,
         ));
-        app.add_systems(OnEnter(PHASE), (spawn_camera, spawn_arena));
+        app.add_systems(OnEnter(PHASE), spawn_arena);
         app.add_systems(OnExit(PHASE), reset_cursor);
         app.add_observer(add_gunner_sprite);
         app.add_observer(add_paint_ball_sprite);
@@ -98,17 +98,11 @@ impl Plugin for ShootoutVisualsPlugin {
     }
 }
 
-/// The whole arena fits on screen.
-fn spawn_camera(mut commands: Commands) {
-    debug!("Spawning the shootout camera");
-    commands.spawn(gameplay_camera_2d(PHASE, VIEW_WIDTH, VIEW_HEIGHT));
-}
-
 fn spawn_arena(assets: Res<AssetServer>, mut commands: Commands) {
     commands.spawn((
         DespawnOnExit(PHASE),
         Sprite {
-            custom_size: Some(Vec2::new(VIEW_WIDTH, VIEW_HEIGHT)),
+            custom_size: Some(Vec2::new(ARENA_WIDTH, ARENA_HEIGHT)),
             ..Sprite::from_image(assets.load(ARENA_IMAGE))
         },
         Transform::from_xyz(0.0, 0.0, ARENA_Z),

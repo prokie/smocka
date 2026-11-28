@@ -59,7 +59,12 @@ impl GunnerState {
 impl Ease for GunnerState {
     fn interpolating_curve_unbounded(start: Self, end: Self) -> impl Curve<Self> {
         FunctionCurve::new(Interval::UNIT, move |t| GunnerState {
-            position: start.position.lerp(end.position, t),
+            // Avoid 1-ULP drift from `a * (1 - t) + a * t` when a gunner is standing still.
+            position: if start.position == end.position {
+                start.position
+            } else {
+                start.position.lerp(end.position, t)
+            },
             aim: lerp_angle(start.aim, end.aim, t),
         })
     }

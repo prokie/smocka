@@ -133,23 +133,29 @@ PADDLE_HEIGHT: Final[float] = 48.0  # PADDLE_HEIGHT
 BALL_SIZE: Final[float] = 8.0  # BALL_SIZE
 
 # Keep in step with minigames::shootout::config.
+SHOOTOUT_W: Final[float] = 1.5 * VIEW_W  # ARENA_WIDTH
+SHOOTOUT_H: Final[float] = 1.5 * VIEW_H  # ARENA_HEIGHT
 SHOOTOUT_BORDER: Final[float] = 8.0  # BORDER
 GUNNER_RADIUS: Final[float] = 8.0  # GUNNER_RADIUS
 PAINT_BALL_RADIUS: Final[float] = 3.0  # PAINT_BALL_RADIUS
 PICKUP_RADIUS: Final[float] = 8.0  # PICKUP_RADIUS
 # COVER: (centre x, centre y, width, height) of each block.
 SHOOTOUT_COVER: Final[list[tuple[float, float, float, float]]] = [
-    (0.0, 0.0, 48.0, 48.0),
-    (-170.0, 80.0, 90.0, 16.0),
-    (170.0, 80.0, 90.0, 16.0),
-    (-170.0, -80.0, 90.0, 16.0),
-    (170.0, -80.0, 90.0, 16.0),
-    (-260.0, 0.0, 16.0, 70.0),
-    (260.0, 0.0, 16.0, 70.0),
+    (0.0, 0.0, 52.0, 52.0),
+    (-170.0, 95.0, 92.0, 16.0),
+    (170.0, 95.0, 92.0, 16.0),
+    (-170.0, -95.0, 92.0, 16.0),
+    (170.0, -95.0, 92.0, 16.0),
+    (-270.0, 0.0, 16.0, 84.0),
+    (270.0, 0.0, 16.0, 84.0),
+    (-350.0, 155.0, 84.0, 16.0),
+    (350.0, 155.0, 84.0, 16.0),
+    (-350.0, -155.0, 84.0, 16.0),
+    (350.0, -155.0, 84.0, 16.0),
 ]
 # SPAWNS, the first four.
 SHOOTOUT_SPAWNS: Final[list[tuple[float, float]]] = [
-    (-280.0, 140.0), (280.0, -140.0), (280.0, 140.0), (-280.0, -140.0),
+    (-420.0, 215.0), (420.0, -215.0), (420.0, 215.0), (-420.0, -215.0),
 ]
 
 KERB: Final[float] = 4.0  # kerb width, inside the road on the bends
@@ -650,8 +656,8 @@ def draw_ball() -> None:
 
 def draw_shootout_arena() -> None:
     """A tiled floor, the border wall, and the cover blocks, all seen from above."""
-    canvas = Canvas(VIEW_W, VIEW_H, WALL)
-    half_w, half_h = VIEW_W / 2 - SHOOTOUT_BORDER, VIEW_H / 2 - SHOOTOUT_BORDER
+    canvas = Canvas(SHOOTOUT_W, SHOOTOUT_H, WALL)
+    half_w, half_h = SHOOTOUT_W / 2 - SHOOTOUT_BORDER, SHOOTOUT_H / 2 - SHOOTOUT_BORDER
     tile = 32.0
     columns, rows = math.ceil(2 * half_w / tile), math.ceil(2 * half_h / tile)
     for column in range(columns):
@@ -858,8 +864,9 @@ def draw_shootout_thumbnail() -> None:
     folder = ASSETS / "shootout"
     base = Image.open(folder / "arena.png").convert("RGBA")
     gunner = Image.open(folder / "gunner.png").convert("RGBA")
+    scale = THUMBNAIL_SPRITE_SCALE * (SHOOTOUT_W / VIEW_W)
     for (x, y), tint in zip(SHOOTOUT_SPAWNS, PLAYER_TINTS):
-        place(base, tinted(gunner, tint), x, y, math.degrees(math.atan2(-y, -x)))
+        place(base, tinted(gunner, tint), x, y, math.degrees(math.atan2(-y, -x)), scale=scale)
     save_thumbnail(base, folder / "thumbnail.png")
 
 
