@@ -67,6 +67,14 @@ impl Plugin for RacingInputPlugin {
         app.add_input_context::<RacingControls>();
         app.add_systems(OnEnter(PHASE), spawn_racing_controls);
         app.add_systems(
+            Update,
+            spawn_racing_controls.run_if(
+                in_state(PHASE)
+                    .and_then(resource_changed::<Controls>)
+                    .and_then(not(resource_added::<Controls>)),
+            ),
+        );
+        app.add_systems(
             FixedPreUpdate,
             buffer_racing_input
                 .in_set(InputSystems::WriteClientInputs)
@@ -83,8 +91,16 @@ impl Plugin for RacingInputPlugin {
     }
 }
 
-/// The race's [`RacingControls`], bound to this player's [`Controls`] as they are when it starts.
-fn spawn_racing_controls(controls: Res<Controls>, mut commands: Commands) {
+/// The race's [`RacingControls`], bound to this player's current [`Controls`]. Rebuilt if controls
+/// are changed mid-race.
+fn spawn_racing_controls(
+    controls: Res<Controls>,
+    existing: Query<Entity, With<RacingControls>>,
+    mut commands: Commands,
+) {
+    for entity in &existing {
+        commands.entity(entity).despawn();
+    }
     let context = commands
         .spawn((
             Name::new("RacingControls"),

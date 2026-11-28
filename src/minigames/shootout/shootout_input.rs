@@ -186,6 +186,14 @@ impl Plugin for ShootoutInputPlugin {
         app.add_input_context::<ShootoutControls>();
         app.add_systems(OnEnter(PHASE), spawn_shootout_controls);
         app.add_systems(
+            Update,
+            spawn_shootout_controls.run_if(
+                in_state(PHASE)
+                    .and_then(resource_changed::<Controls>)
+                    .and_then(not(resource_added::<Controls>)),
+            ),
+        );
+        app.add_systems(
             FixedPreUpdate,
             buffer_shootout_input
                 .in_set(InputSystems::WriteClientInputs)
@@ -197,9 +205,16 @@ impl Plugin for ShootoutInputPlugin {
     }
 }
 
-/// The shootout's [`ShootoutControls`], bound to this player's [`Controls`] as they are when it
-/// starts.
-fn spawn_shootout_controls(controls: Res<Controls>, mut commands: Commands) {
+/// The shootout's [`ShootoutControls`], bound to this player's current [`Controls`]. Rebuilt if
+/// controls are changed mid-round.
+fn spawn_shootout_controls(
+    controls: Res<Controls>,
+    existing: Query<Entity, With<ShootoutControls>>,
+    mut commands: Commands,
+) {
+    for entity in &existing {
+        commands.entity(entity).despawn();
+    }
     let context = commands
         .spawn((
             Name::new("ShootoutControls"),

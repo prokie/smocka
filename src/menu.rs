@@ -9,6 +9,7 @@ mod next_match;
 mod notices;
 mod party;
 mod results;
+mod session_menu;
 mod sound;
 mod standings;
 mod watching;
@@ -30,7 +31,7 @@ use crate::config::network::HOST_ADDR;
 use crate::controls::{ControlAction, Controls};
 use crate::minigames::Minigame;
 use crate::minigames::settings::{ChangeSetting, SettingId};
-use crate::network::{HostSession, Hosting, LeaveSession, close_session};
+use crate::network::{HostSession, LeaveSession, close_session};
 use crate::party::{ChangeRounds, StartParty};
 use crate::profile::{LastAddress, LocalProfile};
 use crate::session::{ReturnToLobby, SessionPhase, StartMinigame};
@@ -74,6 +75,12 @@ pub enum MenuButton {
     CloseMinigameSettings,
     /// Change a minigame setting by this many.
     ChangeSetting(SettingId, i32),
+    /// Close the in-session Escape menu and resume.
+    CloseSessionMenu,
+    /// Host only: take every player back to the lobby.
+    ReturnToLobby,
+    /// Leave the session and go back to the main menu.
+    LeaveToMainMenu,
 }
 
 /// All local UI. Needs a renderer, so headless tests leave it out.
@@ -110,7 +117,7 @@ impl Plugin for MenuPlugin {
         app.add_systems(
             OnEnter(AppState::InSession),
             (
-                spawn_leave_hint,
+                spawn_menu_hint,
                 notices::spawn_notice_area,
                 watching::spawn_watching_text,
                 standings::spawn_standings_overlay,
@@ -172,11 +179,19 @@ impl Plugin for MenuPlugin {
                         .and_then(not(resource_added::<VolumeSettings>)),
                 ),
                 (
-                    // On a settings screen, `Esc` closes it instead.
-                    escape_session.run_if(not(in_state(AppState::MainMenu)).and_then(not(
-                        any_with_component::<minigame_settings::MinigameSettingsScreen>,
-                    ))),
-                    update_escape_hint.run_if(in_state(AppState::InSession)),
+                    // While connecting, `Esc` cancels; in a session it toggles the Escape menu
+                    // unless a settings screen is on top to consume `Esc` first.
+                    cancel_connecting_on_escape.run_if(in_state(AppState::Connecting)),
+                    session_menu::toggle_on_escape.run_if(
+                        in_state(AppState::InSession)
+                            .and_then(not(any_with_component::<controls::ControlsScreen>))
+                            .and_then(not(any_with_component::<sound::SoundScreen>))
+                            .and_then(not(any_with_component::<
+                                minigame_settings::MinigameSettingsScreen,
+                            >)),
+                    ),
+                    session_menu::update_back_to_lobby_button
+                        .run_if(any_with_component::<session_menu::SessionMenuScreen>),
                 ),
                 (
                     minigame_settings::update_setting_values,
@@ -208,7 +223,14 @@ impl Plugin for MenuPlugin {
                 )
                     .run_if(in_state(SessionPhase::NextMatch)),
                 widgets::update_countdowns,
-                (widgets::vote_skip_on_input, widgets::update_skip_hints)
+                (
+                    widgets::vote_skip_on_input.run_if(
+                        not(any_with_component::<session_menu::SessionMenuScreen>)
+                            .and_then(not(any_with_component::<controls::ControlsScreen>))
+                            .and_then(not(any_with_component::<sound::SoundScreen>)),
+                    ),
+                    widgets::update_skip_hints,
+                )
                     .run_if(any_with_component::<widgets::SkipHint>),
                 notices::expire_notices,
                 (
@@ -308,6 +330,12 @@ fn on_menu_button(
             // Queued after the change, so it plays at the new volume.
             sound::check_volume(*control, volume_check.as_deref(), &mut commands);
         }
+        MenuButton::CloseSessionMenu => commands.queue(session_menu::CloseSessionMenu),
+        MenuButton::ReturnToLobby => {
+            commands.queue(session_menu::CloseSessionMenu);
+            commands.queue(ReturnToLobby);
+        }
+        MenuButton::LeaveToMainMenu => commands.queue(LeaveSession),
     }
 }
 
@@ -333,40 +361,7 @@ fn spawn_connecting_screen(mut commands: Commands) {
     ));
 }
 
-/// What `Esc` does in a session (or while connecting to one).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EscapeAction {
-    /// Leave the session, for the main menu.
-    Leave,
-    /// The host takes everyone back to the lobby: see [`ReturnToLobby`].
-    BackToLobby,
-}
-
-impl EscapeAction {
-    /// The hint in the corner saying what `Esc` does.
-    pub fn hint(self) -> &'static str {
-        match self {
-            EscapeAction::Leave => "Esc: leave",
-            EscapeAction::BackToLobby => "Esc: back to lobby",
-        }
-    }
-}
-
-/// What `Esc` does for a peer that's `hosting` (or not), with the session in `phase` (`None`
-/// while connecting): the host takes everyone back to the lobby from anywhere else in the session;
-/// in the lobby, or for a joiner, it leaves.
-pub fn escape_action(hosting: bool, phase: Option<SessionPhase>) -> EscapeAction {
-    match phase {
-        Some(phase) if hosting && phase != SessionPhase::Lobby => EscapeAction::BackToLobby,
-        _ => EscapeAction::Leave,
-    }
-}
-
-/// The hint in the corner saying what `Esc` does (see [`escape_action`]).
-#[derive(Component)]
-struct EscapeHint;
-
-fn spawn_leave_hint(mut commands: Commands) {
+fn spawn_menu_hint(mut commands: Commands) {
     commands.spawn((
         DespawnOnExit(AppState::InSession),
         Node {
@@ -375,74 +370,12 @@ fn spawn_leave_hint(mut commands: Commands) {
             bottom: px(8),
             ..default()
         },
-        children![(
-            EscapeHint,
-            label(EscapeAction::Leave.hint(), 16.0, HINT_COLOR)
-        )],
+        children![label("Esc: menu", 16.0, HINT_COLOR)],
     ));
 }
 
-fn update_escape_hint(
-    hosting: Hosting,
-    phase: Option<Res<State<SessionPhase>>>,
-    mut hint: Single<&mut Text, With<EscapeHint>>,
-) {
-    let action = escape_action(hosting.is_hosting(), phase.map(|phase| *phase.get()));
-    if hint.0 != action.hint() {
-        hint.0 = action.hint().into();
-    }
-}
-
-fn escape_session(
-    keys: Res<ButtonInput<KeyCode>>,
-    hosting: Hosting,
-    phase: Option<Res<State<SessionPhase>>>,
-    mut commands: Commands,
-) {
-    if !keys.just_pressed(KeyCode::Escape) {
-        return;
-    }
-    match escape_action(hosting.is_hosting(), phase.map(|phase| *phase.get())) {
-        EscapeAction::Leave => commands.queue(LeaveSession),
-        EscapeAction::BackToLobby => commands.queue(ReturnToLobby),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{EscapeAction, escape_action};
-    use crate::minigames::Minigame;
-    use crate::session::SessionPhase;
-
-    #[test]
-    fn the_host_goes_back_to_the_lobby_from_anywhere_else_in_the_session() {
-        for phase in [
-            SessionPhase::Playing(Minigame::Racing),
-            SessionPhase::NextRound,
-            SessionPhase::NextMatch,
-            SessionPhase::Results,
-            SessionPhase::Standings,
-            SessionPhase::PartyOver,
-        ] {
-            assert_eq!(
-                escape_action(true, Some(phase)),
-                EscapeAction::BackToLobby,
-                "{phase:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn escape_leaves_from_the_lobby_for_joiners_and_while_connecting() {
-        assert_eq!(
-            escape_action(true, Some(SessionPhase::Lobby)),
-            EscapeAction::Leave
-        );
-        assert_eq!(
-            escape_action(false, Some(SessionPhase::Playing(Minigame::Racing))),
-            EscapeAction::Leave
-        );
-        assert_eq!(escape_action(false, None), EscapeAction::Leave);
-        assert_eq!(escape_action(true, None), EscapeAction::Leave);
+fn cancel_connecting_on_escape(keys: Res<ButtonInput<KeyCode>>, mut commands: Commands) {
+    if keys.just_pressed(KeyCode::Escape) {
+        commands.queue(LeaveSession);
     }
 }

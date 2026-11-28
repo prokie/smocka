@@ -6,6 +6,9 @@ use bevy::picking::Pickable;
 use bevy::prelude::*;
 use lightyear::prelude::*;
 
+use super::controls::ControlsScreen;
+use super::session_menu::SessionMenuScreen;
+use super::sound::SoundScreen;
 use super::widgets::{HINT_COLOR, ShownRows, countdown, label, screen, show_rows, skip_hint};
 use crate::app_state::AppState;
 use crate::config::session::STANDINGS_DURATION;
@@ -187,16 +190,24 @@ pub(super) fn spawn_standings_overlay(mut commands: Commands) {
     ));
 }
 
+type ModalFilter = Or<(
+    With<SessionMenuScreen>,
+    With<ControlsScreen>,
+    With<SoundScreen>,
+)>;
+
 /// UI queries used by [`update_standings_overlay`].
 #[derive(SystemParam)]
 pub(super) struct OverlayUi<'w, 's> {
     overlay: Single<'w, 's, &'static mut Visibility, With<StandingsOverlay>>,
     caption: Single<'w, 's, (&'static mut Text, &'static mut Node), With<StandingsOverlayCaption>>,
     list: Single<'w, 's, Entity, With<StandingsOverlayList>>,
+    modals: Query<'w, 's, (), ModalFilter>,
 }
 
 /// Show [`StandingsOverlay`] while `Tab` (or gamepad Back) is held during a minigame, tournament
-/// wait, or results screen, and keep its rows up to date while visible.
+/// wait, or results screen (unless an Escape/settings modal is open), and keep its rows up to date
+/// while visible.
 pub(super) fn update_standings_overlay(
     keys: Res<ButtonInput<KeyCode>>,
     gamepads: Query<&Gamepad>,
@@ -210,7 +221,8 @@ pub(super) fn update_standings_overlay(
         || gamepads
             .iter()
             .any(|gamepad| gamepad.pressed(GamepadButton::Select));
-    let visible = held && phase.is_some_and(|phase| overlay_allowed(*phase.get()));
+    let visible =
+        held && ui.modals.is_empty() && phase.is_some_and(|phase| overlay_allowed(*phase.get()));
     ui.overlay.set_if_neq(if visible {
         Visibility::Inherited
     } else {

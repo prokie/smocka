@@ -81,6 +81,11 @@ pub fn menu_button(action: MenuButton, text: &str) -> impl Bundle {
     button(action, text, 200.0, 24.0)
 }
 
+/// A wider [`menu_button`] for longer labels such as "Back to lobby".
+pub fn wide_menu_button(action: MenuButton, text: &str) -> impl Bundle {
+    button(action, text, 240.0, 24.0)
+}
+
 /// A square [`menu_button`] for a single character, such as "+".
 pub fn small_button(action: MenuButton, text: &str) -> impl Bundle {
     button(action, text, 48.0, 24.0)

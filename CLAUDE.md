@@ -2,7 +2,7 @@
 
 Multiplayer party game built with **Bevy** and **Lightyear**. A party is several short,
 self-contained minigames played back to back, with points adding up to one winner. There is no
-board game between minigames (unlike Pummel Party), and none is planned.
+board game between minigames (unlike Pummel Party), and none is planned. Be concise.
 
 ## Versions — read this first
 - Bevy: `0.20.1` · Lightyear: `0.31` (see `Cargo.toml`)

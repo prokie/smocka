@@ -55,6 +55,14 @@ impl Plugin for PongInputPlugin {
         app.add_input_context::<PongControls>();
         app.add_systems(OnEnter(PHASE), spawn_pong_controls);
         app.add_systems(
+            Update,
+            spawn_pong_controls.run_if(
+                in_state(PHASE)
+                    .and_then(resource_changed::<Controls>)
+                    .and_then(not(resource_added::<Controls>)),
+            ),
+        );
+        app.add_systems(
             FixedPreUpdate,
             buffer_pong_input
                 .in_set(InputSystems::WriteClientInputs)
@@ -66,8 +74,16 @@ impl Plugin for PongInputPlugin {
     }
 }
 
-/// The game's [`PongControls`], bound to this player's [`Controls`] as they are when it starts.
-fn spawn_pong_controls(controls: Res<Controls>, mut commands: Commands) {
+/// The game's [`PongControls`], bound to this player's current [`Controls`]. Rebuilt if controls
+/// are changed mid-game.
+fn spawn_pong_controls(
+    controls: Res<Controls>,
+    existing: Query<Entity, With<PongControls>>,
+    mut commands: Commands,
+) {
+    for entity in &existing {
+        commands.entity(entity).despawn();
+    }
     let context = commands
         .spawn((
             Name::new("PongControls"),

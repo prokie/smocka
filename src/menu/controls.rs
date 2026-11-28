@@ -85,19 +85,18 @@ impl Command for OpenControls {
             return;
         }
         debug!("Opening the controls screen");
-        // Hides the main menu behind it.
-        let background = world
-            .get_resource::<ClearColor>()
-            .cloned()
-            .unwrap_or_default()
-            .0;
+        // Despawn when leaving whichever top-level state opened this screen (MainMenu or InSession).
+        let state = world
+            .get_resource::<State<AppState>>()
+            .map_or(AppState::MainMenu, |state| *state.get());
         world
             .spawn((
                 ControlsScreen,
-                DespawnOnExit(AppState::MainMenu),
+                DespawnOnExit(state),
                 // `Tab` stays on this screen.
                 TabGroup::modal(),
-                GlobalZIndex(1),
+                // Above the in-session Escape menu (`GlobalZIndex(10)`).
+                GlobalZIndex(20),
                 Node {
                     position_type: PositionType::Absolute,
                     width: percent(100),
@@ -109,7 +108,7 @@ impl Command for OpenControls {
                     padding: UiRect::vertical(px(SCREEN_PADDING)),
                     ..default()
                 },
-                BackgroundColor(background),
+                BackgroundColor(Color::srgba(0.05, 0.07, 0.12, 0.96)),
             ))
             .with_children(|screen| {
                 screen.spawn((label("Controls", 48.0, Color::WHITE), keep_height()));
