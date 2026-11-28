@@ -34,10 +34,6 @@ pub struct PlayerList;
 #[derive(Component)]
 pub struct LobbyHint;
 
-/// Shows a minigame's settings as the host picked them, e.g. "Laps: 3".
-#[derive(Component)]
-pub struct SettingsSummary(pub Minigame);
-
 /// A minigame's thumbnail on its tile in the lobby, and which picture it shows (see
 /// [`update_thumbnails`]).
 #[derive(Component, Debug)]
@@ -56,9 +52,9 @@ const GRID_GAP: f32 = 12.0;
 const TILE_PADDING: f32 = 6.0;
 /// A tile's thumbnail is this wide, in pixels, and 16:9.
 const THUMBNAIL_WIDTH: f32 = 176.0;
-/// A tile's size, in pixels: its thumbnail, name and settings summary.
+/// A tile's size, in pixels: its thumbnail and name.
 const TILE_WIDTH: f32 = THUMBNAIL_WIDTH + 2.0 * TILE_PADDING;
-const TILE_HEIGHT: f32 = THUMBNAIL_WIDTH * 9.0 / 16.0 + 2.0 * TILE_PADDING + 52.0;
+const TILE_HEIGHT: f32 = THUMBNAIL_WIDTH * 9.0 / 16.0 + 2.0 * TILE_PADDING + 34.0;
 /// How many rows of tiles the lobby's grid shows whole before it scrolls.
 const GRID_ROWS_SHOWN: usize = 2;
 /// How much of the next row the grid's box shows below the whole rows: only the top of its
@@ -173,10 +169,10 @@ fn column() -> Node {
 }
 
 /// The minigames, as a grid of tiles under `parent`, [`GRID_COLUMNS`] to a row, in a box that
-/// scrolls once there are more than [`GRID_ROWS_SHOWN`] rows. Each tile has the minigame's thumbnail, its name and a summary of its
-/// settings. On the host the whole tile is a button that starts it, with a gear in the corner
-/// that opens its settings. Joiners see the same tiles, to see what can be played and the host's
-/// picks. `image` loads an image by its path under `assets/`.
+/// scrolls once there are more than [`GRID_ROWS_SHOWN`] rows. Each tile has the minigame's
+/// thumbnail and name. On the host the whole tile opens its pre-game setup screen, with a gear in
+/// the corner that opens its settings directly (for parties). Joiners see the same tiles, to see
+/// what can be played. `image` loads an image by its path under `assets/`.
 fn spawn_games(
     parent: Entity,
     hosting: bool,
@@ -259,8 +255,15 @@ fn spawn_tile(
                     ..default()
                 },
             ));
-            face.spawn(label(info.name, 20.0, Color::WHITE));
-            face.spawn((SettingsSummary(game), label("", 14.0, HINT_COLOR)));
+            face.spawn((
+                Node {
+                    flex_grow: 1.0,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    ..default()
+                },
+                children![label(info.name, 20.0, Color::WHITE)],
+            ));
         })
         .id();
     if !hosting {
@@ -506,23 +509,6 @@ pub(super) fn update_lobby_hint(
     }
 }
 
-/// Show each minigame's settings as the host picked them (to everyone, from the replicated
-/// [`PublishedSettings`]). Empty until they arrive.
-pub(super) fn update_settings_summaries(
-    settings: Option<Single<&PublishedSettings>>,
-    mut summaries: Query<(&SettingsSummary, &mut Text)>,
-) {
-    for (SettingsSummary(game), mut text) in &mut summaries {
-        let shown = settings
-            .as_ref()
-            .map(|settings| settings.summary(*game))
-            .unwrap_or_default();
-        if text.0 != shown {
-            text.0 = shown;
-        }
-    }
-}
-
 /// Show the host's pick of rounds (to everyone, from the replicated [`PartyRounds`]), and on the
 /// host disable "-" and "+" at the limits.
 pub(super) fn update_round_picker(
@@ -616,8 +602,8 @@ mod tests {
     use bevy::ui_widgets::ScrollArea;
 
     use super::{
-        GRID_COLUMNS, GRID_ROWS_SHOWN, SettingsSummary, Thumbnail, lobby_hint, player_label,
-        spawn_games, update_thumbnails,
+        GRID_COLUMNS, GRID_ROWS_SHOWN, Thumbnail, lobby_hint, player_label, spawn_games,
+        update_thumbnails,
     };
     use crate::menu::MenuButton;
     use crate::menu::widgets::tests::layout_app;
@@ -670,14 +656,10 @@ mod tests {
     }
 
     #[test]
-    fn joiners_see_every_minigame_and_its_settings_but_cant_start_or_change_them() {
+    fn joiners_see_every_minigame_but_cant_start_or_change_settings() {
         let mut world = games(false);
         assert_eq!(buttons(&mut world), []);
         assert_eq!(count::<With<Thumbnail>>(&mut world), Minigame::ALL.len());
-        assert_eq!(
-            count::<With<SettingsSummary>>(&mut world),
-            Minigame::ALL.len()
-        );
     }
 
     fn player(id: PeerId, number: u32, name: &str) -> Player {

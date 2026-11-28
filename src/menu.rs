@@ -215,7 +215,6 @@ impl Plugin for MenuPlugin {
                     lobby::update_player_list,
                     lobby::update_swatches,
                     lobby::update_lobby_hint,
-                    lobby::update_settings_summaries,
                     lobby::dim_disabled_thumbnails,
                     lobby::update_thumbnails,
                     lobby::update_round_picker,
