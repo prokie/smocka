@@ -265,10 +265,10 @@ fn spawn_tile(
     if !hosting {
         return face;
     }
-    // The tile is the start button. The gear is laid over its corner, not inside it, so
-    // clicking the gear is never also a click on the tile.
+    // The tile opens the minigame's pre-game setup screen. The gear is laid over its corner, not
+    // inside it, so clicking the gear is never also a click on the tile.
     commands.entity(face).insert((
-        MenuButton::Start(game),
+        MenuButton::OpenSetup(game),
         Button,
         Hovered::default(),
         TabIndex(0),
@@ -485,7 +485,9 @@ pub(super) fn update_lobby_hint(
     }
     for (button, action, disabled) in &buttons {
         let startable = match action {
-            MenuButton::Start(game) => players.iter().len() >= game.info().min_players,
+            MenuButton::OpenSetup(game) | MenuButton::Start(game) => {
+                players.iter().len() >= game.info().min_players
+            }
             MenuButton::StartParty => startable,
             _ => continue,
         };
@@ -645,7 +647,10 @@ mod tests {
         let mut world = games(true);
         let buttons = buttons(&mut world);
         for game in Minigame::ALL {
-            assert!(buttons.contains(&MenuButton::Start(game)), "{buttons:?}");
+            assert!(
+                buttons.contains(&MenuButton::OpenSetup(game)),
+                "{buttons:?}"
+            );
             assert_eq!(
                 buttons.contains(&MenuButton::MinigameSettings(game)),
                 !game.info().settings.is_empty(),

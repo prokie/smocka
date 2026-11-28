@@ -1,7 +1,9 @@
 use bevy::math::Vec2;
-use bevy::shape::{Aabb2d, IntersectsVolume};
 
 use super::config::{BALL_MAX_BOUNCE_ANGLE, BALL_MAX_Y, BALL_SIZE, PADDLE_HEIGHT, PADDLE_WIDTH};
+use crate::minigames::pong_paddle::{
+    PaddleGeometry, PaddleShape, bounce_off_paddle_shape, hits_paddle_shape,
+};
 
 /// Bounce the ball off the top and bottom walls. The left and right edges are open (goals).
 pub fn bounce_off_walls(mut position: Vec2, mut velocity: Vec2) -> (Vec2, Vec2) {
@@ -12,35 +14,55 @@ pub fn bounce_off_walls(mut position: Vec2, mut velocity: Vec2) -> (Vec2, Vec2) 
     (position, velocity)
 }
 
-/// Whether the ball, which was at `previous` when this tick began and is now at `ball`, hits the
-/// paddle's front face. It must overlap the paddle, move towards the edge the paddle guards, and
-/// have been fully in front of the face when the tick began.
-///
-/// That last check means a ball that already got past the face goes on into the goal, even when
-/// the paddle moves into it from above or below: a paddle can't hit with its ends or its back.
-/// The direction check stops a ball that just bounced from being caught again.
-pub fn hits_paddle(previous: Vec2, ball: Vec2, velocity: Vec2, paddle: Vec2) -> bool {
-    let ball_box = Aabb2d::new(ball, Vec2::splat(BALL_SIZE / 2.0));
-    let paddle_box = Aabb2d::new(paddle, Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT) / 2.0);
-    let moving_towards_its_edge = velocity.x * paddle.x > 0.0;
-    // From the paddle towards the middle of the arena: +1 for the left paddle.
-    let inwards = -paddle.x.signum();
-    let face = paddle.x + inwards * PADDLE_WIDTH / 2.0;
-    let leading_edge_before = previous.x - inwards * BALL_SIZE / 2.0;
-    let was_in_front = (leading_edge_before - face) * inwards >= 0.0;
-    moving_towards_its_edge && was_in_front && ball_box.intersects(&paddle_box)
+fn geometry(paddle: Vec2, shape: PaddleShape) -> PaddleGeometry {
+    PaddleGeometry {
+        centre: paddle,
+        inward: Vec2::new(-paddle.x.signum(), 0.0),
+        tangent: Vec2::Y,
+        shape,
+        base_length: PADDLE_HEIGHT,
+        thickness: PADDLE_WIDTH,
+    }
 }
 
-/// Same speed, aimed by where it hit: the centre sends it straight across, the ends at up to
-/// [`BALL_MAX_BOUNCE_ANGLE`].
+/// Whether the ball, which was at `previous` when this tick began and is now at `ball`, hits the
+/// front face of a [`PaddleShape::Classic`] paddle at `paddle`.
+#[cfg(test)]
+pub fn hits_paddle(previous: Vec2, ball: Vec2, velocity: Vec2, paddle: Vec2) -> bool {
+    hits_paddle_with_shape(previous, ball, velocity, paddle, PaddleShape::Classic)
+}
+
+/// Shape-aware version of [`hits_paddle`].
+pub fn hits_paddle_with_shape(
+    previous: Vec2,
+    ball: Vec2,
+    velocity: Vec2,
+    paddle: Vec2,
+    shape: PaddleShape,
+) -> bool {
+    hits_paddle_shape(geometry(paddle, shape), previous, ball, velocity, BALL_SIZE)
+}
+
+/// Same speed, aimed by where it hit a [`PaddleShape::Classic`] paddle: the centre sends it
+/// straight across, the ends at up to [`BALL_MAX_BOUNCE_ANGLE`].
+#[cfg(test)]
 pub fn bounce_off_paddle(ball: Vec2, velocity: Vec2, paddle: Vec2) -> Vec2 {
-    // -1 at the bottom end of the paddle, 0 at its centre, 1 at the top end. A ball overlapping
-    // just past an end counts as hitting that end.
-    let offset = ((ball.y - paddle.y) / (PADDLE_HEIGHT / 2.0)).clamp(-1.0, 1.0);
-    let angle = offset * BALL_MAX_BOUNCE_ANGLE;
-    // Away from the edge this paddle guards: the left paddle sends the ball right.
-    let away = -paddle.x.signum();
-    Vec2::new(away * angle.cos(), angle.sin()) * velocity.length()
+    bounce_off_paddle_with_shape(ball, velocity, paddle, PaddleShape::Classic)
+}
+
+/// Shape-aware version of [`bounce_off_paddle`].
+pub fn bounce_off_paddle_with_shape(
+    ball: Vec2,
+    velocity: Vec2,
+    paddle: Vec2,
+    shape: PaddleShape,
+) -> Vec2 {
+    bounce_off_paddle_shape(
+        geometry(paddle, shape),
+        ball,
+        velocity,
+        BALL_MAX_BOUNCE_ANGLE,
+    )
 }
 
 #[cfg(test)]

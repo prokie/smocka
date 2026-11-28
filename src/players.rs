@@ -6,6 +6,7 @@ use lightyear::prelude::{server::ClientOf, *};
 use serde::{Deserialize, Serialize};
 
 use crate::app_state::AppState;
+use crate::minigames::pong_paddle::PlayerPaddleShape;
 use crate::network::is_host;
 use crate::profile::{LocalProfile, MAX_NAME_CHARS, clean_name, name_from_user_data};
 
@@ -204,6 +205,7 @@ fn spawn_player(
     );
     commands.spawn((
         player,
+        PlayerPaddleShape::default(),
         // Usually removed when its client disconnects; this also covers the host leaving.
         DespawnOnEnter(AppState::MainMenu),
         Replicate::to_clients(NetworkTarget::All),

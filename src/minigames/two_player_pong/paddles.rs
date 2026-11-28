@@ -5,19 +5,23 @@ use serde::{Deserialize, Serialize};
 
 use super::PHASE;
 use super::PongSystems;
-use super::config::{PADDLE_MAX_Y, PADDLE_SPEED, PADDLE_X_OFFSET};
+use super::config::{PADDLE_HEIGHT, PADDLE_SPEED, PADDLE_X_OFFSET, WALL_THICKNESS};
 use super::pong_input::PongInput;
+use crate::config::display::VIEW_HEIGHT;
 use crate::minigames::outcome::Participants;
+use crate::minigames::pong_paddle::{PaddleShape, PlayerPaddleShape};
 use crate::network::is_host;
+use crate::party::Party;
 use crate::players::Player;
 
-/// Which player controls this paddle. Set once at spawn.
+/// Which player controls this paddle, and what shape it has. Set once at spawn.
 #[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 pub struct Paddle {
     pub owner: PeerId,
     pub side: Side,
     /// The owner's [`Player::color`], an index for [`player_color`](crate::players::player_color).
     pub color: u8,
+    pub shape: PaddleShape,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
@@ -78,18 +82,24 @@ impl Side {
 }
 
 /// The two [`Participants`] get a paddle, left then right; everyone else watches. If one has left
-/// already, Pong is abandoned for lack of paddles.
+/// already, Pong is abandoned for lack of paddles. During a [`Party`], each paddle's shape is
+/// randomized; otherwise each player gets the shape they picked on the setup screen.
 fn spawn_paddles(
     mut commands: Commands,
     participants: Single<&Participants>,
-    players: Query<(&Player, &ControlledBy)>,
+    party: Option<Single<&Party>>,
+    players: Query<(&Player, Option<&PlayerPaddleShape>, &ControlledBy)>,
 ) {
     let seated: Vec<_> = participants
         .0
         .iter()
-        .filter_map(|id| players.iter().find(|(player, _)| player.id == *id))
+        .filter_map(|id| players.iter().find(|(player, _, _)| player.id == *id))
         .collect();
-    let [(left, left_link), (right, right_link)] = seated[..] else {
+    let [
+        (left, left_shape, left_link),
+        (right, right_shape, right_link),
+    ] = seated[..]
+    else {
         info!(
             "Pong needs 2 players, but {} of its {} participants are here",
             seated.len(),
@@ -97,17 +107,41 @@ fn spawn_paddles(
         );
         return;
     };
-    spawn_paddle(&mut commands, left, left_link.owner, Side::Left);
-    spawn_paddle(&mut commands, right, right_link.owner, Side::Right);
+    let in_party = party.is_some();
+    let mut rng = rand::rng();
+    let mut shape_for = |picked: Option<&PlayerPaddleShape>| {
+        if in_party {
+            PaddleShape::random(&mut rng)
+        } else {
+            picked.map_or(PaddleShape::Classic, |shape| shape.0)
+        }
+    };
+    let left_shape = shape_for(left_shape);
+    let right_shape = shape_for(right_shape);
+    spawn_paddle(&mut commands, left, left_link.owner, Side::Left, left_shape);
+    spawn_paddle(
+        &mut commands,
+        right,
+        right_link.owner,
+        Side::Right,
+        right_shape,
+    );
 }
 
-fn spawn_paddle(commands: &mut Commands, player: &Player, link: Entity, side: Side) {
+fn spawn_paddle(
+    commands: &mut Commands,
+    player: &Player,
+    link: Entity,
+    side: Side,
+    shape: PaddleShape,
+) {
     let owner = player.id;
     commands.spawn((
         Paddle {
             owner,
             side,
             color: player.color,
+            shape,
         },
         DespawnOnExit(PHASE),
         PaddlePosition(Vec2::new(side.x_pos(), 0.0)),
@@ -125,21 +159,27 @@ fn spawn_paddle(commands: &mut Commands, player: &Player, link: Entity, side: Si
 /// re-runs it during rollback, so it must only depend on the input and the current position.
 fn move_paddles(
     time: Res<Time>,
-    mut paddles: Query<(&mut PaddlePosition, &ActionState<PongInput>), With<Paddle>>,
+    mut paddles: Query<(&Paddle, &mut PaddlePosition, &ActionState<PongInput>)>,
 ) {
-    for (mut position, input) in &mut paddles {
-        let y = step(position.0.y, input.0, time.delta_secs());
+    for (paddle, mut position, input) in &mut paddles {
+        let y = step_with_shape(position.0.y, paddle.shape, input.0, time.delta_secs());
         position.set_if_neq(PaddlePosition(Vec2::new(position.0.x, y)));
     }
 }
 
-fn step(y: f32, input: PongInput, dt: f32) -> f32 {
+fn step_with_shape(y: f32, shape: PaddleShape, input: PongInput, dt: f32) -> f32 {
     let direction = match input {
         PongInput::Up => 1.0,
         PongInput::Down => -1.0,
         PongInput::Idle => 0.0,
     };
-    (y + direction * PADDLE_SPEED * dt).clamp(-PADDLE_MAX_Y, PADDLE_MAX_Y)
+    let max_y = VIEW_HEIGHT / 2.0 - WALL_THICKNESS - shape.half_length(PADDLE_HEIGHT);
+    (y + direction * PADDLE_SPEED * dt).clamp(-max_y, max_y)
+}
+
+#[cfg(test)]
+fn step(y: f32, input: PongInput, dt: f32) -> f32 {
+    step_with_shape(y, PaddleShape::Classic, input, dt)
 }
 
 #[cfg(test)]

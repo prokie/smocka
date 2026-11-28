@@ -577,6 +577,67 @@ def draw_paddle() -> None:
     canvas.save(ASSETS / "two_player_pong/paddle.png")
 
 
+def draw_paddle_shapes() -> None:
+    """Four upright, right-facing (+x) paddle silhouettes on a shared 16x56 world-unit canvas
+    (matching minigames::pong_paddle), tinted per player in the game."""
+    w, h = 16.0, 56.0
+    half_w, half_h = PADDLE_WIDTH / 2, PADDLE_HEIGHT / 2
+
+    # Classic: flat rectangle centred at (0, 0).
+    classic = Canvas(w, h)
+    classic.rect(
+        -half_w + 0.3, -half_h + 0.3, half_w - 0.3, half_h - 0.3,
+        WHITE, radius=3.0, outline=OUTLINE, width=0.9,
+    )
+    classic.rect(-1.0, -half_h + 5, 1.0, half_h - 5, LIGHT, radius=1.0)
+    classic.save(ASSETS / "two_player_pong/paddle_classic.png")
+
+    # Bumper: convex curved front bulging +3 units toward +x at the centre.
+    bumper = Canvas(w, h)
+    steps = 28
+    pts: list[tuple[float, float]] = [bumper.point(-half_w + 0.4, -half_h + 0.4)]
+    for i in range(steps + 1):
+        u = -1.0 + 2.0 * (i / steps)
+        y = u * (half_h - 0.4)
+        x = (half_w - 0.3) + 3.0 * (1.0 - u * u)
+        pts.append(bumper.point(x, y))
+    pts.append(bumper.point(-half_w + 0.4, half_h - 0.4))
+    bumper.draw.polygon(pts, fill=WHITE, outline=OUTLINE, width=round(0.9 * bumper.scale))
+    # Inner curved highlight strip.
+    highlight: list[tuple[float, float]] = []
+    for i in range(17):
+        u = -0.82 + 1.64 * (i / 16)
+        y = u * (half_h - 2.0)
+        x = 0.2 + 2.0 * (1.0 - u * u)
+        highlight.append(bumper.point(x, y))
+    bumper.draw.line(highlight, fill=LIGHT, width=round(1.6 * bumper.scale))
+    bumper.save(ASSETS / "two_player_pong/paddle_bumper.png")
+
+    # Wedge: angled chevron V-nose pointing +4 units into +x at the centre.
+    wedge = Canvas(w, h)
+    poly = [
+        wedge.point(-half_w + 0.4, -half_h + 0.4),
+        wedge.point(half_w - 0.3, -half_h + 0.4),
+        wedge.point(half_w + 3.7, 0.0),
+        wedge.point(half_w - 0.3, half_h - 0.4),
+        wedge.point(-half_w + 0.4, half_h - 0.4),
+    ]
+    wedge.draw.polygon(poly, fill=WHITE, outline=OUTLINE, width=round(0.9 * wedge.scale))
+    wedge.line(half_w - 1.8, -half_h + 5.0, half_w + 1.4, 0.0, LIGHT, 1.5)
+    wedge.line(half_w + 1.4, 0.0, half_w - 1.8, half_h - 5.0, LIGHT, 1.5)
+    wedge.save(ASSETS / "two_player_pong/paddle_wedge.png")
+
+    # Split: twin pads spanning [-28, -10] and [10, 28] with a 20-unit open centre gap.
+    split = Canvas(w, h)
+    for y0, y1 in ((-27.7, -10.3), (10.3, 27.7)):
+        split.rect(
+            -half_w + 0.3, y0, half_w - 0.3, y1,
+            WHITE, radius=2.6, outline=OUTLINE, width=0.9,
+        )
+        split.rect(-1.0, y0 + 3.5, 1.0, y1 - 3.5, LIGHT, radius=0.9)
+    split.save(ASSETS / "two_player_pong/paddle_split.png")
+
+
 def draw_ball() -> None:
     canvas = Canvas(BALL_SIZE, BALL_SIZE)
     half = BALL_SIZE / 2 - 0.3
@@ -908,6 +969,7 @@ def main() -> None:
     draw_arena()
     draw_royale_arena()
     draw_paddle()
+    draw_paddle_shapes()
     draw_ball()
     draw_shootout_arena()
     draw_gunner()

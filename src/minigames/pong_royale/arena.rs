@@ -11,8 +11,11 @@ use serde::{Deserialize, Serialize};
 
 use super::config::{
     ARENA_HALF, BALL_HIT_SPEEDUP, BALL_MAX_BOUNCE_ANGLE, BALL_MAX_SPEED, BALL_SERVE_MAX_ANGLE,
-    BALL_SERVE_MIN_ANGLE, BALL_SERVE_SPEED, BALL_SIZE, CORNER_SIZE, GOAL_DISTANCE, PADDLE_DISTANCE,
-    PADDLE_LENGTH, PADDLE_MAX_ALONG, PADDLE_THICKNESS, WALL_THICKNESS,
+    BALL_SERVE_MIN_ANGLE, BALL_SERVE_SPEED, BALL_SIZE, CORNER_SIZE, GOAL_DISTANCE, GOAL_HALF_WIDTH,
+    PADDLE_DISTANCE, PADDLE_LENGTH, PADDLE_THICKNESS, WALL_THICKNESS,
+};
+use crate::minigames::pong_paddle::{
+    PaddleGeometry, PaddleShape, bounce_off_paddle_shape, hits_paddle_shape,
 };
 
 /// A side of the square arena, each with a goal for one player to defend.
@@ -68,11 +71,17 @@ pub fn seats(players: usize) -> &'static [Side] {
     &Side::ALL[..players.min(Side::ALL.len())]
 }
 
-/// A paddle's position `along` its side after moving for `dt` seconds with `input` (-1, 0 or 1
-/// along its [`tangent`](Side::tangent)), kept between the corner blocks.
+/// A [`PaddleShape::Classic`] paddle's position `along` its side after moving for `dt` seconds
+/// with `input` (-1, 0 or 1 along its [`tangent`](Side::tangent)), kept between the corner blocks.
 pub fn step_paddle(along: f32, input: f32, dt: f32) -> f32 {
-    (along + input.clamp(-1.0, 1.0) * super::config::PADDLE_SPEED * dt)
-        .clamp(-PADDLE_MAX_ALONG, PADDLE_MAX_ALONG)
+    step_paddle_with_shape(along, PaddleShape::Classic, input, dt)
+}
+
+/// Shape-aware version of [`step_paddle`], clamping so the shape's outer ends stay between the
+/// corner blocks.
+pub fn step_paddle_with_shape(along: f32, shape: PaddleShape, input: f32, dt: f32) -> f32 {
+    let max_along = GOAL_HALF_WIDTH - shape.half_length(PADDLE_LENGTH);
+    (along + input.clamp(-1.0, 1.0) * super::config::PADDLE_SPEED * dt).clamp(-max_along, max_along)
 }
 
 /// The velocity of a ball served from the centre towards `side`'s goal: [`BALL_SERVE_SPEED`], at
@@ -84,11 +93,11 @@ pub fn serve_velocity(side: Side, rng: &mut impl RngExt) -> Vec2 {
     (side.normal() * angle.cos() + side.tangent() * either_way * angle.sin()) * BALL_SERVE_SPEED
 }
 
-/// What's at each side of the arena this tick: a paddle, `along` its side, or a wall. A side with
+/// What's at each side of the arena this tick: a paddle (`along`, shape), or a wall. A side with
 /// neither is an open goal.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Sides {
-    paddles: [Option<f32>; 4],
+    paddles: [Option<(f32, PaddleShape)>; 4],
     walls: [bool; 4],
 }
 
@@ -97,8 +106,12 @@ impl Sides {
         side as usize
     }
 
-    pub fn with_paddle(mut self, side: Side, along: f32) -> Self {
-        self.paddles[Self::index(side)] = Some(along);
+    pub fn with_paddle(self, side: Side, along: f32) -> Self {
+        self.with_shaped_paddle(side, along, PaddleShape::Classic)
+    }
+
+    pub fn with_shaped_paddle(mut self, side: Side, along: f32, shape: PaddleShape) -> Self {
+        self.paddles[Self::index(side)] = Some((along, shape));
         self
     }
 
@@ -107,7 +120,7 @@ impl Sides {
         self
     }
 
-    pub fn paddle(&self, side: Side) -> Option<f32> {
+    pub fn paddle(&self, side: Side) -> Option<(f32, PaddleShape)> {
         self.paddles[Self::index(side)]
     }
 
@@ -141,10 +154,10 @@ pub fn step_ball(position: Vec2, velocity: Vec2, sides: &Sides, dt: f32) -> Step
         (position, velocity) = bounce_off_block(corner, position, velocity);
     }
     for side in Side::ALL {
-        if let Some(along) = sides.paddle(side)
-            && hits_paddle(side, along, previous, position, velocity)
+        if let Some((along, shape)) = sides.paddle(side)
+            && hits_paddle_shaped(side, along, shape, previous, position, velocity)
         {
-            velocity = bounce_off_paddle(side, along, position, velocity);
+            velocity = bounce_off_paddle_shaped(side, along, shape, position, velocity);
             velocity = (velocity * BALL_HIT_SPEEDUP).clamp_length_max(BALL_MAX_SPEED);
         }
     }
@@ -234,32 +247,61 @@ pub fn bounce_off_block(block: Block, position: Vec2, velocity: Vec2) -> (Vec2, 
     (position, velocity)
 }
 
-/// Whether the ball, which was at `previous` when this tick began and is now at `ball`, hits the
-/// front face of `side`'s paddle, `along` its side. It must overlap the paddle, be heading out
-/// towards the goal, and have been fully in front of the face when the tick began: a ball that got
-/// past the face goes on into the goal, even if the paddle moves into it.
-pub fn hits_paddle(side: Side, along: f32, previous: Vec2, ball: Vec2, velocity: Vec2) -> bool {
-    let (normal, tangent) = (side.normal(), side.tangent());
-    let face = PADDLE_DISTANCE - PADDLE_THICKNESS / 2.0;
-    let leading_edge_before = previous.dot(normal) + BALL_SIZE / 2.0;
-    let was_in_front = leading_edge_before <= face;
-    let heading_out = velocity.dot(normal) > 0.0;
-    let across = (ball.dot(normal) - PADDLE_DISTANCE).abs();
-    let beside = (ball.dot(tangent) - along).abs();
-    // Touching counts, as in Pong.
-    let overlaps = across <= (PADDLE_THICKNESS + BALL_SIZE) / 2.0
-        && beside <= (PADDLE_LENGTH + BALL_SIZE) / 2.0;
-    heading_out && was_in_front && overlaps
+fn paddle_geometry(side: Side, along: f32, shape: PaddleShape) -> PaddleGeometry {
+    PaddleGeometry {
+        centre: side.paddle_centre(along),
+        inward: -side.normal(),
+        tangent: side.tangent(),
+        shape,
+        base_length: PADDLE_LENGTH,
+        thickness: PADDLE_THICKNESS,
+    }
 }
 
-/// The ball's velocity off `side`'s paddle, `along` its side: same speed, back into the arena,
-/// aimed by where it hit. The middle sends it straight back across, the ends at up to
-/// [`BALL_MAX_BOUNCE_ANGLE`] towards that end.
+/// Whether the ball, which was at `previous` when this tick began and is now at `ball`, hits the
+/// front face of `side`'s [`PaddleShape::Classic`] paddle, `along` its side.
+pub fn hits_paddle(side: Side, along: f32, previous: Vec2, ball: Vec2, velocity: Vec2) -> bool {
+    hits_paddle_shaped(side, along, PaddleShape::Classic, previous, ball, velocity)
+}
+
+/// Shape-aware version of [`hits_paddle`].
+pub fn hits_paddle_shaped(
+    side: Side,
+    along: f32,
+    shape: PaddleShape,
+    previous: Vec2,
+    ball: Vec2,
+    velocity: Vec2,
+) -> bool {
+    hits_paddle_shape(
+        paddle_geometry(side, along, shape),
+        previous,
+        ball,
+        velocity,
+        BALL_SIZE,
+    )
+}
+
+/// The ball's velocity off `side`'s [`PaddleShape::Classic`] paddle, `along` its side: same speed,
+/// back into the arena, aimed by where it hit.
 pub fn bounce_off_paddle(side: Side, along: f32, ball: Vec2, velocity: Vec2) -> Vec2 {
-    // -1 at one end of the paddle, 0 in its middle, 1 at the other end.
-    let offset = ((ball.dot(side.tangent()) - along) / (PADDLE_LENGTH / 2.0)).clamp(-1.0, 1.0);
-    let angle = offset * BALL_MAX_BOUNCE_ANGLE;
-    (-side.normal() * angle.cos() + side.tangent() * angle.sin()) * velocity.length()
+    bounce_off_paddle_shaped(side, along, PaddleShape::Classic, ball, velocity)
+}
+
+/// Shape-aware version of [`bounce_off_paddle`].
+pub fn bounce_off_paddle_shaped(
+    side: Side,
+    along: f32,
+    shape: PaddleShape,
+    ball: Vec2,
+    velocity: Vec2,
+) -> Vec2 {
+    bounce_off_paddle_shape(
+        paddle_geometry(side, along, shape),
+        ball,
+        velocity,
+        BALL_MAX_BOUNCE_ANGLE,
+    )
 }
 
 #[cfg(test)]

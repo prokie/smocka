@@ -148,9 +148,21 @@ pub(super) fn update_back_to_lobby_button(
     phase: Option<Res<State<SessionPhase>>>,
     mut buttons: Query<&mut Node, With<BackToLobbyButton>>,
 ) {
-    let show = can_return_to_lobby(hosting.is_hosting(), phase.map(|phase| *phase.get()));
+    set_back_to_lobby_display(
+        hosting.is_hosting(),
+        phase.map(|phase| *phase.get()),
+        &mut buttons,
+    );
+}
+
+fn set_back_to_lobby_display(
+    hosting: bool,
+    phase: Option<SessionPhase>,
+    buttons: &mut Query<&mut Node, With<BackToLobbyButton>>,
+) {
+    let show = can_return_to_lobby(hosting, phase);
     let expected = if show { Display::Flex } else { Display::None };
-    for mut node in &mut buttons {
+    for mut node in buttons {
         if node.display != expected {
             node.display = expected;
         }
@@ -161,11 +173,10 @@ pub(super) fn update_back_to_lobby_button(
 mod tests {
     use bevy::ecs::system::RunSystemOnce;
     use bevy::prelude::*;
-    use lightyear::prelude::server::{Server, Started};
 
     use super::{
         BackToLobbyButton, CloseSessionMenu, OpenSessionMenu, SessionMenuScreen,
-        can_return_to_lobby, toggle_on_escape, update_back_to_lobby_button,
+        can_return_to_lobby, set_back_to_lobby_display, toggle_on_escape,
     };
     use crate::minigames::Minigame;
     use crate::session::SessionPhase;
@@ -218,8 +229,15 @@ mod tests {
         assert_eq!(display, Display::None);
 
         // If hosting outside the lobby, "Back to lobby" becomes visible; in Lobby it hides again.
-        world.spawn((Server, Started));
-        world.run_system_once(update_back_to_lobby_button).unwrap();
+        world
+            .run_system_once(|mut buttons: Query<&mut Node, With<BackToLobbyButton>>| {
+                set_back_to_lobby_display(
+                    true,
+                    Some(SessionPhase::Playing(Minigame::Shootout)),
+                    &mut buttons,
+                );
+            })
+            .unwrap();
         let display = world
             .query_filtered::<&Node, With<BackToLobbyButton>>()
             .single(&world)
@@ -227,8 +245,11 @@ mod tests {
             .display;
         assert_eq!(display, Display::Flex);
 
-        world.insert_resource(State::new(SessionPhase::Lobby));
-        world.run_system_once(update_back_to_lobby_button).unwrap();
+        world
+            .run_system_once(|mut buttons: Query<&mut Node, With<BackToLobbyButton>>| {
+                set_back_to_lobby_display(true, Some(SessionPhase::Lobby), &mut buttons);
+            })
+            .unwrap();
         let display = world
             .query_filtered::<&Node, With<BackToLobbyButton>>()
             .single(&world)

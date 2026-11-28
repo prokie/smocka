@@ -6,13 +6,14 @@ use lightyear::prelude::input::native::ActionState;
 use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use super::arena::{Side, step_paddle};
+use super::arena::{Side, step_paddle_with_shape};
 use super::royale_input::RoyaleInput;
 use super::{PHASE, RoyaleSystems};
+use crate::minigames::pong_paddle::PaddleShape;
 use crate::players::Player;
 
-/// Who plays this paddle, and which side it defends. Set once at spawn, and copied from the
-/// player's [`Player`] so a result can still name them if they leave.
+/// Who plays this paddle, which side it defends, and what shape it has. Set once at spawn, and
+/// copied from the player's [`Player`] so a result can still name them if they leave.
 #[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Paddle {
     pub owner: PeerId,
@@ -20,6 +21,7 @@ pub struct Paddle {
     /// The owner's [`Player::color`], an index for [`player_color`](crate::players::player_color).
     pub color: u8,
     pub side: Side,
+    pub shape: PaddleShape,
 }
 
 /// How far along its side the paddle is (see [`Side::paddle_centre`]). Changes every tick:
@@ -66,6 +68,7 @@ pub fn spawn_paddle(
     player: &Player,
     link: Entity,
     side: Side,
+    shape: PaddleShape,
     lives: u32,
     host: Option<PeerId>,
 ) {
@@ -76,6 +79,7 @@ pub fn spawn_paddle(
             name: player.name.clone(),
             color: player.color,
             side,
+            shape,
         },
         PaddlePosition(0.0),
         Lives(lives),
@@ -104,7 +108,12 @@ fn move_paddles(
     >,
 ) {
     for (paddle, mut position, input) in &mut paddles {
-        let along = step_paddle(position.0, input.0.along(paddle.side), time.delta_secs());
+        let along = step_paddle_with_shape(
+            position.0,
+            paddle.shape,
+            input.0.along(paddle.side),
+            time.delta_secs(),
+        );
         position.set_if_neq(PaddlePosition(along));
     }
 }

@@ -331,6 +331,10 @@ mod tests {
         assert!(overlay_allowed(SessionPhase::NextMatch));
         assert!(overlay_allowed(SessionPhase::Results));
         assert!(!overlay_allowed(SessionPhase::Lobby));
+        assert!(!overlay_allowed(SessionPhase::Setup(
+            Minigame::TwoPlayerPong
+        )));
+        assert!(!overlay_allowed(SessionPhase::Setup(Minigame::TwoPlayerPong)));
         assert!(!overlay_allowed(SessionPhase::Standings));
         assert!(!overlay_allowed(SessionPhase::NextRound));
         assert!(!overlay_allowed(SessionPhase::PartyOver));

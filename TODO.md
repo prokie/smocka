@@ -130,7 +130,6 @@ same build.
       `OnEnter(AppState::MainMenu)`. Switching tracks cuts straight over; fading between them
       needs `bevy_kira_audio` (check it supports Bevy 0.20 first) or fading `AudioSink` volumes
       by hand.
-- [ ] **Volume during a game**: the Sound screen is only in the main menu, like Controls.
 - [ ] **Spectators don't hear bumps** in racing. Only the host and drivers work bumps out
       (`CarsBumped` in `bumps.rs`); a spectator's cars are interpolated. Spectators could check
       `contact` between the cars as they're drawn instead.

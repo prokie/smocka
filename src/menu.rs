@@ -10,6 +10,7 @@ mod notices;
 mod party;
 mod results;
 mod session_menu;
+mod setup;
 mod sound;
 mod standings;
 mod watching;
@@ -30,11 +31,12 @@ use crate::app_state::AppState;
 use crate::config::network::HOST_ADDR;
 use crate::controls::{ControlAction, Controls};
 use crate::minigames::Minigame;
+use crate::minigames::pong_paddle::{PaddleShape, PickPaddleShape};
 use crate::minigames::settings::{ChangeSetting, SettingId};
 use crate::network::{HostSession, LeaveSession, close_session};
 use crate::party::{ChangeRounds, StartParty};
 use crate::profile::{LastAddress, LocalProfile};
-use crate::session::{ReturnToLobby, SessionPhase, StartMinigame};
+use crate::session::{OpenMinigameSetup, ReturnToLobby, SessionPhase, StartMinigame};
 use crate::sound::{ChangeVolume, VolumeControl, VolumeSettings};
 use widgets::{HINT_COLOR, label, menu_button, screen};
 
@@ -51,7 +53,12 @@ pub enum MenuButton {
     Join,
     Quit,
     Cancel,
+    /// Host only: open the pre-game setup screen for a minigame from the lobby.
+    OpenSetup(Minigame),
+    /// Host only: start a minigame from its setup screen (or the lobby).
     Start(Minigame),
+    /// Pick this player's Pong / Pong Royale paddle shape on the setup screen.
+    PickPaddleShape(PaddleShape),
     StartParty,
     /// Change how many rounds the next party has by this many.
     ChangeRounds(i32),
@@ -124,6 +131,12 @@ impl Plugin for MenuPlugin {
             ),
         );
         app.add_systems(OnEnter(SessionPhase::Lobby), lobby::spawn_lobby_screen);
+        for game in Minigame::ALL {
+            app.add_systems(
+                OnEnter(SessionPhase::Setup(game)),
+                setup::spawn_setup_screen,
+            );
+        }
         app.add_systems(
             OnEnter(SessionPhase::Results),
             results::spawn_results_screen,
@@ -208,6 +221,14 @@ impl Plugin for MenuPlugin {
                     lobby::update_round_picker,
                 )
                     .run_if(in_state(SessionPhase::Lobby)),
+                (
+                    setup::update_setup_settings,
+                    setup::update_setup_players,
+                    setup::update_paddle_shape_cards,
+                    setup::update_setup_hint,
+                    lobby::update_thumbnails,
+                )
+                    .run_if(setup::in_setup),
                 results::update_results_screen.run_if(in_state(SessionPhase::Results)),
                 standings::update_standings_screen.run_if(
                     in_state(SessionPhase::Standings)
@@ -299,7 +320,9 @@ fn on_menu_button(
             commands.write_message(AppExit::Success);
         }
         MenuButton::Cancel => commands.queue(LeaveSession),
+        MenuButton::OpenSetup(game) => commands.queue(OpenMinigameSetup(*game)),
         MenuButton::Start(game) => commands.queue(StartMinigame(*game)),
+        MenuButton::PickPaddleShape(shape) => commands.queue(PickPaddleShape(*shape)),
         MenuButton::StartParty => commands.queue(StartParty),
         MenuButton::ChangeRounds(change) => commands.queue(ChangeRounds(*change)),
         MenuButton::Controls => commands.queue(controls::OpenControls),

@@ -2,21 +2,18 @@ use bevy::prelude::*;
 
 use super::PHASE;
 use super::ball::{Ball, BallPosition};
-use super::config::{
-    BALL_MAX_SPEED, BALL_SIZE, PADDLE_HEIGHT, PADDLE_WIDTH, SCORE_FONT_SIZE, WALL_THICKNESS,
-};
+use super::config::{BALL_MAX_SPEED, BALL_SIZE, SCORE_FONT_SIZE, WALL_THICKNESS};
 use super::paddles::{Paddle, PaddlePosition, Side};
 use super::score::PongScore;
 use super::sounds::PongSoundsPlugin;
 use crate::camera::gameplay_camera_2d;
 use crate::config::display::{ART_SCALE, VIEW_HEIGHT, VIEW_WIDTH};
 use crate::config::network::TICK_RATE;
+use crate::minigames::pong_paddle::{PADDLE_SPRITE_HEIGHT, PADDLE_SPRITE_WIDTH};
 use crate::minigames::smoothing::{PreviousTick, Smoothed, remember_previous_tick, smoothed};
 use crate::players::player_color;
 
 const ARENA_IMAGE: &str = "minigames/two_player_pong/arena.png";
-/// Drawn in white/grey and tinted with its player's colour.
-const PADDLE_IMAGE: &str = "minigames/two_player_pong/paddle.png";
 const BALL_IMAGE: &str = "minigames/two_player_pong/ball.png";
 
 /// Draw order: higher values are drawn on top.
@@ -99,8 +96,9 @@ fn add_paddle_sprite(
     commands.entity(trigger.entity).insert((
         Sprite {
             color: player_color(paddle.color),
-            custom_size: Some(Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT)),
-            ..Sprite::from_image(assets.load(PADDLE_IMAGE))
+            custom_size: Some(Vec2::new(PADDLE_SPRITE_WIDTH, PADDLE_SPRITE_HEIGHT)),
+            flip_x: paddle.side == Side::Right,
+            ..Sprite::from_image(assets.load(paddle.shape.image()))
         },
         Transform::from_xyz(paddle.side.x_pos(), 0.0, PADDLE_Z),
     ));

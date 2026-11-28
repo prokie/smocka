@@ -4,6 +4,7 @@
 
 pub mod countdown;
 pub mod outcome;
+pub mod pong_paddle;
 pub mod pong_royale;
 pub mod racing;
 pub mod settings;
@@ -93,6 +94,7 @@ impl Plugin for MinigamesPlugin {
         app.add_plugins((
             settings::SettingsPlugin,
             countdown::CountdownPlugin,
+            pong_paddle::PongPaddlePlugin,
             two_player_pong::TwoPlayerPongPlugin,
             racing::RacingPlugin,
             shootout::ShootoutPlugin,

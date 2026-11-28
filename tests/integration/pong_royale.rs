@@ -220,3 +220,52 @@ fn the_game_is_abandoned_when_everyone_else_leaves() {
         apps[0].phase() == Some(SessionPhase::Lobby) && paddles(apps[0]).is_empty()
     });
 }
+
+#[test]
+fn players_pick_paddle_shapes_on_the_setup_screen_for_pong_royale() {
+    use smocka::minigames::pong_paddle::{PaddleShape, PickPaddleShape};
+    use smocka::minigames::pong_royale::paddles::Paddle;
+    use smocka::session::OpenMinigameSetup;
+
+    let (mut host, mut client, _) = connected_pair();
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut().all(|app| app.players() == 2)
+    });
+
+    OpenMinigameSetup(Minigame::PongRoyale).apply(host.0.world_mut());
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut()
+            .all(|app| app.phase() == Some(SessionPhase::Setup(Minigame::PongRoyale)))
+    });
+
+    PickPaddleShape(PaddleShape::Bumper).apply(host.0.world_mut());
+    PickPaddleShape(PaddleShape::Wedge).apply(client.0.world_mut());
+    // Wait a moment for the joiner's request to reach the host before starting.
+    update_until(&mut [&mut host, &mut client], |apps| {
+        let world = apps[0].0.world_mut();
+        world
+            .query::<(
+                &smocka::players::Player,
+                &smocka::minigames::pong_paddle::PlayerPaddleShape,
+            )>()
+            .iter(world)
+            .any(|(player, shape)| joiners(player.id) && shape.0 == PaddleShape::Wedge)
+    });
+
+    host.start_minigame(Minigame::PongRoyale);
+    let paddle_shape = |app: &mut TestApp, is_owner: fn(PeerId) -> bool| -> Option<PaddleShape> {
+        let world = app.0.world_mut();
+        world
+            .query::<&Paddle>()
+            .iter(world)
+            .find(|paddle| is_owner(paddle.owner))
+            .map(|paddle| paddle.shape)
+    };
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut().all(|app| {
+            app.phase() == Some(SessionPhase::Playing(Minigame::PongRoyale))
+                && paddle_shape(app, hosts) == Some(PaddleShape::Bumper)
+                && paddle_shape(app, joiners) == Some(PaddleShape::Wedge)
+        })
+    });
+}

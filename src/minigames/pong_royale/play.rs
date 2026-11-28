@@ -11,8 +11,10 @@ use super::paddles::{Lives, Paddle, PaddlePosition, spawn_paddle};
 use super::{LIVES_SETTING, PHASE, RoyaleRules, RoyaleSystems};
 use crate::minigames::countdown::StartTick;
 use crate::minigames::outcome::{MinigameEnded, MinigameResult, Participants, Placement};
+use crate::minigames::pong_paddle::{PaddleShape, PlayerPaddleShape};
 use crate::minigames::settings::MinigameSettings;
 use crate::network::is_host;
+use crate::party::Party;
 use crate::players::{Player, local_peer_id};
 
 /// Marks the ball.
@@ -99,11 +101,13 @@ impl Plugin for PlayPlugin {
 }
 
 /// Host only: seat the [`Participants`] still here, a side each (see [`seats`]), wall off the
-/// other sides, and serve the ball to one of them.
+/// other sides, and serve the ball to one of them. During a [`Party`], each paddle's shape is
+/// randomized; otherwise each player gets the shape they picked on the setup screen.
 fn start_game(
     settings: Res<MinigameSettings>,
     participants: Single<&Participants>,
-    players: Query<(&Player, &ControlledBy)>,
+    party: Option<Single<&Party>>,
+    players: Query<(&Player, Option<&PlayerPaddleShape>, &ControlledBy)>,
     host: Query<&LocalId, (With<Client>, With<Connected>)>,
     mut commands: Commands,
 ) {
@@ -112,11 +116,18 @@ fn start_game(
     let here: Vec<_> = participants
         .0
         .iter()
-        .filter_map(|id| players.iter().find(|(player, _)| player.id == *id))
+        .filter_map(|id| players.iter().find(|(player, _, _)| player.id == *id))
         .collect();
     let sides = seats(here.len());
-    for ((player, link), &side) in here.iter().zip(sides) {
-        spawn_paddle(&mut commands, player, link.owner, side, lives, host);
+    let in_party = party.is_some();
+    let mut rng = rand::rng();
+    for ((player, picked_shape, link), &side) in here.iter().zip(sides) {
+        let shape = if in_party {
+            PaddleShape::random(&mut rng)
+        } else {
+            picked_shape.map_or(PaddleShape::Classic, |shape| shape.0)
+        };
+        spawn_paddle(&mut commands, player, link.owner, side, shape, lives, host);
     }
     for side in Side::ALL {
         if !sides.contains(&side) {
@@ -128,7 +139,6 @@ fn start_game(
         }
     }
 
-    let mut rng = rand::rng();
     let first = sides.choose(&mut rng).copied().unwrap_or(Side::Left);
     let velocity = serve_velocity(first, &mut rng);
     commands.spawn((
@@ -145,7 +155,7 @@ fn start_game(
     let seated: Vec<String> = here
         .iter()
         .zip(sides)
-        .map(|((player, _), side)| format!("{} ({side:?})", player.name()))
+        .map(|((player, _, _), side)| format!("{} ({side:?})", player.name()))
         .collect();
     info!(
         "Pong Royale with {lives} lives each: {}. First serve to {first:?}",
@@ -178,7 +188,7 @@ fn sides(paddles: &Query<PaddleState>, walls: &Query<&Wall>) -> Sides {
     let with_paddles = paddles
         .iter()
         .fold(Sides::default(), |sides, (_, paddle, position, _)| {
-            sides.with_paddle(paddle.side, position.0)
+            sides.with_shaped_paddle(paddle.side, position.0, paddle.shape)
         });
     walls
         .iter()

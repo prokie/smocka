@@ -244,3 +244,58 @@ fn goals_to_win(app: &mut TestApp) -> Option<u32> {
         .next()
         .map(|settings| settings.get(GOALS_TO_WIN_SETTING))
 }
+
+#[test]
+fn players_pick_paddle_shapes_on_the_setup_screen_and_play_with_them_in_pong() {
+    use smocka::minigames::pong_paddle::{PaddleShape, PickPaddleShape, PlayerPaddleShape};
+    use smocka::players::Player;
+    use smocka::session::OpenMinigameSetup;
+
+    let (mut host, mut client, _) = connected_pair();
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut().all(|app| app.players() == 2)
+    });
+
+    // Host opens the pre-game setup screen; both peers enter Setup(TwoPlayerPong).
+    OpenMinigameSetup(Minigame::TwoPlayerPong).apply(host.0.world_mut());
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut()
+            .all(|app| app.phase() == Some(SessionPhase::Setup(Minigame::TwoPlayerPong)))
+    });
+
+    // Host picks Wedge and joiner picks Split; both peers see both picks replicate.
+    PickPaddleShape(PaddleShape::Wedge).apply(host.0.world_mut());
+    PickPaddleShape(PaddleShape::Split).apply(client.0.world_mut());
+    let picked = |app: &mut TestApp, is_owner: fn(PeerId) -> bool| -> Option<PaddleShape> {
+        let world = app.0.world_mut();
+        world
+            .query::<(&Player, &PlayerPaddleShape)>()
+            .iter(world)
+            .find(|(player, _)| is_owner(player.id))
+            .map(|(_, shape)| shape.0)
+    };
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut().all(|app| {
+            picked(app, hosts) == Some(PaddleShape::Wedge)
+                && picked(app, joiners) == Some(PaddleShape::Split)
+        })
+    });
+
+    // Host starts Pong from the setup screen; spawned paddles keep each player's chosen shape.
+    host.start_minigame(Minigame::TwoPlayerPong);
+    let paddle_shape = |app: &mut TestApp, is_owner: fn(PeerId) -> bool| -> Option<PaddleShape> {
+        let world = app.0.world_mut();
+        world
+            .query::<&Paddle>()
+            .iter(world)
+            .find(|paddle| is_owner(paddle.owner))
+            .map(|paddle| paddle.shape)
+    };
+    update_until(&mut [&mut host, &mut client], |apps| {
+        apps.iter_mut().all(|app| {
+            app.phase() == Some(SessionPhase::Playing(Minigame::TwoPlayerPong))
+                && paddle_shape(app, hosts) == Some(PaddleShape::Wedge)
+                && paddle_shape(app, joiners) == Some(PaddleShape::Split)
+        })
+    });
+}

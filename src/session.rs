@@ -25,6 +25,9 @@ pub enum SessionPhase {
     /// Players gather until the host starts a minigame or a [`Party`].
     #[default]
     Lobby,
+    /// Pre-game setup screen for a chosen minigame: the host adjusts settings and starts the game,
+    /// while players pick game-specific options (such as paddle shapes in Pong and Pong Royale).
+    Setup(Minigame),
     /// In a [`Party`], before each round: which round it is, and the minigame picked for it.
     NextRound,
     /// Playing a minigame. Each minigame's module has its own as `PHASE`, for example
@@ -307,10 +310,46 @@ impl Plugin for SessionPlugin {
     }
 }
 
-/// Command: the host starts a [`Minigame`] from the lobby, with the [`Participants`] chosen by
-/// [`pick_participants`], or as a [`Tournament`] if it seats fewer than are here (see
-/// [`needs_tournament`]). Refused unless hosting, in the lobby, with at least
+/// Command: the host opens the pre-game [`SessionPhase::Setup`] screen for a [`Minigame`] from
+/// the lobby so everyone can view settings and pick options (such as paddle shapes) before
+/// [`StartMinigame`] begins play. Refused unless hosting, in the lobby, with at least
 /// [`min_players`](crate::minigames::MinigameInfo::min_players) players.
+#[derive(Debug, Clone, Copy)]
+pub struct OpenMinigameSetup(pub Minigame);
+
+impl Command for OpenMinigameSetup {
+    type Out = ();
+
+    fn apply(self, world: &mut World) {
+        if !world.run_system_cached(is_host).unwrap_or(false) {
+            warn!("Only the host can open minigame setup");
+            return;
+        }
+        let count = world.query::<&Player>().iter(world).len();
+        let min_players = self.0.info().min_players;
+        if count < min_players {
+            warn!(
+                "{:?} needs at least {min_players} players, have {count}",
+                self.0
+            );
+            return;
+        }
+        let Ok(mut phase) = world.query::<&mut CurrentPhase>().single_mut(world) else {
+            return;
+        };
+        if phase.0 != SessionPhase::Lobby {
+            warn!("Can't open {:?} setup outside the lobby", self.0);
+            return;
+        }
+        info!("Opening setup screen for {:?}", self.0);
+        phase.0 = SessionPhase::Setup(self.0);
+    }
+}
+
+/// Command: the host starts a [`Minigame`] from the lobby or its [`SessionPhase::Setup`] screen,
+/// with the [`Participants`] chosen by [`pick_participants`], or as a [`Tournament`] if it seats
+/// fewer than are here (see [`needs_tournament`]). Refused unless hosting, in the lobby or setup,
+/// with at least [`min_players`](crate::minigames::MinigameInfo::min_players) players.
 #[derive(Debug, Clone, Copy)]
 pub struct StartMinigame(pub Minigame);
 
@@ -322,12 +361,12 @@ impl Command for StartMinigame {
             warn!("Only the host can start a minigame");
             return;
         }
-        let in_lobby = world
+        let allowed = world
             .query::<&CurrentPhase>()
             .single(world)
-            .is_ok_and(|phase| phase.0 == SessionPhase::Lobby);
-        if !in_lobby {
-            warn!("Can't start {:?} outside the lobby", self.0);
+            .is_ok_and(|phase| matches!(phase.0, SessionPhase::Lobby | SessionPhase::Setup(_)));
+        if !allowed {
+            warn!("Can't start {:?} outside the lobby or setup", self.0);
             return;
         }
         BeginMinigame(self.0).apply(world);

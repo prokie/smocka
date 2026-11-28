@@ -7,22 +7,18 @@ use lightyear::prelude::input::native::InputMarker;
 use super::PHASE;
 use super::RoyaleInput;
 use super::arena::Side;
-use super::config::{
-    ARENA_HALF, BALL_MAX_SPEED, BALL_SIZE, GOAL_HALF_WIDTH, PADDLE_LENGTH, PADDLE_THICKNESS,
-    WALL_THICKNESS,
-};
+use super::config::{ARENA_HALF, BALL_MAX_SPEED, BALL_SIZE, GOAL_HALF_WIDTH, WALL_THICKNESS};
 use super::paddles::{Lives, Paddle, PaddlePosition};
 use super::play::{Ball, BallPosition, Wall};
 use super::sounds::RoyaleSoundsPlugin;
 use crate::camera::gameplay_camera_2d;
 use crate::config::display::{ART_SCALE, VIEW_HEIGHT, VIEW_WIDTH};
 use crate::config::network::TICK_RATE;
+use crate::minigames::pong_paddle::{PADDLE_SPRITE_HEIGHT, PADDLE_SPRITE_WIDTH};
 use crate::minigames::smoothing::{PreviousTick, Smoothed, remember_previous_tick, smoothed};
 use crate::players::player_color;
 
 const ARENA_IMAGE: &str = "minigames/pong_royale/arena.png";
-/// Pong's: drawn upright in white and grey, and tinted with its player's colour.
-const PADDLE_IMAGE: &str = "minigames/two_player_pong/paddle.png";
 const BALL_IMAGE: &str = "minigames/two_player_pong/ball.png";
 
 /// The colour of a wall across a goal. The same as the arena's corner blocks.
@@ -144,14 +140,16 @@ fn add_paddle_sprite(
     let Ok(paddle) = paddles.get(trigger.entity) else {
         return;
     };
+    // Paddle sprites face +x (right); rotate so the shaped front points inward into the arena.
+    let paddle_rotation = Quat::from_rotation_z((-paddle.side.normal()).to_angle());
     commands.entity(trigger.entity).insert((
         Sprite {
             color: player_color(paddle.color),
-            custom_size: Some(Vec2::new(PADDLE_THICKNESS, PADDLE_LENGTH)),
-            ..Sprite::from_image(assets.load(PADDLE_IMAGE))
+            custom_size: Some(Vec2::new(PADDLE_SPRITE_WIDTH, PADDLE_SPRITE_HEIGHT)),
+            ..Sprite::from_image(assets.load(paddle.shape.image()))
         },
         Transform::from_translation(paddle.side.paddle_centre(0.0).extend(PADDLE_Z))
-            .with_rotation(side_rotation(paddle.side)),
+            .with_rotation(paddle_rotation),
     ));
     if labels.iter().any(|label| label.side == paddle.side) {
         return;

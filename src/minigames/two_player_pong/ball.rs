@@ -5,11 +5,12 @@ use serde::{Deserialize, Serialize};
 
 use super::PHASE;
 use super::PongSystems;
-use super::collisions::{bounce_off_paddle, bounce_off_walls, hits_paddle};
+use super::collisions::{bounce_off_paddle_with_shape, bounce_off_walls, hits_paddle_with_shape};
 use super::config::{
     BALL_HIT_SPEEDUP, BALL_MAX_SPEED, BALL_SERVE_MAX_ANGLE, BALL_SERVE_MIN_ANGLE, BALL_SERVE_SPEED,
 };
 use super::paddles::{Paddle, PaddlePosition, Side};
+use crate::minigames::pong_paddle::PaddleShape;
 use crate::network::is_host;
 
 /// Marker for the Pong ball.
@@ -76,12 +77,14 @@ fn spawn_ball(mut commands: Commands) {
 fn move_ball(
     time: Res<Time>,
     mut balls: Query<(&mut BallPosition, &mut BallVelocity)>,
-    paddles: Query<&PaddlePosition, With<Paddle>>,
+    paddles: Query<(&Paddle, &PaddlePosition)>,
 ) {
-    let paddles = paddles.iter().map(|paddle| paddle.0);
+    let paddles = paddles
+        .iter()
+        .map(|(paddle, position)| (position.0, paddle.shape));
     for (mut position, mut velocity) in &mut balls {
         (position.0, velocity.0) =
-            step_ball(position.0, velocity.0, paddles.clone(), time.delta_secs());
+            step_ball_shaped(position.0, velocity.0, paddles.clone(), time.delta_secs());
     }
 }
 
@@ -96,25 +99,41 @@ pub fn serve_velocity(side: Side, rng: &mut impl RngExt) -> Vec2 {
     ) * BALL_SERVE_SPEED
 }
 
-/// The ball's next position and velocity after moving for `dt` seconds past `paddles`.
+/// The ball's next position and velocity after moving for `dt` seconds past shaped `paddles`.
+fn step_ball_shaped(
+    position: Vec2,
+    velocity: Vec2,
+    paddles: impl IntoIterator<Item = (Vec2, PaddleShape)>,
+    dt: f32,
+) -> (Vec2, Vec2) {
+    let previous = position;
+    let (position, mut velocity) = bounce_off_walls(position + velocity * dt, velocity);
+
+    if let Some((paddle, shape)) = paddles.into_iter().find(|&(paddle, shape)| {
+        hits_paddle_with_shape(previous, position, velocity, paddle, shape)
+    }) {
+        velocity = bounce_off_paddle_with_shape(position, velocity, paddle, shape);
+        velocity = (velocity * BALL_HIT_SPEEDUP).clamp_length_max(BALL_MAX_SPEED);
+    }
+
+    (position, velocity)
+}
+
+#[cfg(test)]
 fn step_ball(
     position: Vec2,
     velocity: Vec2,
     paddles: impl IntoIterator<Item = Vec2>,
     dt: f32,
 ) -> (Vec2, Vec2) {
-    let previous = position;
-    let (position, mut velocity) = bounce_off_walls(position + velocity * dt, velocity);
-
-    if let Some(paddle) = paddles
-        .into_iter()
-        .find(|&paddle| hits_paddle(previous, position, velocity, paddle))
-    {
-        velocity = bounce_off_paddle(position, velocity, paddle);
-        velocity = (velocity * BALL_HIT_SPEEDUP).clamp_length_max(BALL_MAX_SPEED);
-    }
-
-    (position, velocity)
+    step_ball_shaped(
+        position,
+        velocity,
+        paddles
+            .into_iter()
+            .map(|paddle| (paddle, PaddleShape::Classic)),
+        dt,
+    )
 }
 
 #[cfg(test)]
